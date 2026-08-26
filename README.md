@@ -42,9 +42,13 @@ because a home screen should tell you something true from across the room.
 ```sh
 npm install
 npm run build
+npm link          # puts `roofscape` on your PATH
 
-node apps/cli/dist/main.js doctor
+roofscape doctor
 ```
+
+(Without `npm link`, every command below works as
+`./node_modules/.bin/roofscape …`.)
 
 `doctor` tells you what it can reach. If you have **Claude Code** installed and
 logged in, that is enough — Anthropic floors run on your subscription and need no
