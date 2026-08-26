@@ -50,4 +50,26 @@ export const SKYLINE_MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 2,
+    name: 'standing orders',
+    sql: `
+      -- Work that recurs. Kept at skyline level rather than per building, so
+      -- one ticker can see everything due without opening every database.
+      create table schedules (
+        id            text primary key,
+        building_id   text not null,
+        goal          text not null,
+        every_minutes integer not null,
+        -- Optional wall-clock anchor, "HH:MM", for things that belong to a time
+        -- of day rather than to an interval since the last run.
+        at_time       text,
+        enabled       integer not null default 1,
+        last_run_at   text,
+        next_run_at   text not null,
+        created_at    text not null
+      );
+      create index schedules_due on schedules (enabled, next_run_at);
+    `,
+  },
 ]

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { BRAND, dataRoot } from '@app/core'
 import { buildApi } from './api.js'
+import { startTicker } from './ticker.js'
 import { EventStream } from './events.js'
 import { HttpError, readJson } from './router.js'
 import { daemonToken, tokenMatches, bearerFrom } from './auth.js'
@@ -23,6 +24,7 @@ const HOST = process.env.ROOFSCAPE_HOST ?? '127.0.0.1'
 const events = new EventStream()
 const api = buildApi(events)
 const token = daemonToken()
+const stopTicker = startTicker(events)
 
 const server = createServer((request, response) => {
   void handle(request, response).catch((error: unknown) => {
@@ -112,6 +114,7 @@ server.listen(PORT, HOST, () => {
   process.stdout.write(`  data:  ${dataRoot()}\n`)
   process.stdout.write(`  token: ${dataRoot()}/daemon.token\n`)
   process.stdout.write(`\n  Open:  ${where}/?token=${token}\n`)
+  process.stdout.write('\n  Standing orders are checked every 30 seconds.\n')
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write('\n  Bound beyond this machine. Anyone who reaches this port and holds the\n')
     process.stdout.write('  token can run shell commands here. Put it behind something.\n')
@@ -121,6 +124,7 @@ server.listen(PORT, HOST, () => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     process.stdout.write('\nShutting down.\n')
+    stopTicker()
     events.closeAll()
     server.close(() => process.exit(0))
     // A goal in flight can hold the process open; do not wait forever for it.

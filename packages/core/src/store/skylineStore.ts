@@ -2,7 +2,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import { openDatabase, toJson, fromJson, now, allAs, getAs } from './open.js'
 import { SKYLINE_MIGRATIONS } from './schema/skyline.js'
 import { skylineDbPath } from './paths.js'
-import { slugify } from './idgen.js'
+import { slugify, newId } from './idgen.js'
+import { nextRun, type Schedule } from './schedules.js'
 import { asBuildingId, type BuildingId } from '../domain/ids.js'
 import type { Budget, Building } from '../domain/building.js'
 
@@ -175,6 +176,74 @@ export class SkylineStore {
     return record.credential
   }
 
+  // ---- standing orders ---------------------------------------------------
+
+  /**
+   * Put a goal on a repeating footing. The first run is scheduled forward, not
+   * immediately: a standing order created at teatime should not go off at once.
+   */
+  schedule(input: { building: BuildingId; goal: string; everyMinutes: number; atTime?: string | null }): Schedule {
+    const now_ = new Date()
+    const record: Schedule = {
+      id: newId('sch'),
+      building: input.building,
+      goal: input.goal,
+      everyMinutes: input.everyMinutes,
+      atTime: input.atTime ?? null,
+      enabled: true,
+      lastRunAt: null,
+      nextRunAt: nextRun(now_, input.everyMinutes, input.atTime ?? null).toISOString(),
+      createdAt: now_.toISOString(),
+    }
+    this.db
+      .prepare(
+        `insert into schedules (id, building_id, goal, every_minutes, at_time, enabled, last_run_at, next_run_at, created_at)
+         values (?, ?, ?, ?, ?, 1, null, ?, ?)`,
+      )
+      .run(record.id, record.building, record.goal, record.everyMinutes, record.atTime, record.nextRunAt, record.createdAt)
+    return record
+  }
+
+  schedules(building?: BuildingId): Schedule[] {
+    const sql = building
+      ? 'select * from schedules where building_id = ? order by next_run_at'
+      : 'select * from schedules order by next_run_at'
+    const rows = building
+      ? allAs<ScheduleRow>(this.db.prepare(sql), building)
+      : allAs<ScheduleRow>(this.db.prepare(sql))
+    return rows.map(hydrateSchedule)
+  }
+
+  /** Everything due, oldest first, so a backlog is worked in order. */
+  dueSchedules(at: Date = new Date()): Schedule[] {
+    return allAs<ScheduleRow>(
+      this.db.prepare('select * from schedules where enabled = 1 and next_run_at <= ? order by next_run_at'),
+      at.toISOString(),
+    ).map(hydrateSchedule)
+  }
+
+  /**
+   * Record a run and move the schedule forward.
+   *
+   * Forward from now rather than from the time it was due: a machine that was
+   * asleep for a week should run once when it wakes, not seven times.
+   */
+  markScheduleRan(id: string, at: Date = new Date()): void {
+    const record = this.schedules().find((s) => s.id === id)
+    if (!record) return
+    this.db
+      .prepare('update schedules set last_run_at = ?, next_run_at = ? where id = ?')
+      .run(at.toISOString(), nextRun(at, record.everyMinutes, record.atTime).toISOString(), id)
+  }
+
+  setScheduleEnabled(id: string, enabled: boolean): void {
+    this.db.prepare('update schedules set enabled = ? where id = ?').run(enabled ? 1 : 0, id)
+  }
+
+  unschedule(id: string): void {
+    this.db.prepare('delete from schedules where id = ?').run(id)
+  }
+
   setting(key: string): string | null {
     const row = getAs<{ value: string }>(this.db.prepare('select value from settings where key = ?'), key)
     return row?.value ?? null
@@ -186,6 +255,18 @@ export class SkylineStore {
       .run(key, value)
   }
 }
+
+interface ScheduleRow {
+  id: string; building_id: string; goal: string; every_minutes: number
+  at_time: string | null; enabled: number; last_run_at: string | null
+  next_run_at: string; created_at: string
+}
+
+const hydrateSchedule = (r: ScheduleRow): Schedule => ({
+  id: r.id, building: asBuildingId(r.building_id), goal: r.goal,
+  everyMinutes: r.every_minutes, atTime: r.at_time, enabled: r.enabled !== 0,
+  lastRunAt: r.last_run_at, nextRunAt: r.next_run_at, createdAt: r.created_at,
+})
 
 const hydrate = (row: BuildingRow): Building => ({
   id: asBuildingId(row.id),

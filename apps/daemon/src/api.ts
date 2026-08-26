@@ -1,6 +1,7 @@
 import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, ROSTER, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
+  parseEvery, parseAtTime, describeSchedule,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
 } from '@app/core'
@@ -9,6 +10,58 @@ import type { EventStream } from './events.js'
 
 /** One goal at a time per building. Two managers assigning at once is chaos. */
 const working = new Set<string>()
+
+export const isWorking = (buildingId: string): boolean => working.has(buildingId)
+
+/**
+ * Start a goal and return immediately.
+ *
+ * Shared by the HTTP endpoint and the scheduler, because two ways of starting
+ * the same thing is two sets of guards to keep in step. A goal takes minutes; a
+ * request that waits for it is one a laptop lid will end halfway.
+ */
+export function startGoal(
+  events: EventStream,
+  building: Building,
+  goal: string,
+  options: { approveEverything?: boolean; source?: string } = {},
+): void {
+  const sky = SkylineStore.open()
+  const store = BuildingStore.open(building.id)
+
+  working.add(building.id)
+  events.emit({ kind: 'goal-started', building: building.id, detail: goal, data: { source: options.source ?? 'owner' } })
+
+  void pursueGoal(
+    {
+      building, store, credentials: sky,
+      ask: async (kind, intent) => {
+        const manager = store.floorByRole('manager')
+        if (manager) store.requestApproval({ kind: kind as 'publish', by: manager.id, intent })
+        events.emit({ kind: 'asked', building: building.id, detail: intent })
+        return options.approveEverything === true
+      },
+      report: (line) => events.emit({ kind: 'progress', building: building.id, detail: line }),
+      onEvent: (floor, event) =>
+        events.emit({ kind: event.kind, building: building.id, floor: floor.id, detail: event.detail }),
+    },
+    goal,
+  )
+    .then((outcome) => {
+      events.emit({
+        kind: 'goal-finished', building: building.id, detail: outcome.managerSummary,
+        data: { worked: outcome.worked.length, tokens: outcome.tokensSpent, outstanding: outcome.outstanding },
+      })
+    })
+    .catch((error: unknown) => {
+      events.emit({ kind: 'goal-failed', building: building.id, detail: (error as Error).message })
+    })
+    .finally(() => {
+      working.delete(building.id)
+      store.close()
+      sky.close()
+    })
+}
 
 export function buildApi(events: EventStream): Router {
   const router = new Router()
@@ -186,55 +239,77 @@ export function buildApi(events: EventStream): Router {
     if (!input.goal) throw badRequest('What do you want done?')
 
     const sky = skyline()
-    const building = buildingOr404(sky, ctx.params.id!)
-    if (working.has(building.id)) {
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      if (working.has(building.id)) throw new HttpError(409, `${building.name} is already working on something.`)
+
+      const store = BuildingStore.open(building.id)
+      const empty = store.headcount() === 0
+      store.close()
+      if (empty) throw new HttpError(422, `${building.name} has nobody in it yet.`)
+
+      startGoal(events, building, input.goal, {
+        ...(input.approveEverything === true ? { approveEverything: true } : {}),
+      })
+      return { started: true, building: building.id, watch: '/api/events' }
+    } finally {
       sky.close()
-      throw new HttpError(409, `${building.name} is already working on something.`)
+    }
+  })
+
+  // ---- standing orders ----------------------------------------------------
+
+  router.get('/api/schedules', () => {
+    const sky = skyline()
+    try {
+      const names = new Map(sky.list().map((b) => [b.id as string, b.name]))
+      return {
+        schedules: sky.schedules().map((schedule) => ({
+          ...schedule,
+          buildingName: names.get(schedule.building) ?? schedule.building,
+          reads: describeSchedule(schedule),
+        })),
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  router.post('/api/buildings/:id/schedules', async (ctx) => {
+    const input = await ctx.body<{ goal?: string; every?: string; at?: string }>()
+    if (!input.goal) throw badRequest('A standing order needs a goal.')
+    const everyMinutes = parseEvery(input.every ?? 'daily')
+    if (everyMinutes === null) throw badRequest(`"${input.every}" is not an interval I can read. Try 30m, 4h, daily or weekly.`)
+    if (input.at !== undefined && parseAtTime(input.at) === null) {
+      throw badRequest(`"${input.at}" is not a time of day. Try 09:00.`)
     }
 
-    const store = BuildingStore.open(building.id)
-    if (store.headcount() === 0) {
-      store.close(); sky.close()
-      throw new HttpError(422, `${building.name} has nobody in it yet.`)
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const schedule = sky.schedule({
+        building: building.id, goal: input.goal, everyMinutes,
+        atTime: input.at ?? null,
+      })
+      events.emit({ kind: 'scheduled', building: building.id, detail: `${describeSchedule(schedule)}: ${input.goal}` })
+      return schedule
+    } finally {
+      sky.close()
     }
+  })
 
-    working.add(building.id)
-    events.emit({ kind: 'goal-started', building: building.id, detail: input.goal })
-
-    // Deliberately not awaited: a goal takes minutes, and an HTTP request that
-    // hangs for minutes is one a proxy or a laptop lid will kill halfway. The
-    // caller watches /api/events instead.
-    void pursueGoal(
-      {
-        building, store, credentials: sky,
-        ask: async (kind, intent) => {
-          const manager = store.floorByRole('manager')
-          if (manager) store.requestApproval({ kind: kind as 'publish', by: manager.id, intent })
-          events.emit({ kind: 'asked', building: building.id, detail: intent })
-          return input.approveEverything === true
-        },
-        report: (line) => events.emit({ kind: 'progress', building: building.id, detail: line }),
-        onEvent: (floor, event) =>
-          events.emit({ kind: event.kind, building: building.id, floor: floor.id, detail: event.detail }),
-      },
-      input.goal,
-    )
-      .then((outcome) => {
-        events.emit({
-          kind: 'goal-finished', building: building.id, detail: outcome.managerSummary,
-          data: { worked: outcome.worked.length, tokens: outcome.tokensSpent, outstanding: outcome.outstanding },
-        })
-      })
-      .catch((error: unknown) => {
-        events.emit({ kind: 'goal-failed', building: building.id, detail: (error as Error).message })
-      })
-      .finally(() => {
-        working.delete(building.id)
-        store.close()
-        sky.close()
-      })
-
-    return { started: true, building: building.id, watch: '/api/events' }
+  router.post('/api/schedules/:id', async (ctx) => {
+    const input = await ctx.body<{ enabled?: boolean; remove?: boolean }>()
+    const sky = skyline()
+    try {
+      const found = sky.schedules().find((s) => s.id === ctx.params.id)
+      if (!found) throw notFound(`standing order "${ctx.params.id}"`)
+      if (input.remove === true) sky.unschedule(found.id)
+      else if (input.enabled !== undefined) sky.setScheduleEnabled(found.id, input.enabled)
+      return { ok: true }
+    } finally {
+      sky.close()
+    }
   })
 
   router.post('/api/buildings/:id/curate', async (ctx) => {

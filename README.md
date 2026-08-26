@@ -93,6 +93,21 @@ dashboard can watch a goal being worked rather than poll for it. This is what th
 dashboard and the desktop app will talk to, and what runs on a VPS when you want
 work finishing overnight.
 
+## Work that recurs
+
+```sh
+roofscape schedule "Check the build still passes" --every daily --at 09:00
+roofscape schedules
+```
+
+The service checks standing orders every thirty seconds while it is up. A machine
+that was asleep for a week runs each order **once** when it wakes, not seven
+times — the schedule moves forward from now rather than from when it was due,
+because coming back to a week of catch-up work is worse than missing it.
+
+An order whose building has nobody in it says so and moves on, rather than
+failing quietly.
+
 ## Bring your own model
 
 Roofscape supplies no model. It supplies a chooser: Anthropic, OpenAI, Google,

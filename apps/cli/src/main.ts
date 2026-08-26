@@ -7,6 +7,7 @@ import { goal, lobby, decide } from './commands/work.js'
 import { doctor, providerAdd, archives, curateArchives } from './commands/setup.js'
 import { post } from './commands/post.js'
 import { serve } from './commands/serve.js'
+import { schedule, schedules, unschedule } from './commands/schedule.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
@@ -28,6 +29,9 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('archives')} [query]                   read what the building remembers
   ${bold('curate')}                             send the curator down to tidy them
   ${bold('provider')} add <name> [--env VAR]    connect a model provider
+  ${bold('schedule')} <text> [--every daily]    put a goal on a repeating footing
+  ${bold('schedules')} · ${bold('unschedule')} <id>        what recurs, and stopping one
+
   ${bold('serve')} [--port N]                  start the service and open the dashboard
   ${bold('doctor')}                             check that everything it needs is here
 
@@ -64,6 +68,9 @@ async function main(): Promise<void> {
       port: { type: 'string' },
       host: { type: 'string' },
       open: { type: 'boolean' },
+      every: { type: 'string' },
+      at: { type: 'string' },
+      pause: { type: 'boolean' },
       key: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
     },
@@ -76,6 +83,7 @@ async function main(): Promise<void> {
     name?: string; env?: string; key?: string; yes?: boolean
     provider?: string; model?: string; engine?: string
     port?: string; host?: string; open?: boolean
+    every?: string; at?: string; pause?: boolean
   }
 
   switch (command) {
@@ -114,6 +122,13 @@ async function main(): Promise<void> {
       return post(first, opts)
     case 'curate':
       return curateArchives(opts)
+    case 'schedule':
+      return schedule(rest || undefined, opts)
+    case 'schedules':
+    case 'standing':
+      return schedules()
+    case 'unschedule':
+      return unschedule(first, opts)
     case 'serve':
     case 'open':
       return serve({
