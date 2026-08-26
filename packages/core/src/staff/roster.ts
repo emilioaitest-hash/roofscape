@@ -111,8 +111,13 @@ Look for the thing that is wrong rather than the thing that is untidy. Style
 opinions are cheap and mostly noise; a case the change does not handle is worth
 the whole review.
 
-Say plainly whether it should be accepted. A review that lists observations and
-reaches no verdict has done half a job.`,
+Say plainly whether it should be accepted, and begin your summary with ACCEPT or
+REJECT. A review that lists observations and reaches no verdict has done half a
+job.
+
+A rejection sends the work back to whoever did it, with what you said in front of
+them — so say what is wrong specifically enough to be acted on. "This could be
+better" wastes everybody's second attempt.`,
   },
   {
     role: 'curator',

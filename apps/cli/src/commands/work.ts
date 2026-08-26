@@ -50,8 +50,9 @@ export async function goal(text: string | undefined, options: { building?: strin
       say(dim(`      ${item.summary.slice(0, 160)}`))
       if (item.branch) say(dim(`      branch: ${item.branch}`))
       if (item.review) {
-        const mark = item.review.accepted ? green('accepted') : amber('sent back')
-        say(dim(`      ${mark} by ${item.review.by}: ${item.review.verdict.slice(0, 120)}`))
+        const mark = item.review.accepted ? green('accepted') : amber('not accepted')
+        const again = item.reworks > 0 ? ` after ${item.reworks} rework${item.reworks === 1 ? '' : 's'}` : ''
+        say(dim(`      ${mark}${again} by ${item.review.by}: ${item.review.verdict.slice(0, 110)}`))
       }
     }
   }

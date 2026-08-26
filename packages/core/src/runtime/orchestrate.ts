@@ -30,6 +30,8 @@ export interface GoalOutcome {
     succeeded: boolean
     branch: string | null
     review: Review | null
+    /** How many times it went back. Zero means it was right first time. */
+    reworks: number
   }>
   outstanding: number
   tokensSpent: number
@@ -49,7 +51,12 @@ export interface Review {
  * owner sees what happened and decides whether to push again, rather than the
  * building looping unattended until a budget runs out.
  */
-export async function pursueGoal(deps: OrchestrationDeps, goal: string, options: { maxTasks?: number } = {}): Promise<GoalOutcome> {
+export async function pursueGoal(
+  deps: OrchestrationDeps,
+  goal: string,
+  options: { maxTasks?: number; maxReworks?: number } = {},
+): Promise<GoalOutcome> {
+  const maxReworks = options.maxReworks ?? 1
   const { building, store, credentials, ask, report } = deps
   const manager = store.floorByRole('manager')
   if (!manager) {
@@ -124,19 +131,67 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
       // Work that claims to be finished is read by somebody who could not have
       // written it. Work that already failed is not: there is nothing to judge,
       // and a review of an admitted failure is a turn spent agreeing.
-      const review = succeeded
-        ? await reviewWork(
-          { building, store, credentials, ask, report, ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}) },
-          task, workplace.cwd, result.summary,
-        )
-        : null
-      if (review) {
-        store.setTaskState(task.id, review.accepted ? 'done' : 'escalated')
-        report(`  ${review.accepted ? 'accepted' : 'sent back'} by ${review.by} — ${truncate(review.verdict, 80)}`)
+      const reviewDeps = {
+        building, store, credentials, ask, report,
+        ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
       }
 
-      recordWhatHappened(store, { task, assignee, summary: result.summary, succeeded, branch, review })
-      worked.push({ task, floor: assignee, summary: result.summary, succeeded, branch, review })
+      let review = succeeded ? await reviewWork(reviewDeps, task, workplace.cwd, result.summary) : null
+      let summary = result.summary
+      let reworks = 0
+
+      // Work sent back goes back to the person who did it, with the verdict in
+      // front of them. Without this the review was only ever a comment: the
+      // task was marked escalated and quietly dropped, and the whole point of
+      // having a reader is that something happens when they object.
+      //
+      // Bounded at one attempt. Two people who disagree do not converge by
+      // being asked again, and an unbounded loop here is a budget on fire.
+      while (review && !review.accepted && reworks < maxReworks) {
+        reworks += 1
+        report(`  sent back by ${review.by} — ${truncate(firstLine(review.verdict), 70)}`)
+        report(`  ${assignee.name} is having another go.`)
+
+        const again = await runFloorTurn({
+          building, store, credentials, floor: assignee, task,
+          instruction: [
+            'Your work was read and sent back. Address what the reviewer said, and',
+            'change nothing else.',
+            '',
+            `What was asked: ${task.goal}`,
+            '',
+            `What you did: ${summary}`,
+            '',
+            `What ${review.by} said:`,
+            review.verdict.slice(0, 3000),
+          ].join('\n'),
+          workspace: workplace.workspace, cwd: workplace.cwd, ask,
+          ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
+          onEvent: (event) => deps.onEvent?.(assignee, event),
+        })
+
+        summary = again.finished?.summary ?? again.note
+        if (workplace.branch) {
+          const changed = await summariseWork(workplace.cwd, 'HEAD')
+          if (changed.files.length > 0) {
+            await commitAll(workplace.cwd, `Address review of ${task.id}\n\n${truncate(summary, 400)}`)
+            branch = workplace.branch
+          }
+        }
+        review = await reviewWork(reviewDeps, task, workplace.cwd, summary)
+      }
+
+      if (review) {
+        store.setTaskState(task.id, review.accepted ? 'done' : 'escalated')
+        report(
+          review.accepted
+            ? `  accepted by ${review.by}${reworks > 0 ? ` after ${reworks} rework` : ''}`
+            : `  still not right after ${reworks} rework — left for you`,
+        )
+      }
+
+      recordWhatHappened(store, { task, assignee, summary, succeeded, branch, review, reworks })
+      worked.push({ task, floor: assignee, summary, succeeded, branch, review, reworks })
     } finally {
       if (workplace.branch) await closeWorktree(building.workspace, workplace.cwd, { keepBranch: true })
     }
@@ -188,6 +243,7 @@ export function recordWhatHappened(
     succeeded: boolean
     branch: string | null
     review: Review | null
+    reworks?: number
   },
 ): void {
   // Kept short on purpose. A note is paid for every time it is recalled, and a
@@ -199,6 +255,7 @@ export function recordWhatHappened(
     event.succeeded ? `Outcome: ${truncate(event.summary, 240)}` : `Not finished: ${truncate(event.summary, 240)}`,
   ]
   if (event.branch) parts.push(`On branch ${event.branch}.`)
+  if (event.reworks) parts.push(`It went back ${event.reworks} time${event.reworks === 1 ? '' : 's'} first.`)
   if (event.review) {
     parts.push(`${event.review.by} ${event.review.accepted ? 'accepted it' : 'sent it back'}: ${truncate(firstLine(event.review.verdict), 120)}`)
   }

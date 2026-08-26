@@ -127,3 +127,93 @@ test('a goal becomes an assigned task, done work, a review, and a note in the ar
     s.cleanup()
   }
 })
+
+test('work sent back goes back to the person who did it, and can then be accepted', async () => {
+  // Without this the review was only a comment: the task was marked escalated
+  // and quietly dropped, and the point of having a reader is that something
+  // happens when they object.
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'You run it.', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'You write it.', posting: posting('c') })
+    s.store.hire({ role: 'reviewer', name: 'Vet', charter: 'You judge it.', posting: posting('r') })
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'assign_task', input: { to: coder.id, goal: 'Add farewell', acceptance: ['farewell greets by name'] } }],
+        [{ tool: 'finish', input: { summary: 'Assigned to Nib.', artifacts: [], succeeded: true } }],
+      ])],
+      ['c', scriptedModel([
+        [{ tool: 'write_file', input: { path: 'bye.js', content: 'export const farewell = () => "Bye"\n' } }],
+        [{ tool: 'finish', input: { summary: 'Wrote bye.js.', artifacts: ['bye.js'], succeeded: true } }],
+        // The rework turn.
+        [{ tool: 'write_file', input: { path: 'bye.js', content: 'export const farewell = (n) => "Bye " + n\n' } }],
+        [{ tool: 'finish', input: { summary: 'It takes a name now.', artifacts: ['bye.js'], succeeded: true } }],
+      ])],
+      ['r', scriptedModel([
+        [{ tool: 'finish', input: { summary: 'REJECT — farewell ignores the name it is given.', artifacts: [], succeeded: true } }],
+        [{ tool: 'finish', input: { summary: 'ACCEPT — it greets by name now.', artifacts: [], succeeded: true } }],
+      ])],
+    ])
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: (p) => scripts.get(p.model) ?? scripts.get('c')!,
+      },
+      'Add a farewell function',
+    )
+
+    const item = outcome.worked[0]!
+    assert.equal(item.reworks, 1, 'it went back exactly once')
+    assert.equal(item.review?.accepted, true, 'and was accepted the second time')
+    assert.match(item.summary, /takes a name/, 'the reported summary is the reworked one, not the first')
+
+    const task = s.store.tasks()[0]!
+    assert.equal(task.state, 'done', 'a task accepted after rework is done, not escalated')
+
+    const note = s.store.recallByKeyword('farewell')[0]!
+    assert.match(note.text, /went back 1 time/, 'and the archives say it took two goes')
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a reviewer who is never satisfied does not loop forever', async () => {
+  // Two who disagree do not converge by being asked again, and an unbounded
+  // loop here is a budget on fire.
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: posting('c') })
+    s.store.hire({ role: 'reviewer', name: 'Vet', charter: 'x', posting: posting('r') })
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'assign_task', input: { to: coder.id, goal: 'Impossible', acceptance: ['perfection'] } }],
+        [{ tool: 'finish', input: { summary: 'Assigned.', artifacts: [], succeeded: true } }],
+      ])],
+      ['c', scriptedModel([[{ tool: 'finish', input: { summary: 'Did what I could.', artifacts: [], succeeded: true } }]])],
+      ['r', scriptedModel([[{ tool: 'finish', input: { summary: 'REJECT — still not right.', artifacts: [], succeeded: true } }]])],
+    ])
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: (p) => scripts.get(p.model) ?? scripts.get('c')!,
+      },
+      'Do the impossible',
+    )
+
+    const item = outcome.worked[0]!
+    assert.equal(item.reworks, 1, 'it tried once more and then stopped')
+    assert.equal(item.review?.accepted, false)
+    assert.equal(s.store.tasks()[0]!.state, 'escalated', 'and it is left for a person rather than retried again')
+  } finally {
+    s.cleanup()
+  }
+})
