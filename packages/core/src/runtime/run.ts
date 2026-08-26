@@ -1,4 +1,4 @@
-import { generateText, stepCountIs, type ModelMessage, type StepResult, type ToolSet } from 'ai'
+import { generateText, stepCountIs, type LanguageModel, type ModelMessage, type StepResult, type ToolSet } from 'ai'
 import { coreSystemPrompt, taskPrompt } from './prompt.js'
 import { newGuardState, observe, shouldStop, loopingOn, explainStop, type Guard, type GuardState } from './guardrails.js'
 import { buildToolSet, TOOLS_FOR_ROLE } from '../tools/toolset.js'
@@ -29,6 +29,13 @@ export interface TurnRequest {
   cwd: string
   ask: (kind: EscalationKind, intent: string) => Promise<boolean>
   onEvent?: (event: TurnEvent) => void
+  /**
+   * How a posting becomes something callable. Defaults to the provider layer.
+   * A seam rather than test scaffolding: a long-running daemon wants to cache
+   * models rather than rebuild one per turn, and tests want neither a network
+   * nor a key.
+   */
+  resolveModel?: (posting: Floor['posting']) => LanguageModel
 }
 
 export interface TurnOutcome {
@@ -120,7 +127,7 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     }
   }
 
-  const model = resolveLanguageModel(floor.posting, credentials)
+  const model = (request.resolveModel ?? ((posting) => resolveLanguageModel(posting, credentials)))(floor.posting)
 
   // A guard that only runs between steps cannot stop a call that never returns.
   // The first smoke test hung for fifteen minutes inside a single request while

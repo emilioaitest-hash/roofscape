@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { runFloorTurn, asTaskResult, type TurnEvent } from './run.js'
+import { runFloorTurn, asTaskResult, type TurnEvent, type TurnRequest } from './run.js'
 import { Workspace } from '../tools/workspace.js'
 import { openWorktree, closeWorktree, summariseWork, commitAll, isRepo, fullDiff } from '../tools/git.js'
 import type { BuildingStore } from '../store/buildingStore.js'
@@ -17,6 +17,8 @@ export interface OrchestrationDeps {
   ask: (kind: EscalationKind, intent: string) => Promise<boolean>
   report: (line: string) => void
   onEvent?: (floor: Floor, event: TurnEvent) => void
+  /** See TurnRequest.resolveModel. Passed through to every turn. */
+  resolveModel?: TurnRequest['resolveModel']
 }
 
 export interface GoalOutcome {
@@ -68,8 +70,12 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
       'Break it into tasks and assign each to the colleague whose job it is, with',
       'acceptance criteria. If nobody here does one of the jobs, say so in your',
       'finish summary rather than assigning it to the nearest person.',
+      '',
+      'Do not assign anyone to review. Finished work goes to the reviewer',
+      'automatically, in the worktree where it was done.',
     ].join('\n'),
     workspace, cwd: building.workspace, ask,
+    ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
     onEvent: (event) => deps.onEvent?.(manager, event),
   })
 
@@ -94,6 +100,7 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
       const turn = await runFloorTurn({
         building, store, credentials, floor: assignee, task,
         workspace: workplace.workspace, cwd: workplace.cwd, ask,
+        ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
         onEvent: (event) => deps.onEvent?.(assignee, event),
       })
 
@@ -118,7 +125,10 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
       // written it. Work that already failed is not: there is nothing to judge,
       // and a review of an admitted failure is a turn spent agreeing.
       const review = succeeded
-        ? await reviewWork({ building, store, credentials, ask, report }, task, workplace.cwd, result.summary)
+        ? await reviewWork(
+          { building, store, credentials, ask, report, ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}) },
+          task, workplace.cwd, result.summary,
+        )
         : null
       if (review) {
         store.setTaskState(task.id, review.accepted ? 'done' : 'escalated')
@@ -206,7 +216,7 @@ export function recordWhatHappened(
  * without a reviewer simply skips this — it is not made up by the manager.
  */
 async function reviewWork(
-  deps: Pick<OrchestrationDeps, 'building' | 'store' | 'credentials' | 'ask' | 'report'>,
+  deps: Pick<OrchestrationDeps, 'building' | 'store' | 'credentials' | 'ask' | 'report' | 'resolveModel'>,
   task: Task,
   where: string,
   summary: string,
@@ -234,6 +244,7 @@ async function reviewWork(
       'ACCEPT or REJECT at the start of your finish summary.',
     ].join('\n'),
     workspace: new Workspace(where), cwd: where, ask,
+    ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
   })
 
   const verdict = turn.finished?.summary ?? turn.note

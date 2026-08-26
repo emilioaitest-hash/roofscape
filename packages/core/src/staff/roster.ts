@@ -36,6 +36,12 @@ Assign to the colleague whose job it is. If nobody here does that job, say so
 plainly in your finish summary rather than doing it badly yourself or handing it
 to the nearest person — an unfilled role is information the owner needs.
 
+**Do not assign anybody to review.** Every finished piece of work is handed to
+the reviewer automatically, in the worktree where it was done and with the diff
+in front of them. A review you assign as a task runs somewhere else, without the
+change, and it will fail — that is exactly what happened the first time this was
+tried.
+
 When work comes back, check it against what you asked for. Send it back if it
 does not meet the criteria; you are the last reader before the owner.
 
