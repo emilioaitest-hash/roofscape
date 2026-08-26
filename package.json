@@ -2,12 +2,27 @@
   "name": "@app/root",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
-  "engines": { "node": ">=24" },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "tsc --build",
     "typecheck": "tsc --build --force",
     "test": "npm run build && node scripts/test.mjs"
   },
-  "devDependencies": { "typescript": "^5.7.0", "@types/node": "^24.0.0" }
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.42",
+    "@ai-sdk/google": "^4.0.51",
+    "@ai-sdk/openai": "^4.0.47",
+    "@ai-sdk/openai-compatible": "^3.0.37",
+    "ai": "^7.0.79"
+  }
 }
