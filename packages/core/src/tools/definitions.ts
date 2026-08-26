@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { cap, type AgentContext } from './context.js'
 import { execute } from './exec.js'
 import type { MemoryLayer, MemoryScope } from '../domain/memory.js'
-import type { FloorId } from '../domain/ids.js'
+import type { FloorId, MemoryId as MemoryIdType } from '../domain/ids.js'
 
 /**
  * The tools, defined once.
@@ -227,6 +227,66 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       }),
   },
   {
+    name: 'list_memory',
+    description:
+      'Read a batch of notes from the archives in the order they were written. Use this to consolidate, not to answer a question — for that, use recall.',
+    shape: {
+      layer: z.enum(['working', 'episodic', 'semantic', 'procedural']).optional(),
+      limit: z.number().int().min(1).max(100).default(40),
+    },
+    run: async (context, input) => {
+      const records = context.store.browse({
+        ...(input.layer ? { layer: input.layer as 'episodic' } : {}),
+        limit: (input.limit as number) ?? 40,
+      })
+      return {
+        count: records.length,
+        notes: records.map((r) => ({
+          id: r.id,
+          layer: r.layer,
+          scope: r.scope,
+          text: r.text,
+          recalled: r.useCount,
+          written: r.createdAt.slice(0, 10),
+          pinned: r.pinned,
+        })),
+      }
+    },
+  },
+  {
+    name: 'forget',
+    description:
+      'Delete a note. Use it for duplicates you have merged and for notes about work nobody does any more. Say why — it is recorded.',
+    shape: { id: z.string(), why: z.string().describe('Why this note is not worth keeping.') },
+    run: (context, input) =>
+      guard(() => {
+        context.store.forget(input.id as MemoryIdType)
+        return { forgotten: input.id, why: input.why }
+      }),
+  },
+  {
+    name: 'pin',
+    description:
+      'Pin a note so every turn carries it without having to search. Reserve this for what would be a disaster to miss: pinned notes are paid for on every single turn, forever.',
+    shape: { id: z.string(), pinned: z.boolean().default(true) },
+    run: (context, input) =>
+      guard(() => {
+        context.store.setPinned(input.id as MemoryIdType, input.pinned !== false)
+        return { id: input.id, pinned: input.pinned !== false }
+      }),
+  },
+  {
+    name: 'expire',
+    description:
+      'Mark a note as no longer true, without deleting it. Prefer this to forgetting when something was true once and the history matters.',
+    shape: { id: z.string(), superseded_by: z.string().optional() },
+    run: (context, input) =>
+      guard(() => {
+        context.store.expire(input.id as MemoryIdType)
+        return { expired: input.id, supersededBy: input.superseded_by ?? null }
+      }),
+  },
+  {
     name: 'finish',
     description:
       'Declare the work done and hand back the result. Call this exactly once, at the end. If you could not finish, say so plainly here rather than claiming otherwise.',
@@ -257,7 +317,7 @@ export const TOOLS_FOR_ROLE: Record<string, readonly string[]> = {
   // can write a file. See docs/decisions/0010.
   reviewer: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'finish'],
   coder: ['read_file', 'write_file', 'edit_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'ask_colleague', 'finish'],
-  curator: ['recall', 'remember', 'finish'],
+  curator: ['list_memory', 'recall', 'remember', 'forget', 'pin', 'expire', 'finish'],
   researcher: ['read_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'finish'],
   writer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'finish'],
   designer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'finish'],

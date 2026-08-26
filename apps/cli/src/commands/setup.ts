@@ -1,4 +1,4 @@
-import { PROVIDERS, providerSpec, probeProvider, discoverProviders, claudeExecutable, BRAND } from '@app/core'
+import { PROVIDERS, providerSpec, probeProvider, discoverProviders, claudeExecutable, curate, BRAND } from '@app/core'
 import { openSkyline, openBuilding, findBuilding, where } from '../context.js'
 import { say, dim, bold, tick, note, fail, heading, green, red, amber } from '../ui.js'
 
@@ -123,6 +123,45 @@ export function archives(query: string | undefined, options: { building?: string
   say()
   say(dim(`  ${store.memoryCount().toLocaleString()} notes in total.`))
   say()
+  store.close()
+  skyline.close()
+}
+
+/** Send the curator down to the archives. */
+export async function curateArchives(options: { building?: string }): Promise<void> {
+  const skyline = openSkyline()
+  const building = findBuilding(skyline, options.building)
+  const store = openBuilding(building.id)
+
+  const stats = store.archiveStats()
+  if (stats.total === 0) {
+    say()
+    note(`${building.name} has nothing in its archives yet. Nothing to tidy.`)
+    say()
+    store.close(); skyline.close()
+    return
+  }
+
+  heading(`${building.name} — archives`)
+  say(dim(`  ${stats.total} notes · ${stats.pinned} pinned · ${stats.expired} expired`))
+  say()
+  say(dim('  The curator is reading…'))
+
+  const available = await discoverProviders(skyline)
+  const result = await curate({ building, store, credentials: skyline, available })
+
+  say()
+  say(`  ${result.summary}`)
+  say()
+  const change = result.after - result.before
+  tick(
+    change === 0
+      ? `${result.after} notes, unchanged in number.`
+      : `${result.before} notes → ${result.after} (${change > 0 ? '+' : ''}${change}).`,
+  )
+  note(`${result.tokensSpent.toLocaleString()} output tokens spent.`)
+  say()
+
   store.close()
   skyline.close()
 }

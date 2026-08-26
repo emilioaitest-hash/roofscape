@@ -100,8 +100,16 @@ export class BuildingStore {
     return [...manager, ...rest]
   }
 
+  /**
+   * How tall the building is.
+   *
+   * The curator works in the archives, below ground, so it does not add a
+   * storey. A building should not appear to grow because it started tidying up.
+   */
   headcount(): number {
-    return getAs<{ n: number }>(this.db.prepare('select count(*) as n from floors where vacated_at is null'))!.n
+    return getAs<{ n: number }>(
+      this.db.prepare("select count(*) as n from floors where vacated_at is null and role != 'curator'"),
+    )!.n
   }
 
   floor(id: FloorId): Floor | null {
@@ -357,6 +365,49 @@ export class BuildingStore {
 
   forget(id: MemoryId): void {
     this.db.prepare('delete from memory where id = ?').run(id)
+  }
+
+  setPinned(id: MemoryId, pinned: boolean): void {
+    this.db.prepare('update memory set pinned = ? where id = ?').run(toBool(pinned), id)
+  }
+
+  expire(id: MemoryId, when: string = now()): void {
+    this.db.prepare('update memory set expires_at = ? where id = ?').run(when, id)
+  }
+
+  /**
+   * A window on the archives, for the curator. Ordered oldest first so that
+   * consolidating a batch works through history rather than skimming the top.
+   */
+  browse(options: { layer?: MemoryLayer; scope?: MemoryScope; limit?: number; includeExpired?: boolean } = {}): MemoryRecord[] {
+    const where: string[] = []
+    const params: unknown[] = []
+    if (options.layer) { where.push('layer = ?'); params.push(options.layer) }
+    if (options.scope) { where.push('scope = ?'); params.push(options.scope) }
+    if (!options.includeExpired) { where.push('(expires_at is null or expires_at > ?)'); params.push(now()) }
+    const sql = `select * from memory ${where.length ? `where ${where.join(' and ')}` : ''} order by created_at limit ?`
+    return allAs<MemoryRow>(this.db.prepare(sql), ...params, options.limit ?? 50).map((r) =>
+      hydrateMemory(r, this.buildingId),
+    )
+  }
+
+  /** What the archives look like, for the owner and for deciding to curate. */
+  archiveStats(): { total: number; byLayer: Record<string, number>; pinned: number; expired: number } {
+    const byLayer: Record<string, number> = {}
+    for (const row of allAs<{ layer: string; n: number }>(
+      this.db.prepare('select layer, count(*) as n from memory group by layer'),
+    )) {
+      byLayer[row.layer] = row.n
+    }
+    return {
+      total: this.memoryCount(),
+      byLayer,
+      pinned: getAs<{ n: number }>(this.db.prepare('select count(*) as n from memory where pinned = 1'))!.n,
+      expired: getAs<{ n: number }>(
+        this.db.prepare('select count(*) as n from memory where expires_at is not null and expires_at <= ?'),
+        now(),
+      )!.n,
+    }
   }
 
   memoryCount(): number {

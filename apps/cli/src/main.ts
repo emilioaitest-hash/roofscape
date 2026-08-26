@@ -4,7 +4,7 @@ import { BRAND } from '@app/core'
 import { showSkyline, showBuilding } from './commands/skyline.js'
 import { breakGround, hire, setCharter } from './commands/manage.js'
 import { goal, lobby, decide } from './commands/work.js'
-import { doctor, providerAdd, archives } from './commands/setup.js'
+import { doctor, providerAdd, archives, curateArchives } from './commands/setup.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
@@ -23,6 +23,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('approve')} <id> · ${bold('refuse')} <id>        decide one of them
 
   ${bold('archives')} [query]                   read what the building remembers
+  ${bold('curate')}                             send the curator down to tidy them
   ${bold('provider')} add <name> [--env VAR]    connect a model provider
   ${bold('doctor')}                             check that everything it needs is here
 
@@ -96,6 +97,8 @@ async function main(): Promise<void> {
         return providerAdd(positionals[1] as string | undefined, opts)
       }
       return providerAdd(first, opts)
+    case 'curate':
+      return curateArchives(opts)
     case 'doctor':
     case 'check':
       return doctor()
