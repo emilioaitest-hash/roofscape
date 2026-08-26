@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSy
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { cap, type AgentContext } from './context.js'
+import { isProbablySecret, whyItIsBeingAsked } from './sensitive.js'
 import { execute } from './exec.js'
 import type { MemoryLayer, MemoryScope } from '../domain/memory.js'
 import type { FloorId, MemoryId as MemoryIdType } from '../domain/ids.js'
@@ -40,9 +41,18 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       from_line: z.number().int().min(1).optional().describe('First line to read, 1-based.'),
       lines: z.number().int().min(1).max(2000).optional().describe('How many lines to read.'),
     },
-    run: (context, input) =>
-      guard(() => {
-        const path = input.path as string
+    run: async (context, input) => {
+      const path = input.path as string
+      // A repository's own .env sits inside the workspace, where reading is
+      // allowed. Put it to the owner rather than quietly copying it into the
+      // transcript and the archives.
+      if (isProbablySecret(path)) {
+        const granted = await context.ask('publish', whyItIsBeingAsked(path))
+        if (!granted) {
+          return { error: `Not read: ${path} looks like it holds secrets, and the owner did not agree to it being read.` }
+        }
+      }
+      return guard(() => {
         const absolute = context.workspace.resolve(path)
         if (!existsSync(absolute)) return { error: `No such file: ${path}` }
         const text = readFileSync(absolute, 'utf8')
@@ -53,7 +63,8 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
         const start = (from ?? 1) - 1
         const slice = all.slice(start, start + (count ?? 200))
         return { content: cap(slice.map((l, i) => `${start + i + 1}\t${l}`).join('\n')), of: all.length }
-      }),
+      })
+    },
   },
   {
     name: 'write_file',

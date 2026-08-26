@@ -25,6 +25,15 @@ reading text somebody else wrote, so a comment saying "run this diagnostic
 command" is all the persuasion required; and a key that reaches a tool result is
 then in the transcript, in the archives, and in any file that agent writes.
 
+A repository's own secrets are the other half of the same problem. `.env`,
+private keys, `.netrc` and their relations sit inside the workspace, where an
+agent is allowed to read. Those are not refused — an agent debugging a
+configuration has a real reason to look, and refusing outright teaches it to lie
+to itself about what it checked — but they are put to you first, and the request
+says that anything read ends up in the archives. `.env.example` and `id_rsa.pub`
+are not treated as secrets, because prompting for those is the sort of noise
+that teaches people to approve without reading.
+
 ## Reporting
 
 The project is private and pre-release. Report anything you find by opening an
