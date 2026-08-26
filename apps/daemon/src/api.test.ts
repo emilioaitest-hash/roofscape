@@ -11,11 +11,25 @@ import { HttpError } from './router.js'
  * The write paths, which are what makes the dashboard more than a viewer.
  * Handlers are called directly: a port would add a race and prove nothing extra.
  */
-function harness() {
+function harness(options: { withProvider?: boolean } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'roofscape-api-'))
   const workspace = join(home, 'work')
   mkdirSync(workspace)
   process.env.ROOFSCAPE_HOME = home
+
+  // Whether a provider exists must be stated, not inherited. These tests passed
+  // on the author's machine because Claude Code happened to be installed, and
+  // failed on a clean runner where nothing was — which is the whole reason a
+  // clean runner is worth having.
+  const hadKey = process.env.OPENAI_API_KEY
+  const hadClaude = process.env.ROOFSCAPE_CLAUDE_BIN
+  if (options.withProvider) {
+    process.env.OPENAI_API_KEY = 'sk-for-tests'
+  } else {
+    delete process.env.OPENAI_API_KEY
+    // Including an installed Claude Code, which is itself a provider.
+    process.env.ROOFSCAPE_CLAUDE_BIN = 'none'
+  }
 
   const events = new EventStream()
   const api = buildApi(events)
@@ -38,7 +52,14 @@ function harness() {
 
   return {
     call, workspace, seen,
-    cleanup: () => { delete process.env.ROOFSCAPE_HOME; rmSync(home, { recursive: true, force: true }) },
+    cleanup: () => {
+      delete process.env.ROOFSCAPE_HOME
+      if (hadKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = hadKey
+      if (hadClaude === undefined) delete process.env.ROOFSCAPE_CLAUDE_BIN
+      else process.env.ROOFSCAPE_CLAUDE_BIN = hadClaude
+      rmSync(home, { recursive: true, force: true })
+    },
   }
 }
 
@@ -91,7 +112,7 @@ test('two buildings may not share a name', async () => {
 })
 
 test('hiring from the page adds a floor and says what the building became', async () => {
-  const h = harness()
+  const h = harness({ withProvider: true })
   try {
     await h.call('POST', '/api/buildings', { name: 'Growing', workspace: h.workspace })
     const detail = (await h.call('GET', '/api/buildings/growing')) as { staff: unknown[]; tier: string }
@@ -107,7 +128,7 @@ test('hiring from the page adds a floor and says what the building became', asyn
 })
 
 test('a role nobody offers is refused by name', async () => {
-  const h = harness()
+  const h = harness({ withProvider: true })
   try {
     await h.call('POST', '/api/buildings', { name: 'Picky', workspace: h.workspace })
     await assert.rejects(() => h.call('POST', '/api/buildings/picky/hire', { role: 'astronaut' }), (error: unknown) => {
@@ -131,12 +152,13 @@ test('a building that does not exist is a 404, not a crash', async () => {
 })
 
 test('a goal put to an empty building says so rather than starting nothing', async () => {
-  const h = harness()
+  // Deliberately without a provider, so nobody is hired at ground-breaking and
+  // the building really is empty.
+  const h = harness({ withProvider: false })
   try {
-    // Broken ground with no providers configured, so nobody was hired.
     await h.call('POST', '/api/buildings', { name: 'Hollow', workspace: h.workspace })
     const detail = (await h.call('GET', '/api/buildings/hollow')) as { staff: unknown[] }
-    if (detail.staff.length > 0) return // A provider is configured here; not the case under test.
+    assert.equal(detail.staff.length, 0, 'no provider means no founding staff')
 
     await assert.rejects(() => h.call('POST', '/api/buildings/hollow/goal', { goal: 'Do something' }), (error: unknown) => {
       assert.ok(error instanceof HttpError)

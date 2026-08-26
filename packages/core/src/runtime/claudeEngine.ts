@@ -131,6 +131,10 @@ export async function runClaudeTurn(request: ClaudeTurnRequest): Promise<ClaudeT
  */
 export function claudeExecutable(): string | null {
   const configured = process.env.ROOFSCAPE_CLAUDE_BIN
+  // An explicit "no" is a real answer, and there was no way to give one. Someone
+  // who wants everything on metered billing needs to be able to say so, and a
+  // test needs to describe the machine it is testing rather than inherit it.
+  if (configured === 'none' || configured === 'off') return null
   if (configured && existsSync(configured)) return configured
 
   try {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { availableProviders, defaultPosting, APPETITE_BY_ROLE, describePosting } from './roles.js'
 import { resolveLanguageModel, ProviderError } from './resolve.js'
 import { PROVIDERS, providerSpec, isLocal } from './catalog.js'
+import { claudeExecutable } from '../runtime/claudeEngine.js'
 
 const none = { credentialFor: () => null }
 const withKeys = (...names: string[]) => ({
@@ -91,4 +92,19 @@ test('a posting reads as something a person can check', () => {
     describePosting({ provider: 'anthropic', model: 'claude-opus-4-5', engine: 'claude-agent-sdk' }),
     /via Claude Code/,
   )
+})
+
+test('an installed Claude Code can be explicitly turned off', () => {
+  // Someone who wants everything on metered billing needs a way to say so, and
+  // a test needs to describe the machine it is testing rather than inherit it.
+  const had = process.env.ROOFSCAPE_CLAUDE_BIN
+  try {
+    process.env.ROOFSCAPE_CLAUDE_BIN = 'none'
+    assert.equal(claudeExecutable(), null)
+    process.env.ROOFSCAPE_CLAUDE_BIN = 'off'
+    assert.equal(claudeExecutable(), null)
+  } finally {
+    if (had === undefined) delete process.env.ROOFSCAPE_CLAUDE_BIN
+    else process.env.ROOFSCAPE_CLAUDE_BIN = had
+  }
 })
