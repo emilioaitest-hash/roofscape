@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { BRAND, dataRoot } from '@app/core'
 import { buildApi } from './api.js'
 import { startTicker } from './ticker.js'
+import { recoverInterruptedWork } from './recover.js'
 import { EventStream } from './events.js'
 import { HttpError, readJson } from './router.js'
 import { daemonToken, tokenMatches, bearerFrom } from './auth.js'
@@ -24,6 +25,9 @@ const HOST = process.env.ROOFSCAPE_HOST ?? '127.0.0.1'
 const events = new EventStream()
 const api = buildApi(events)
 const token = daemonToken()
+// Before anything else: a task left mid-flight by a crash or a closed lid is
+// marked working with nothing left to finish it.
+const recovered = recoverInterruptedWork(events)
 const stopTicker = startTicker(events)
 
 const server = createServer((request, response) => {
@@ -115,6 +119,9 @@ server.listen(PORT, HOST, () => {
   process.stdout.write(`  token: ${dataRoot()}/daemon.token\n`)
   process.stdout.write(`\n  Open:  ${where}/?token=${token}\n`)
   process.stdout.write('\n  Standing orders are checked every 30 seconds.\n')
+  if (recovered > 0) {
+    process.stdout.write(`  ${recovered} interrupted task${recovered === 1 ? '' : 's'} put back in the queue.\n`)
+  }
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write('\n  Bound beyond this machine. Anyone who reaches this port and holds the\n')
     process.stdout.write('  token can run shell commands here. Put it behind something.\n')

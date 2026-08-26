@@ -1,6 +1,6 @@
 import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
-  rosterFor, ROSTER, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
+  rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   parseEvery, parseAtTime, describeSchedule,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
@@ -183,11 +183,15 @@ export function buildApi(events: EventStream): Router {
 
       const store = BuildingStore.open(building.id)
       try {
+        // FOUNDING_ROLES, not a list written out again here. This endpoint had
+        // its own copy and kept hiring a manager and a hiring manager long after
+        // the CLI stopped — so buildings made from the dashboard were founded
+        // with nobody who could be given the work.
         const available = await discoverProviders(sky)
-        for (const role of ['manager', 'hiring'] as const) {
-          const entry = rosterFor(role)!
-          const posting = defaultPosting(role, available)
-          if (posting) {
+        for (const role of FOUNDING_ROLES) {
+          const entry = rosterFor(role)
+          const posting = entry ? defaultPosting(role, available) : null
+          if (entry && posting) {
             store.hire({ role, name: entry.suggestedName, charter: entry.charter, posting, tools: TOOLS_FOR_ROLE[role] ?? [] })
           }
         }
@@ -245,8 +249,20 @@ export function buildApi(events: EventStream): Router {
 
       const store = BuildingStore.open(building.id)
       const empty = store.headcount() === 0
+      // Checked here as well as inside the run: without it the caller is told
+      // the work started and then watches it fail on the stream a moment later,
+      // which is a worse answer than a refusal.
+      const allowance = building.budget.monthlyTokens
+      const spent = allowance === null ? 0 : store.spentThisMonth()
       store.close()
+
       if (empty) throw new HttpError(422, `${building.name} has nobody in it yet.`)
+      if (allowance !== null && spent >= allowance) {
+        throw new HttpError(
+          422,
+          `${building.name} has spent ${spent.toLocaleString()} of its ${allowance.toLocaleString()} output tokens this month.`,
+        )
+      }
 
       startGoal(events, building, input.goal, {
         ...(input.approveEverything === true ? { approveEverything: true } : {}),

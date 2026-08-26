@@ -201,3 +201,79 @@ test('the skyline art matches what the terminal draws', async () => {
     assert.ok(art.includes('─'), 'and it stands on a street')
   } finally { h.cleanup() }
 })
+
+test('a task left mid-flight by a crash goes back in the queue', async () => {
+  // Nothing un-marks a working task if the process dies. Left alone they sit in
+  // working for ever: never picked up, never reported, and counted as busy on
+  // the skyline, so the building looks permanently mid-job.
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Interrupted', workspace: h.workspace })
+    const before = (await h.call('GET', '/api/buildings/interrupted')) as {
+      staff: Array<{ id: string; role: string }>
+    }
+    const manager = before.staff.find((f) => f.role === 'manager')!
+    const coder = before.staff.find((f) => f.role === 'coder')!
+
+    const { BuildingStore } = await import('@app/core')
+    const store = BuildingStore.open('interrupted' as never)
+    const midFlight = store.assign({ by: manager.id as never, to: coder.id as never, goal: 'Was interrupted' })
+    const reviewed = store.assign({ by: manager.id as never, to: coder.id as never, goal: 'Was finished' })
+    store.setTaskState(midFlight.id, 'working')
+    store.settle(reviewed.id, 'awaiting-review', { summary: 'done', artifacts: [], tokensSpent: 1 })
+    store.close()
+
+    const { recoverInterruptedWork } = await import('./recover.js')
+    assert.equal(recoverInterruptedWork(), 1, 'one task was stranded')
+
+    const after = BuildingStore.open('interrupted' as never)
+    try {
+      assert.equal(after.task(midFlight.id)!.state, 'queued', 'the work was asked for and was not done')
+      assert.equal(after.task(reviewed.id)!.state, 'awaiting-review', 'finished work is left alone — it exists')
+      assert.equal(recoverInterruptedWork(), 0, 'and running it again finds nothing')
+    } finally {
+      after.close()
+    }
+  } finally { h.cleanup() }
+})
+
+test('a building at its monthly ceiling is refused, not told the work started', async () => {
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Skint', workspace: h.workspace })
+
+    const { SkylineStore, BuildingStore } = await import('@app/core')
+    const sky = SkylineStore.open()
+    sky.setBudget('skint' as never, { monthlyTokens: 100, perTaskTokens: 50 })
+    sky.close()
+
+    const store = BuildingStore.open('skint' as never)
+    store.recordSpend({ provider: 'openai', model: 'x', inputTokens: 0, outputTokens: 500 })
+    store.close()
+
+    await assert.rejects(() => h.call('POST', '/api/buildings/skint/goal', { goal: 'Spend more' }), (error: unknown) => {
+      assert.ok(error instanceof HttpError)
+      assert.equal(error.status, 422)
+      assert.match(error.message, /this month/)
+      return true
+    })
+  } finally { h.cleanup() }
+})
+
+test('a building made from the page is founded exactly as one made from the CLI', async () => {
+  // The endpoint had its own copy of the founding roles and kept hiring a
+  // hiring manager long after the CLI stopped, so buildings made from the page
+  // had nobody who could be given the work. One list, or they drift.
+  const h = harness({ withProvider: true })
+  try {
+    const { FOUNDING_ROLES } = await import('@app/core')
+    await h.call('POST', '/api/buildings', { name: 'Founded', workspace: h.workspace })
+    const detail = (await h.call('GET', '/api/buildings/founded')) as { staff: Array<{ role: string }> }
+
+    assert.deepEqual(
+      detail.staff.map((f) => f.role).sort(),
+      [...FOUNDING_ROLES].sort(),
+      'the page founds a building with the same crew the terminal does',
+    )
+  } finally { h.cleanup() }
+})
