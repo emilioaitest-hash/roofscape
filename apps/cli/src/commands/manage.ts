@@ -49,6 +49,8 @@ export async function breakGround(name: string | undefined, options: { charter?:
   say()
   say(dim('  Next:'))
   say(`      ${bold(`roofscape goal "..." --building ${building.id}`)}`)
+  say(dim('      …or take on a reviewer first, so the work gets read:'))
+  say(`      ${bold(`roofscape hire reviewer --building ${building.id}`)}`)
   say()
 
   store.close()

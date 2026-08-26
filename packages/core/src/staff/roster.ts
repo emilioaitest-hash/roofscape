@@ -221,5 +221,15 @@ When something breaks, say what broke, what you did, and what state it is in now
 export const rosterFor = (role: FloorRole): RosterEntry | undefined =>
   ROSTER.find((entry) => entry.role === role)
 
-/** The staff a new building starts with, before anyone is hired. */
-export const FOUNDING_ROLES: readonly FloorRole[] = ['manager', 'hiring']
+/**
+ * The staff a new building starts with.
+ *
+ * A manager and somebody to assign to — the smallest crew that can actually do
+ * anything. It founded with a manager and a hiring manager before, which meant
+ * the very first goal had nobody to give work to and reported as much.
+ *
+ * Deliberately two rather than four. A building that opens as a brick walk-up
+ * has skipped the part where it grows, and watching it grow is most of the
+ * reason to come back. A reviewer is the obvious next hire and is suggested.
+ */
+export const FOUNDING_ROLES: readonly FloorRole[] = ['manager', 'coder']

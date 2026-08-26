@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { BUILDING_WIDTH, allTiers, tierOf, nextTierAt } from './tiers.js'
 import { renderBuilding, renderSkyline } from './render.js'
+import { FOUNDING_ROLES } from '../staff/roster.js'
 
 const visible = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '')
 
@@ -114,4 +115,18 @@ test('every building has exactly one way in', () => {
     const doors = tier.ground.join('').split('▯').length - 1
     assert.ok(doors >= 1, `${tier.name} has no door`)
   }
+})
+
+test('a building is founded able to do something, and small enough to grow', () => {
+  // It founded with a manager and a hiring manager, so the very first goal had
+  // nobody to give work to. Four would fix that and open the building as a brick
+  // walk-up, skipping the part where it grows — which is most of the reason to
+  // come back to it.
+  assert.equal(FOUNDING_ROLES.length, 2)
+  assert.ok(FOUNDING_ROLES.includes('manager'), 'somebody to decide')
+  assert.ok(
+    FOUNDING_ROLES.some((role) => role !== 'manager' && role !== 'hiring'),
+    'and somebody who can actually be given the work',
+  )
+  assert.equal(tierOf(FOUNDING_ROLES.length).name, 'single-storey', 'and room left to grow')
 })
