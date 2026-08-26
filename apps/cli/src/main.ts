@@ -8,6 +8,7 @@ import { doctor, providerAdd, archives, curateArchives } from './commands/setup.
 import { post } from './commands/post.js'
 import { serve } from './commands/serve.js'
 import { schedule, schedules, unschedule } from './commands/schedule.js'
+import { budget } from './commands/budget.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
@@ -29,6 +30,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('archives')} [query]                   read what the building remembers
   ${bold('curate')}                             send the curator down to tidy them
   ${bold('provider')} add <name> [--env VAR]    connect a model provider
+  ${bold('budget')} [--monthly N]                what it may spend, and what it has
   ${bold('schedule')} <text> [--every daily]    put a goal on a repeating footing
   ${bold('schedules')} · ${bold('unschedule')} <id>        what recurs, and stopping one
 
@@ -71,6 +73,8 @@ async function main(): Promise<void> {
       every: { type: 'string' },
       at: { type: 'string' },
       pause: { type: 'boolean' },
+      monthly: { type: 'string' },
+      'per-task': { type: 'string' },
       key: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
     },
@@ -84,6 +88,7 @@ async function main(): Promise<void> {
     provider?: string; model?: string; engine?: string
     port?: string; host?: string; open?: boolean
     every?: string; at?: string; pause?: boolean
+    monthly?: string; 'per-task'?: string
   }
 
   switch (command) {
@@ -122,6 +127,13 @@ async function main(): Promise<void> {
       return post(first, opts)
     case 'curate':
       return curateArchives(opts)
+    case 'budget':
+    case 'spend':
+      return budget({
+        ...(opts.building ? { building: opts.building } : {}),
+        ...(opts.monthly !== undefined ? { monthly: opts.monthly } : {}),
+        ...(opts['per-task'] !== undefined ? { perTask: opts['per-task'] } : {}),
+      })
     case 'schedule':
       return schedule(rest || undefined, opts)
     case 'schedules':

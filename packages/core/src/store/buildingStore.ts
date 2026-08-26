@@ -181,6 +181,11 @@ export class BuildingStore {
     )!.n
   }
 
+  /** Tighten (or loosen) what a task may spend, after it has been assigned. */
+  reLimit(id: TaskId, limits: TaskLimits): void {
+    this.db.prepare('update tasks set limits = ? where id = ?').run(toJson(limits), id)
+  }
+
   setTaskState(id: TaskId, state: TaskState): void {
     this.db.prepare('update tasks set state = ? where id = ?').run(state, id)
   }
@@ -298,6 +303,18 @@ export class BuildingStore {
       this.db.prepare('select sum(output_tokens) as n from spend where at >= ?'),
       iso,
     )!.n ?? 0
+  }
+
+  /**
+   * Output tokens spent since the first of this month.
+   *
+   * The unit a monthly allowance is actually judged in. Calendar month rather
+   * than rolling thirty days, because "how much have I spent this month" is the
+   * question people ask and a rolling window answers a different one.
+   */
+  spentThisMonth(now_: Date = new Date()): number {
+    const first = new Date(now_.getFullYear(), now_.getMonth(), 1)
+    return this.spentSince(first.toISOString())
   }
 
   spentOnTask(id: TaskId): number {

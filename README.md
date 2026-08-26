@@ -118,6 +118,17 @@ Two engines run a turn, with an identical tool row either way: `direct` against
 any provider's API, and `claude-agent-sdk` through the Claude Code you already
 have. Which engine ran a turn changes what it cost, never what the agent could do.
 
+## What it may spend
+
+```sh
+roofscape budget --monthly 500000
+roofscape budget
+```
+
+Output tokens, not money — money depends on which provider answered, and the
+number would be a guess dressed up as a fact. A building at its monthly ceiling
+refuses to start work and says how to lift it, rather than quietly carrying on.
+
 ## When things go wrong
 
 A provider that will not answer does not end the work. A rate limit, an outage or

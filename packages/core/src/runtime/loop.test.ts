@@ -316,3 +316,85 @@ test('a request nobody could satisfy is not tried at every provider in turn', as
     s.cleanup()
   }
 })
+
+test('a monthly allowance actually stops work, rather than being decoration', async () => {
+  // It was stored on every building and read by nothing, which is worse than
+  // having no budget at all: the owner believes there is a ceiling.
+  const s = scratch()
+  try {
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: POSTING })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
+    s.skyline.setBudget(s.building.id, { monthlyTokens: 1000, perTaskTokens: 500 })
+
+    // Spend it.
+    s.store.recordSpend({ floor: coder.id, provider: 'anthropic', model: 'x', inputTokens: 0, outputTokens: 1200 })
+    assert.ok(s.store.spentThisMonth() >= 1000)
+
+    const spent = s.skyline.get(s.building.id)!
+    await assert.rejects(
+      () => pursueGoal(
+        { building: spent, store: s.store, credentials: s.skyline, ask: async () => false, report: () => {},
+          resolveModel: () => scriptedModel([[{ text: 'should never be asked' }]]) },
+        'Do more work',
+      ),
+      (error: unknown) => {
+        assert.match((error as Error).message, /spent .* of its .* output tokens this month/)
+        assert.match((error as Error).message, /roofscape budget/, 'and says how to lift it')
+        return true
+      },
+    )
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a building under its allowance is not stopped', async () => {
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    s.skyline.setBudget(s.building.id, { monthlyTokens: 1_000_000, perTaskTokens: 500 })
+
+    const scripts = new Map([
+      ['m', scriptedModel([[{ tool: 'finish', input: { summary: 'Nothing needed doing.', artifacts: [], succeeded: true } }]])],
+    ])
+    const outcome = await pursueGoal(
+      { building: s.skyline.get(s.building.id)!, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {}, resolveModel: (p) => scripts.get(p.model)! },
+      'Have a look around',
+    )
+    assert.match(outcome.managerSummary, /Nothing needed doing/)
+  } finally {
+    s.cleanup()
+  }
+})
+
+test("the building's per-task ceiling is applied to whatever the manager assigned", async () => {
+  // Likewise stored and never used. A manager could assign a task with a limit
+  // far above what the building was supposed to allow.
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: posting('c') })
+    s.skyline.setBudget(s.building.id, { monthlyTokens: null, perTaskTokens: 700 })
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'assign_task', input: { to: coder.id, goal: 'Something', acceptance: ['done'] } }],
+        [{ tool: 'finish', input: { summary: 'Assigned.', artifacts: [], succeeded: true } }],
+      ])],
+      ['c', scriptedModel([[{ tool: 'finish', input: { summary: 'Done.', artifacts: [], succeeded: true } }]])],
+    ])
+    await pursueGoal(
+      { building: s.skyline.get(s.building.id)!, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {}, resolveModel: (p) => scripts.get(p.model) ?? scripts.get('c')! },
+      'Do a thing',
+    )
+
+    const task = s.store.tasks()[0]!
+    assert.equal(task.limits.tokens, 700, 'the ceiling followed the task, not the default')
+  } finally {
+    s.cleanup()
+  }
+})

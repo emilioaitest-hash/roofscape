@@ -37,6 +37,21 @@ export interface GoalOutcome {
   tokensSpent: number
 }
 
+/** Thrown rather than reported, because there is nothing to report on. */
+export class BudgetReachedError extends Error {
+  constructor(
+    readonly building: string,
+    readonly spent: number,
+    readonly allowance: number,
+  ) {
+    super(
+      `${building} has spent ${spent.toLocaleString()} of its ${allowance.toLocaleString()} output tokens this month. ` +
+        'Raise the allowance to carry on: roofscape budget --monthly <n>',
+    )
+    this.name = 'BudgetReachedError'
+  }
+}
+
 export interface Review {
   by: string
   accepted: boolean
@@ -63,6 +78,17 @@ export async function pursueGoal(
     throw new Error(`${building.name} has no manager. Hire one first: roofscape hire manager --building ${building.id}`)
   }
 
+  // A budget that is merely advisory is not a budget. This one was stored on
+  // every building and read by nothing at all, which is worse than not having
+  // it: the owner believes there is a ceiling.
+  const allowance = building.budget.monthlyTokens
+  if (allowance !== null) {
+    const spent = store.spentThisMonth()
+    if (spent >= allowance) {
+      throw new BudgetReachedError(building.name, spent, allowance)
+    }
+  }
+
   const before = store.spentSince('1970-01-01T00:00:00.000Z')
   const workspace = new Workspace(building.workspace)
 
@@ -85,6 +111,14 @@ export async function pursueGoal(
     ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
     onEvent: (event) => deps.onEvent?.(manager, event),
   })
+
+  // Whatever the manager assigned takes the building's per-task ceiling, which
+  // was likewise stored and never applied.
+  for (const fresh of store.tasks({ state: 'queued' })) {
+    if (fresh.limits.tokens > building.budget.perTaskTokens) {
+      store.reLimit(fresh.id, { ...fresh.limits, tokens: building.budget.perTaskTokens })
+    }
+  }
 
   const queued = store.tasks({ state: 'queued' }).slice(0, options.maxTasks ?? 6)
   if (queued.length === 0) {
