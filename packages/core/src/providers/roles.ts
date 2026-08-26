@@ -76,18 +76,50 @@ export function defaultPosting(role: FloorRole, available: readonly string[]): P
  * identical either way.
  */
 function engineFor(provider: string): Posting['engine'] {
-  return provider === 'anthropic' && process.env.ROOFSCAPE_CLAUDE_CLI !== 'off'
-    ? 'claude-agent-sdk'
-    : 'direct'
+  return provider === 'anthropic' && process.env.ROOFSCAPE_ENGINE === 'claude' ? 'claude-agent-sdk' : 'direct'
 }
 
-/** Providers with a usable credential, in catalog order. */
-export function availableProviders(credentials: { credentialFor(name: string): string | null }): string[] {
+/**
+ * Providers that have a usable credential.
+ *
+ * A local provider is deliberately NOT included here just because it needs no
+ * key. "Needs no key" and "is installed and running" are different claims, and
+ * treating them as one offers the owner a model that is not there. Local
+ * providers are added by `discoverProviders`, which actually asks.
+ */
+export function availableProviders(credentials: {
+  credentialFor(name: string): string | null
+}): string[] {
   return PROVIDERS.filter((spec) => {
-    if (!spec.needsKey) return true
+    if (!spec.needsKey) return false
     if (credentials.credentialFor(spec.name)) return true
     return Boolean(spec.envVar && process.env[spec.envVar])
   }).map((spec) => spec.name)
+}
+
+/**
+ * Everything actually reachable right now: the credentialled providers, plus
+ * any local one that answers. Probes run concurrently and briefly, because this
+ * is on the path of every command that has to choose a model.
+ */
+export async function discoverProviders(credentials: {
+  credentialFor(name: string): string | null
+}): Promise<string[]> {
+  const credentialled = availableProviders(credentials)
+  const locals = PROVIDERS.filter((spec) => !spec.needsKey)
+  const reachable = await Promise.all(
+    locals.map(async (spec) => ((await pingLocal(spec.baseUrl!)) ? spec.name : null)),
+  )
+  return [...credentialled, ...reachable.filter((name): name is string => name !== null)]
+}
+
+async function pingLocal(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(1200) })
+    return response.ok
+  } catch {
+    return false
+  }
 }
 
 export const describePosting = (posting: Posting): string =>
