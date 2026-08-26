@@ -125,6 +125,7 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
         report(`  ${review.accepted ? 'accepted' : 'sent back'} by ${review.by} — ${truncate(review.verdict, 80)}`)
       }
 
+      recordWhatHappened(store, { task, assignee, summary: result.summary, succeeded, branch, review })
       worked.push({ task, floor: assignee, summary: result.summary, succeeded, branch, review })
     } finally {
       if (workplace.branch) await closeWorktree(building.workspace, workplace.cwd, { keepBranch: true })
@@ -157,6 +158,44 @@ async function placeToWork(building: Building, task: Task, assignee: Floor) {
     return { workspace: new Workspace(building.workspace), cwd: building.workspace, branch: null as string | null }
   }
   return { workspace: new Workspace(opened.path), cwd: opened.path, branch: opened.branch }
+}
+
+/**
+ * Write down what happened, whether or not anyone thought to.
+ *
+ * The first two real runs left the archives completely empty: every agent
+ * finished its task and none called `remember`. Episodic memory cannot depend on
+ * an agent's goodwill — history is recorded by the building, and the curator
+ * promotes what recurs into stated facts later. The `remember` tool stays for
+ * what an agent actually learned, which is a different thing from what it did.
+ */
+export function recordWhatHappened(
+  store: BuildingStore,
+  event: {
+    task: Task
+    assignee: Floor
+    summary: string
+    succeeded: boolean
+    branch: string | null
+    review: Review | null
+  },
+): void {
+  const parts = [
+    `${event.assignee.name} (${event.assignee.role}) was asked to: ${event.task.goal}`,
+    event.succeeded ? `Outcome: ${event.summary}` : `It was not finished. ${event.summary}`,
+  ]
+  if (event.branch) parts.push(`Left on branch ${event.branch}.`)
+  if (event.review) {
+    parts.push(`${event.review.by} ${event.review.accepted ? 'accepted' : 'sent it back'}: ${truncate(event.review.verdict, 300)}`)
+  }
+
+  store.remember({
+    scope: 'building',
+    layer: 'episodic',
+    text: parts.join(' '),
+    source: event.task.id,
+    confidence: 0.9,
+  })
 }
 
 /**
