@@ -36,9 +36,9 @@ const TIERS: readonly Tier[] = [
   {
     name: 'shack',
     blurb: 'One pair of hands and a roof that mostly works.',
-    cap: ['   ,--.    ', '  /    `.  '],
+    cap: ['   ,---.   ', '  /     \\  '],
     storey: '  |  \u25ab  |  ',
-    ground: ['  |_ [] _| ', "  '-------'"],
+    ground: ['  |  \u25af  |  ', "  '-----'  "],
     window: '\u25ab',
   },
   {
@@ -46,7 +46,7 @@ const TIERS: readonly Tier[] = [
     blurb: 'Squared up, properly roofed, and open for business.',
     cap: ['    ___    ', '   /   \\   ', '  /_____\\  '],
     storey: '  | \u25ab \u25ab |  ',
-    ground: ['  |_ []__| ', '  \u2514\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2518'],
+    ground: ['  | \u25af \u25ab |  ', '  \u2514\u2500\u2500\u2500\u2500\u2500\u2518  '],
     window: '\u25ab',
   },
   {
@@ -54,15 +54,15 @@ const TIERS: readonly Tier[] = [
     blurb: 'Four solid walls and a cornice. People work here.',
     cap: [' \u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584 ', '  \u250c\u2500\u2500\u2500\u2500\u2500\u2510  '],
     storey: '  \u2502\u25ab \u25ab \u25ab\u2502  ',
-    ground: ['  \u2502\u25ab [] \u25ab\u2502 ', '  \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
+    ground: ['  \u2502\u25ab \u25af \u25ab\u2502  ', '  \u2558\u2550\u2550\u2550\u2550\u2550\u255b  '],
     window: '\u25ab',
   },
   {
     name: 'cast-iron block',
-    blurb: 'Arched bays and a fire escape. The good part of town.',
+    blurb: 'Arched bays and ornament. The good part of town.',
     cap: [' \u2552\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2555 ', ' \u2502\u2581\u2581\u2581\u2581\u2581\u2581\u2581\u2502 '],
     storey: ' \u2502 \u2229 \u2229 \u2229 \u2502 ',
-    ground: [' \u2502 \u2229 [] \u2229 \u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b '],
+    ground: [' \u2502 \u2229 \u25af \u2229 \u2502 ', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b '],
     window: '\u2229',
   },
   {
@@ -70,7 +70,7 @@ const TIERS: readonly Tier[] = [
     blurb: 'Steel frame, setbacks, and a crown you can see from the bridge.',
     cap: ['   \u2584\u2584\u2584\u2584\u2584   ', '   \u2502\u25aa\u25aa\u25aa\u2502   ', ' \u2584\u2584\u2534\u2500\u2500\u2500\u2500\u2500\u2534\u2584', ' \u2502\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2502'],
     storey: ' \u2502\u25aa\u25aa \u25aa\u25aa \u25aa\u25aa\u2502',
-    ground: [' \u2502\u25aa\u25aa [] \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
+    ground: [' \u2502\u25aa\u25aa \u25af\u25af \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
     window: '\u25aa',
   },
   {
@@ -78,7 +78,7 @@ const TIERS: readonly Tier[] = [
     blurb: 'It has a spire. People give directions by it.',
     cap: ['     \u2577     ', '    \u2571\u25b2\u2572    ', '   \u2571\u2500\u2500\u2500\u2572   ', '   \u2502\u25aa\u25aa\u25aa\u2502   ', ' \u2584\u2584\u2534\u2500\u2500\u2500\u2500\u2500\u2534\u2584', ' \u2502\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2502'],
     storey: ' \u2502\u25aa\u25aa \u25aa\u25aa \u25aa\u25aa\u2502',
-    ground: [' \u2502\u25aa\u25aa [] \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
+    ground: [' \u2502\u25aa\u25aa \u25af\u25af \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
     window: '\u25aa',
   },
 ]

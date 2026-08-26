@@ -4,6 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { providerSpec, type ProviderSpec } from './catalog.js'
+import { claudeExecutable } from '../runtime/claudeEngine.js'
 import type { Posting } from '../domain/building.js'
 
 /** Where a key comes from. The store implements this; tests can fake it. */
@@ -90,6 +91,11 @@ export async function probeProvider(
   if (!spec) return { ok: false, reason: `Unknown provider "${name}".`, remedy: `Known: ${knownNames()}.` }
 
   const key = resolveKey(spec, credentials)
+
+  // Anthropic is reachable without a key when Claude Code is installed, because
+  // the turn runs through the owner's own subscription instead.
+  if (name === 'anthropic' && !key && claudeExecutable()) return { ok: true }
+
   if (spec.needsKey && !key) {
     return {
       ok: false,

@@ -1,0 +1,8 @@
+{
+  "name": "@app/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": { "roofscape": "./dist/main.js" },
+  "dependencies": { "@app/core": "*" }
+}

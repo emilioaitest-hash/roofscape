@@ -109,11 +109,17 @@ export async function discoverProviders(credentials: {
   credentialFor(name: string): string | null
 }): Promise<string[]> {
   const credentialled = availableProviders(credentials)
+
+  // An installed, logged-in Claude Code is a way to reach Anthropic that needs
+  // no API key at all — it spends the owner's subscription instead. Someone who
+  // has one should not be told to go and buy metered billing.
+  const viaSubscription = claudeExecutable() && !credentialled.includes('anthropic') ? ['anthropic'] : []
+
   const locals = PROVIDERS.filter((spec) => !spec.needsKey)
   const reachable = await Promise.all(
     locals.map(async (spec) => ((await pingLocal(spec.baseUrl!)) ? spec.name : null)),
   )
-  return [...credentialled, ...reachable.filter((name): name is string => name !== null)]
+  return [...credentialled, ...viaSubscription, ...reachable.filter((name): name is string => name !== null)]
 }
 
 async function pingLocal(baseUrl: string): Promise<boolean> {

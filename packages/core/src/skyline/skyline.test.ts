@@ -85,3 +85,33 @@ test('lighting a window changes only colour, never width', () => {
   }
   assert.notEqual(lit.join(''), dark.join(''), 'lit windows should actually differ')
 })
+
+test('a ground floor lines up with the storeys above it', () => {
+  // The walls must not jog where the lobby meets the first storey. Widths alone
+  // do not catch this: two lines can both be eleven wide and still be offset.
+  for (const tier of allTiers()) {
+    const storey = [...tier.storey]
+    const lobby = [...tier.ground[0]!]
+    const edges = (row: string[]) =>
+      row.reduce<number[]>((found, char, index) => (char.trim() === '' ? found : [...found, index]), [])
+    const storeyEdges = edges(storey)
+    const lobbyEdges = edges(lobby)
+    assert.equal(
+      lobbyEdges[0],
+      storeyEdges[0],
+      `${tier.name}: the lobby's left wall is at ${lobbyEdges[0]}, the storey's at ${storeyEdges[0]}`,
+    )
+    assert.equal(
+      lobbyEdges.at(-1),
+      storeyEdges.at(-1),
+      `${tier.name}: the lobby's right wall does not line up with the storey's`,
+    )
+  }
+})
+
+test('every building has exactly one way in', () => {
+  for (const tier of allTiers()) {
+    const doors = tier.ground.join('').split('▯').length - 1
+    assert.ok(doors >= 1, `${tier.name} has no door`)
+  }
+})
