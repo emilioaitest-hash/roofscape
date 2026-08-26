@@ -282,3 +282,18 @@ test('the curator works below ground and does not make the building taller', () 
     b.close()
   } finally { cleanup() }
 })
+
+test('a floor can be moved to a different model without being rehired', () => {
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const dev = b.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: POSTING })
+    b.repost(dev.id, { provider: 'openai', model: 'gpt-5', engine: 'direct' })
+    const moved = b.floor(dev.id)!
+    assert.equal(moved.posting.provider, 'openai')
+    assert.equal(moved.posting.model, 'gpt-5')
+    assert.equal(moved.name, 'Nib', 'they are the same person')
+    assert.equal(moved.hiredAt, dev.hiredAt, 'and they have been here just as long')
+    b.close()
+  } finally { cleanup() }
+})

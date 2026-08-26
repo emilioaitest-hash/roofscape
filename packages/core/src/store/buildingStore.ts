@@ -125,6 +125,11 @@ export class BuildingStore {
     return row ? hydrateFloor(row, this.buildingId) : null
   }
 
+  /** Move a floor to a different model, provider or engine. */
+  repost(id: FloorId, posting: Posting): void {
+    this.db.prepare('update floors set posting = ? where id = ?').run(toJson(posting), id)
+  }
+
   /** Their memory is archived, never deleted, and their floor stays on record. */
   vacate(id: FloorId): void {
     this.db.prepare('update floors set vacated_at = ? where id = ?').run(now(), id)

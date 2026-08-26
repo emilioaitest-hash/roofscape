@@ -5,6 +5,7 @@ import { showSkyline, showBuilding } from './commands/skyline.js'
 import { breakGround, hire, setCharter } from './commands/manage.js'
 import { goal, lobby, decide } from './commands/work.js'
 import { doctor, providerAdd, archives, curateArchives } from './commands/setup.js'
+import { post } from './commands/post.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
@@ -17,6 +18,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('charter')} <text> [--building B]      say what a building is for
 
   ${bold('hire')} [role] [--name N]             take on staff; the building grows a floor
+  ${bold('post')} [who] [--provider P --model M]  who runs on what, and change it
   ${bold('goal')} <text> [--yes]                put a goal to a building and let it work
 
   ${bold('lobby')}                              everything waiting on your approval
@@ -54,6 +56,9 @@ async function main(): Promise<void> {
       charter: { type: 'string' },
       name: { type: 'string' },
       env: { type: 'string' },
+      provider: { type: 'string', short: 'p' },
+      model: { type: 'string', short: 'm' },
+      engine: { type: 'string', short: 'e' },
       key: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
     },
@@ -64,6 +69,7 @@ async function main(): Promise<void> {
   const opts = values as {
     building?: string; workspace?: string; charter?: string
     name?: string; env?: string; key?: string; yes?: boolean
+    provider?: string; model?: string; engine?: string
   }
 
   switch (command) {
@@ -97,6 +103,9 @@ async function main(): Promise<void> {
         return providerAdd(positionals[1] as string | undefined, opts)
       }
       return providerAdd(first, opts)
+    case 'post':
+    case 'posting':
+      return post(first, opts)
     case 'curate':
       return curateArchives(opts)
     case 'doctor':

@@ -2,7 +2,7 @@
 
 Each milestone ends with something that works, not something that compiles.
 
-## M0 — One building does real work
+## M0 — One building does real work  ✅ done
 The daemon, SQLite state, the provider layer with a working model chooser, the
 mailroom, and three floors: manager, coder, reviewer. A building is broken ground
 on from a charter. A goal becomes tasks, the tasks get done in a git worktree,
@@ -11,13 +11,21 @@ the branch comes back for review. A minimal CLI drives all of it.
 **Done when** a real goal on a real repo produces a reviewed branch without a
 human touching anything but the approval prompts.
 
-## M1 — The archives
+*Proved on 25 August 2026: "pad the seconds to two digits" produced a reviewed
+branch with a passing test file, on a Claude subscription, in about four
+minutes. The loop also runs in CI against a scripted model, with no key.*
+
+## M1 — The archives  ◐ in progress
 Three scopes, four layers. The `recall` tool over FTS5 plus vectors. Local
 embeddings. The nightly curator. Token accounting per turn, so the flat-cost
 claim is measured rather than asserted.
 
 **Done when** an agent's second week is visibly better than its first, and the
 per-turn token count has not risen with it.
+
+*Done so far: three scopes, four layers, FTS5 recall, automatic history, the
+curator, and per-turn token accounting. Outstanding: measuring the flat-cost
+claim rather than asserting it, and optional embeddings (see decision 0011).*
 
 ## M2 — Hiring
 The hiring manager, the stock roster, agent definitions as data, the approval
