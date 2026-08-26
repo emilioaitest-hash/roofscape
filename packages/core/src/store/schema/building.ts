@@ -121,4 +121,13 @@ export const BUILDING_MIGRATIONS: readonly Migration[] = [
       end;
     `,
   },
+  {
+    id: 3,
+    name: 'approvals carry what to do when granted',
+    sql: `
+      -- An approval that only records a sentence cannot be acted on: somebody
+      -- has to re-type what was agreed. The payload is what granting it does.
+      alter table approvals add column payload text;
+    `,
+  },
 ]

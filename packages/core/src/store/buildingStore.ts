@@ -8,7 +8,7 @@ import {
   type ApprovalId, type BuildingId, type FloorId, type MemoryId, type MessageId, type TaskId,
 } from '../domain/ids.js'
 import type { Floor, FloorRole, Posting } from '../domain/building.js'
-import type { Approval, Message, MessageKind, Task, TaskLimits, TaskResult, TaskState } from '../domain/work.js'
+import type { Approval, ApprovalPayload, Message, MessageKind, Task, TaskLimits, TaskResult, TaskState } from '../domain/work.js'
 import type { MemoryLayer, MemoryRecord, MemoryScope } from '../domain/memory.js'
 
 export interface HireInput {
@@ -223,24 +223,38 @@ export class BuildingStore {
 
   // ---- the approval desk -------------------------------------------------
 
-  requestApproval(input: { kind: Approval['kind']; by: FloorId; intent: string }): Approval {
+  requestApproval(input: {
+    kind: Approval['kind']
+    by: FloorId
+    intent: string
+    payload?: ApprovalPayload
+  }): Approval {
     const approval: Approval = {
       id: asApprovalId(newId('apr')),
       building: this.buildingId,
       kind: input.kind,
       requestedBy: input.by,
       intent: input.intent,
+      payload: input.payload ?? null,
       state: 'pending',
       decidedAt: null,
       createdAt: now(),
     }
     this.db
       .prepare(
-        `insert into approvals (id, kind, requested_by, intent, state, decided_at, created_at)
-         values (?, ?, ?, ?, 'pending', null, ?)`,
+        `insert into approvals (id, kind, requested_by, intent, payload, state, decided_at, created_at)
+         values (?, ?, ?, ?, ?, 'pending', null, ?)`,
       )
-      .run(approval.id, approval.kind, approval.requestedBy, approval.intent, approval.createdAt)
+      .run(
+        approval.id, approval.kind, approval.requestedBy, approval.intent,
+        approval.payload ? toJson(approval.payload) : null, approval.createdAt,
+      )
     return approval
+  }
+
+  approval(id: ApprovalId): Approval | null {
+    const row = getAs<ApprovalRow>(this.db.prepare('select * from approvals where id = ?'), id)
+    return row ? hydrateApproval(row, this.buildingId) : null
   }
 
   pendingApprovals(): Approval[] {
@@ -420,7 +434,7 @@ export class BuildingStore {
 interface FloorRow { id: string; level: number; role: string; name: string; charter: string; posting: string; tools: string; hired_at: string; vacated_at: string | null }
 interface TaskRow { id: string; assigned_by: string; assigned_to: string; goal: string; acceptance: string; limits: string; state: string; result: string | null; created_at: string; settled_at: string | null }
 interface MessageRow { id: string; kind: string; sender: string; recipient: string; in_reply_to: string | null; body: string; read_at: string | null; created_at: string }
-interface ApprovalRow { id: string; kind: string; requested_by: string; intent: string; state: string; decided_at: string | null; created_at: string }
+interface ApprovalRow { id: string; kind: string; requested_by: string; intent: string; payload: string | null; state: string; decided_at: string | null; created_at: string }
 interface MemoryRow { id: string; scope: string; layer: string; floor_id: string | null; text: string; source: string; pinned: number; confidence: number; use_count: number; last_used_at: string | null; expires_at: string | null; created_at: string }
 
 const hydrateFloor = (r: FloorRow, building: BuildingId): Floor => ({
@@ -443,7 +457,8 @@ const hydrateMessage = (r: MessageRow, building: BuildingId): Message => ({
 
 const hydrateApproval = (r: ApprovalRow, building: BuildingId): Approval => ({
   id: asApprovalId(r.id), building, kind: r.kind as Approval['kind'], requestedBy: asFloorId(r.requested_by),
-  intent: r.intent, state: r.state as Approval['state'], decidedAt: r.decided_at, createdAt: r.created_at,
+  intent: r.intent, payload: r.payload ? fromJson<ApprovalPayload>(r.payload, { do: 'nothing' }) : null,
+  state: r.state as Approval['state'], decidedAt: r.decided_at, createdAt: r.created_at,
 })
 
 const hydrateMemory = (r: MemoryRow, building: BuildingId): MemoryRecord => ({

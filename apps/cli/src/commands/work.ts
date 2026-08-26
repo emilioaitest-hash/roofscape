@@ -1,5 +1,8 @@
 import { createInterface } from 'node:readline/promises'
-import { pursueGoal, type EscalationKind } from '@app/core'
+import {
+  pursueGoal, rosterFor, defaultPosting, availableProviders, TOOLS_FOR_ROLE, tierOf,
+  type EscalationKind, type FloorRole,
+} from '@app/core'
 import { openSkyline, openBuilding, findBuilding } from '../context.js'
 import { say, dim, bold, tick, note, fail, heading, amber, green, red, ago } from '../ui.js'
 
@@ -124,21 +127,59 @@ export function lobby(): void {
   skyline.close()
 }
 
+/**
+ * Decide one request. Granting it does the thing rather than merely recording
+ * that you said yes — an approval nobody acts on is a note, not a decision.
+ */
 export function decide(id: string | undefined, granted: boolean): void {
   if (!id) fail('Which one?', 'roofscape lobby  — to see what is waiting')
   const skyline = openSkyline()
+
   for (const building of skyline.list()) {
     const store = openBuilding(building.id)
     const match = store.pendingApprovals().find((a) => a.id === id || a.id.startsWith(id))
-    if (match) {
-      store.decide(match.id, granted)
-      tick(`${granted ? 'Approved' : 'Refused'}: ${match.intent}`)
+    if (!match) {
       store.close()
-      skyline.close()
+      continue
+    }
+
+    store.decide(match.id, granted)
+    if (!granted) {
+      tick(`Refused: ${match.intent}`)
+      store.close(); skyline.close()
       return
     }
-    store.close()
+
+    if (match.payload?.do === 'hire') {
+      const entry = rosterFor(match.payload.role as FloorRole)
+      const posting = entry ? defaultPosting(entry.role, availableProviders(skyline)) : null
+      if (!entry || !posting) {
+        say()
+        say(amber(`Approved, but the hire could not be made: no provider suits a ${match.payload.role}.`))
+        say(dim('  Add one, then:  roofscape hire ' + match.payload.role))
+        store.close(); skyline.close()
+        return
+      }
+      const before = store.headcount()
+      const floor = store.hire({
+        role: entry.role,
+        name: match.payload.name || entry.suggestedName,
+        charter: match.payload.charter || entry.charter,
+        posting,
+        tools: TOOLS_FOR_ROLE[entry.role] ?? [],
+      })
+      const after = store.headcount()
+      tick(`${floor.name} joins ${building.name} as ${entry.role} — floor ${after}`)
+      const grew = tierOf(before).name !== tierOf(after).name
+      if (grew) say(dim(`  ${building.name} is now a ${tierOf(after).name}.`))
+    } else {
+      tick(`Approved: ${match.intent}`)
+    }
+
+    store.close(); skyline.close()
+    return
   }
+
   skyline.close()
   fail(`Nothing pending with id "${id}".`)
 }

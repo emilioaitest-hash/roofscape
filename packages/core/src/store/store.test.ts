@@ -231,3 +231,54 @@ test('expired memory is not recalled and pinned memory is always to hand', () =>
     b.close()
   } finally { cleanup() }
 })
+
+test('an approval carries what granting it does, not just a sentence about it', () => {
+  // An approval that records only prose cannot be acted on: somebody has to
+  // re-type what was agreed to, and that is where agreements get lost.
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const hr = b.hire({ role: 'hiring', name: 'Wren', charter: 'x', posting: POSTING })
+    const request = b.requestApproval({
+      kind: 'hire',
+      by: hr.id,
+      intent: 'Hire Pitch as marketer. The launch copy keeps arriving and nobody here writes it.',
+      payload: { do: 'hire', role: 'marketer', name: 'Pitch', charter: '' },
+    })
+
+    const stored = b.approval(request.id)!
+    assert.equal(stored.payload?.do, 'hire')
+    assert.equal(stored.payload?.do === 'hire' && stored.payload.role, 'marketer')
+    assert.equal(stored.state, 'pending')
+
+    b.decide(request.id, true)
+    assert.equal(b.approval(request.id)!.state, 'granted')
+    assert.ok(b.approval(request.id)!.decidedAt)
+    b.close()
+  } finally { cleanup() }
+})
+
+test('an approval without a payload is still a valid record', () => {
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const mgr = b.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
+    const request = b.requestApproval({ kind: 'publish', by: mgr.id, intent: 'Publish the launch post' })
+    assert.equal(b.approval(request.id)!.payload, null)
+    b.close()
+  } finally { cleanup() }
+})
+
+test('the curator works below ground and does not make the building taller', () => {
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    b.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
+    b.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: POSTING })
+    assert.equal(b.headcount(), 2)
+    b.hire({ role: 'curator', name: 'Fen', charter: 'x', posting: POSTING })
+    assert.equal(b.headcount(), 2, 'a building should not appear to grow because it started tidying up')
+    assert.equal(b.staff().length, 3, 'but the curator is still staff')
+    b.close()
+  } finally { cleanup() }
+})

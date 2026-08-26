@@ -78,7 +78,16 @@ export interface Approval {
   requestedBy: FloorId
   /** What will happen if this is granted, in plain language. */
   intent: string
+  /**
+   * What granting it actually does. An approval that records only a sentence
+   * cannot be acted on — somebody has to re-type what was agreed to.
+   */
+  payload: ApprovalPayload | null
   state: 'pending' | 'granted' | 'refused'
   decidedAt: string | null
   createdAt: string
 }
+
+export type ApprovalPayload =
+  | { do: 'hire'; role: string; name: string; charter: string }
+  | { do: 'nothing' }

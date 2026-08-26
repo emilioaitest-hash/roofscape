@@ -287,6 +287,38 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
       }),
   },
   {
+    name: 'propose_hire',
+    description:
+      'Propose taking on a new member of staff. It goes to the owner, and the floor is only filled if they agree. Make the case in three sentences: what work keeps arriving, why nobody here can take it, and what changes once the floor is filled.',
+    shape: {
+      role: z.enum([
+        'manager', 'hiring', 'coder', 'reviewer', 'researcher',
+        'writer', 'designer', 'marketer', 'ops', 'curator',
+      ]),
+      name: z.string().describe('A short human name for them.'),
+      why: z.string().describe('The case for the hire, in three sentences.'),
+      charter: z.string().optional().describe('Their instructions. Leave empty to use the standard ones for the role.'),
+    },
+    run: async (context, input) => {
+      const role = input.role as string
+      const approval = context.store.requestApproval({
+        kind: 'hire',
+        by: context.floor,
+        intent: `Hire ${input.name} as ${role}. ${input.why}`,
+        payload: {
+          do: 'hire',
+          role,
+          name: input.name as string,
+          charter: (input.charter as string | undefined) ?? '',
+        },
+      })
+      return {
+        proposed: approval.id,
+        note: 'The owner decides. Nothing is filled until they do, so do not plan around it.',
+      }
+    },
+  },
+  {
     name: 'finish',
     description:
       'Declare the work done and hand back the result. Call this exactly once, at the end. If you could not finish, say so plainly here rather than claiming otherwise.',
@@ -312,7 +344,9 @@ export const TOOL_NAMES = TOOL_DEFINITIONS.map((d) => d.name)
 /** A sensible tool row per role. A judge that can write is not a judge. */
 export const TOOLS_FOR_ROLE: Record<string, readonly string[]> = {
   manager: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'assign_task', 'ask_colleague', 'ask_owner', 'finish'],
-  hiring: ['read_file', 'list_dir', 'recall', 'remember', 'ask_owner', 'finish'],
+  // The manager may ask for a hire too, but the case is the hiring manager's to
+  // make; this is here so a building with no hiring floor is not stuck.
+  hiring: ['read_file', 'list_dir', 'recall', 'remember', 'propose_hire', 'ask_owner', 'finish'],
   // A reviewer holds nothing that writes — not even a shell, because a shell
   // can write a file. See docs/decisions/0010.
   reviewer: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'finish'],
