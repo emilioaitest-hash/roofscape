@@ -1,6 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "dist" },
+  "compilerOptions": { "rootDir": "src", "outDir": "dist",
+    // Kept inside dist so that deleting dist really does mean a rebuild.
+    // Left outside, a stale build-info file convinces tsc there is nothing to
+    // do and the next test run finds no tests at all.
+    "tsBuildInfoFile": "dist/.tsbuildinfo" },
   "include": ["src/**/*.ts"],
   "references": [{ "path": "../../packages/core" }]
 }
