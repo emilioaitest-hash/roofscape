@@ -6,6 +6,7 @@ import { breakGround, hire, setCharter } from './commands/manage.js'
 import { goal, lobby, decide } from './commands/work.js'
 import { doctor, providerAdd, archives, curateArchives } from './commands/setup.js'
 import { post } from './commands/post.js'
+import { serve } from './commands/serve.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
@@ -27,6 +28,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('archives')} [query]                   read what the building remembers
   ${bold('curate')}                             send the curator down to tidy them
   ${bold('provider')} add <name> [--env VAR]    connect a model provider
+  ${bold('serve')} [--port N]                  start the service and open the dashboard
   ${bold('doctor')}                             check that everything it needs is here
 
 ${dim('Most commands take --building to say which one, when you have more than one.')}
@@ -59,6 +61,9 @@ async function main(): Promise<void> {
       provider: { type: 'string', short: 'p' },
       model: { type: 'string', short: 'm' },
       engine: { type: 'string', short: 'e' },
+      port: { type: 'string' },
+      host: { type: 'string' },
+      open: { type: 'boolean' },
       key: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
     },
@@ -70,6 +75,7 @@ async function main(): Promise<void> {
     building?: string; workspace?: string; charter?: string
     name?: string; env?: string; key?: string; yes?: boolean
     provider?: string; model?: string; engine?: string
+    port?: string; host?: string; open?: boolean
   }
 
   switch (command) {
@@ -108,6 +114,15 @@ async function main(): Promise<void> {
       return post(first, opts)
     case 'curate':
       return curateArchives(opts)
+    case 'serve':
+    case 'open':
+      return serve({
+        ...(opts.port ? { port: opts.port } : {}),
+        ...(opts.host ? { host: opts.host } : {}),
+        // parseArgs has no notion of --no-x, and a headless start is exactly
+        // what you want on a server. Read it literally.
+        open: !argv.includes('--no-open'),
+      })
     case 'doctor':
     case 'check':
       return doctor()

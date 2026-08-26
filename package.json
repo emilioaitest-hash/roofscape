@@ -10,7 +10,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "tsc --build",
+    "build": "tsc --build && node scripts/postbuild.mjs",
     "typecheck": "tsc --build --force",
     "test": "npm run build && node scripts/test.mjs"
   },
