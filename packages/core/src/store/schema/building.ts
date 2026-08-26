@@ -130,4 +130,20 @@ export const BUILDING_MIGRATIONS: readonly Migration[] = [
       alter table approvals add column payload text;
     `,
   },
+  {
+    id: 4,
+    name: 'who is working this building',
+    sql: `
+      -- A claim, held while a goal is being worked, so that the daemon and the
+      -- terminal cannot both set a manager going at once. It expires rather
+      -- than being merely released: a process that dies cannot tidy up, and a
+      -- claim nobody can clear would lock the building for ever.
+      create table claim (
+        id          integer primary key check (id = 1),
+        holder      text not null,
+        claimed_at  text not null,
+        expires_at  text not null
+      );
+    `,
+  },
 ]

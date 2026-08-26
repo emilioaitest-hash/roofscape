@@ -324,6 +324,54 @@ export class BuildingStore {
     )!.n ?? 0
   }
 
+  // ---- working the building ----------------------------------------------
+
+  /**
+   * Claim this building for a stretch of work, or find out who holds it.
+   *
+   * The daemon runs standing orders while nobody is watching, and the owner may
+   * type a goal at the same moment. Two managers assigning at once produces
+   * duplicate work and a baffling transcript.
+   *
+   * The claim expires rather than only being released, because a process that
+   * is killed cannot tidy up, and a claim nobody can clear locks the building
+   * for good.
+   */
+  claim(holder: string, seconds = 300, at: Date = new Date()): { ok: true } | { ok: false; heldBy: string } {
+    const held = getAs<{ holder: string; expires_at: string }>(
+      this.db.prepare('select holder, expires_at from claim where id = 1'),
+    )
+    if (held && held.expires_at > at.toISOString() && held.holder !== holder) {
+      return { ok: false, heldBy: held.holder }
+    }
+    const expires = new Date(at.getTime() + seconds * 1000).toISOString()
+    this.db
+      .prepare(
+        `insert into claim (id, holder, claimed_at, expires_at) values (1, ?, ?, ?)
+         on conflict (id) do update set holder = excluded.holder, claimed_at = excluded.claimed_at, expires_at = excluded.expires_at`,
+      )
+      .run(holder, at.toISOString(), expires)
+    return { ok: true }
+  }
+
+  /** Push the expiry out. Called while long work is still going on. */
+  renewClaim(holder: string, seconds = 300, at: Date = new Date()): void {
+    this.db
+      .prepare('update claim set expires_at = ? where id = 1 and holder = ?')
+      .run(new Date(at.getTime() + seconds * 1000).toISOString(), holder)
+  }
+
+  releaseClaim(holder: string): void {
+    this.db.prepare('delete from claim where id = 1 and holder = ?').run(holder)
+  }
+
+  claimHolder(at: Date = new Date()): string | null {
+    const held = getAs<{ holder: string; expires_at: string }>(
+      this.db.prepare('select holder, expires_at from claim where id = 1'),
+    )
+    return held && held.expires_at > at.toISOString() ? held.holder : null
+  }
+
   // ---- the archives ------------------------------------------------------
 
   remember(input: RememberInput): MemoryRecord {

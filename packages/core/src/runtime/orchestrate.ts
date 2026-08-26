@@ -10,6 +10,14 @@ import type { Building, Floor } from '../domain/building.js'
 import type { Task } from '../domain/work.js'
 import type { EscalationKind } from '../tools/context.js'
 
+/** Thrown when somebody else already has the building. */
+export class BuildingBusyError extends Error {
+  constructor(readonly building: string, readonly heldBy: string) {
+    super(`${building} is already being worked on by ${heldBy}. Wait for it to finish, or look at: roofscape building`)
+    this.name = 'BuildingBusyError'
+  }
+}
+
 export interface OrchestrationDeps {
   building: Building
   store: BuildingStore
@@ -19,6 +27,8 @@ export interface OrchestrationDeps {
   onEvent?: (floor: Floor, event: TurnEvent) => void
   /** See TurnRequest.resolveModel. Passed through to every turn. */
   resolveModel?: TurnRequest['resolveModel']
+  /** Who is asking, for the claim. Defaults to this process. */
+  holder?: string
 }
 
 export interface GoalOutcome {
@@ -81,6 +91,13 @@ export async function pursueGoal(
   // A budget that is merely advisory is not a budget. This one was stored on
   // every building and read by nothing at all, which is worse than not having
   // it: the owner believes there is a ceiling.
+  // One at a time. The daemon runs standing orders while nobody is watching and
+  // the owner may type a goal at the same moment; two managers assigning at once
+  // makes duplicate work and an unreadable transcript.
+  const holder = deps.holder ?? `pid:${process.pid}`
+  const claimed = store.claim(holder)
+  if (!claimed.ok) throw new BuildingBusyError(building.name, claimed.heldBy)
+
   const allowance = building.budget.monthlyTokens
   if (allowance !== null) {
     const spent = store.spentThisMonth()
@@ -92,6 +109,12 @@ export async function pursueGoal(
   const before = store.spentSince('1970-01-01T00:00:00.000Z')
   const workspace = new Workspace(building.workspace)
 
+  // Renewed as the work goes on, so a long goal does not have its claim expire
+  // under it — and a goal that dies stops renewing and frees the building.
+  const renewal = setInterval(() => store.renewClaim(holder), 60_000)
+  renewal.unref()
+
+  try {
   report(`${manager.name} is reading the goal…`)
   const managerTurn = await runFloorTurn({
     building, store, credentials, floor: manager, task: null,
@@ -236,6 +259,10 @@ export async function pursueGoal(
     worked,
     outstanding: store.tasks({ state: 'queued' }).length,
     tokensSpent: store.spentSince('1970-01-01T00:00:00.000Z') - before,
+  }
+  } finally {
+    clearInterval(renewal)
+    store.releaseClaim(holder)
   }
 }
 

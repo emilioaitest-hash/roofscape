@@ -249,6 +249,10 @@ export function buildApi(events: EventStream): Router {
 
       const store = BuildingStore.open(building.id)
       const empty = store.headcount() === 0
+      // The in-memory flag only knows about this process. Somebody at a terminal
+      // holds the claim in the database, and the endpoint should refuse rather
+      // than start and fail a moment later on the stream.
+      const heldBy = store.claimHolder()
       // Checked here as well as inside the run: without it the caller is told
       // the work started and then watches it fail on the stream a moment later,
       // which is a worse answer than a refusal.
@@ -256,6 +260,9 @@ export function buildApi(events: EventStream): Router {
       const spent = allowance === null ? 0 : store.spentThisMonth()
       store.close()
 
+      if (heldBy !== null) {
+        throw new HttpError(409, `${building.name} is already being worked on (${heldBy}).`)
+      }
       if (empty) throw new HttpError(422, `${building.name} has nobody in it yet.`)
       if (allowance !== null && spent >= allowance) {
         throw new HttpError(

@@ -129,3 +129,57 @@ test('a listener that has gone away does not break the ones that have not', () =
   assert.equal(events.watching, 1, 'the dead one is dropped')
   stopBroken(); stopWorking()
 })
+
+test('a second service on the same data directory is refused', async () => {
+  // Two would each run the ticker, so every standing order would fire twice and
+  // be paid for twice — a fault that shows up as a bill rather than an error.
+  const { mkdtempSync, rmSync, writeFileSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { claimSingleInstance, AlreadyRunningError } = await import('./single.js')
+
+  const home = mkdtempSync(join(tmpdir(), 'roofscape-lock-'))
+  const had = process.env.ROOFSCAPE_HOME
+  process.env.ROOFSCAPE_HOME = home
+  try {
+    const first = claimSingleInstance()
+    // A live pid that is not us: the test runner's parent will do.
+    writeFileSync(join(home, 'daemon.pid'), String(process.ppid))
+    assert.throws(() => claimSingleInstance(), (error: unknown) => {
+      assert.ok(error instanceof AlreadyRunningError)
+      assert.match(error.message, /already running/)
+      assert.match(error.message, /twice/, 'and says why it matters')
+      return true
+    })
+    first.release()
+  } finally {
+    if (had === undefined) delete process.env.ROOFSCAPE_HOME
+    else process.env.ROOFSCAPE_HOME = had
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('a lock left behind by a killed service does not block the next one', async () => {
+  // A crash cannot tidy up after itself. Refusing to start because of a file
+  // nobody is behind would turn one crash into a permanent outage.
+  const { mkdtempSync, rmSync, writeFileSync, existsSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { claimSingleInstance } = await import('./single.js')
+
+  const home = mkdtempSync(join(tmpdir(), 'roofscape-stale-'))
+  const had = process.env.ROOFSCAPE_HOME
+  process.env.ROOFSCAPE_HOME = home
+  try {
+    // A pid that is almost certainly not running.
+    writeFileSync(join(home, 'daemon.pid'), '999999')
+    const held = claimSingleInstance()
+    assert.ok(existsSync(join(home, 'daemon.pid')), 'and it now holds the lock itself')
+    held.release()
+    assert.equal(existsSync(join(home, 'daemon.pid')), false, 'releasing clears it')
+  } finally {
+    if (had === undefined) delete process.env.ROOFSCAPE_HOME
+    else process.env.ROOFSCAPE_HOME = had
+    rmSync(home, { recursive: true, force: true })
+  }
+})

@@ -319,3 +319,65 @@ test('an id is still short enough to read and match on a prefix', () => {
   assert.match(id, /^tsk_[a-z2-9]{12}$/)
   assert.ok(id.length <= 16, 'and short enough to sit in a table')
 })
+
+test('only one thing can work a building at a time', () => {
+  // The daemon runs standing orders while nobody is watching, and the owner may
+  // type a goal at the same moment. Two managers assigning at once makes
+  // duplicate work and an unreadable transcript.
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    assert.equal(b.claimHolder(), null, 'nobody holds it to begin with')
+
+    assert.deepEqual(b.claim('daemon'), { ok: true })
+    assert.equal(b.claimHolder(), 'daemon')
+
+    const second = b.claim('cli')
+    assert.equal(second.ok, false)
+    assert.equal(second.ok === false && second.heldBy, 'daemon', 'and it says who has it')
+
+    assert.deepEqual(b.claim('daemon'), { ok: true }, 'the holder may re-take its own claim')
+
+    b.releaseClaim('daemon')
+    assert.deepEqual(b.claim('cli'), { ok: true }, 'and once released anyone may have it')
+    b.close()
+  } finally { cleanup() }
+})
+
+test('a claim expires, so a killed process cannot lock a building for ever', () => {
+  // A process that is killed cannot tidy up. A claim only ever released by hand
+  // would turn one crash into a building nobody can use again.
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const now = new Date('2026-03-04T09:00:00Z')
+    b.claim('dead-process', 300, now)
+
+    const during = new Date(now.getTime() + 200_000)
+    assert.equal(b.claim('cli', 300, during).ok, false, 'still held while it is live')
+
+    const after = new Date(now.getTime() + 301_000)
+    assert.equal(b.claimHolder(after), null, 'and gone once it lapses')
+    assert.deepEqual(b.claim('cli', 300, after), { ok: true })
+    b.close()
+  } finally { cleanup() }
+})
+
+test('renewing keeps a long piece of work from losing its claim', () => {
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const now = new Date('2026-03-04T09:00:00Z')
+    b.claim('worker', 300, now)
+
+    const later = new Date(now.getTime() + 250_000)
+    b.renewClaim('worker', 300, later)
+
+    const past = new Date(now.getTime() + 400_000)
+    assert.equal(b.claimHolder(past), 'worker', 'renewal pushed the expiry out')
+
+    b.renewClaim('somebody-else', 3000, past)
+    assert.equal(b.claimHolder(past), 'worker', 'and only the holder may renew it')
+    b.close()
+  } finally { cleanup() }
+})

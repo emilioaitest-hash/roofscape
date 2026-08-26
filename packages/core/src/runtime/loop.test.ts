@@ -398,3 +398,55 @@ test("the building's per-task ceiling is applied to whatever the manager assigne
     s.cleanup()
   }
 })
+
+test('a second goal on a building already being worked is refused', async () => {
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    s.store.claim('the-daemon')
+
+    await assert.rejects(
+      () => pursueGoal(
+        { building: s.building, store: s.store, credentials: s.skyline, ask: async () => false,
+          report: () => {}, holder: 'the-terminal',
+          resolveModel: () => scriptedModel([[{ text: 'never asked' }]]) },
+        'Do a thing',
+      ),
+      (error: unknown) => {
+        assert.match((error as Error).message, /already being worked on by the-daemon/)
+        return true
+      },
+    )
+  } finally { s.cleanup() }
+})
+
+test('a goal releases the building when it is done, even if it failed', async () => {
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+
+    const scripts = new Map([
+      ['m', scriptedModel([[{ tool: 'finish', input: { summary: 'Nothing to do.', artifacts: [], succeeded: true } }]])],
+    ])
+    await pursueGoal(
+      { building: s.building, store: s.store, credentials: s.skyline, ask: async () => false,
+        report: () => {}, holder: 'first', resolveModel: (p) => scripts.get(p.model)! },
+      'Have a look',
+    )
+    assert.equal(s.store.claimHolder(), null, 'the building is free again')
+
+    // And a goal whose model will not answer must free it too, or one bad run
+    // locks the building. The turn does not throw — the runtime catches a model
+    // failure and reports it — so what matters is the claim, not an exception.
+    const failed = await pursueGoal(
+      { building: s.building, store: s.store, credentials: s.skyline, ask: async () => false,
+        report: () => {}, holder: 'second',
+        resolveModel: () => { throw new Error('the provider is on fire') } },
+      'Break',
+    )
+    assert.match(failed.managerSummary, /on fire/, 'and it says what went wrong')
+    assert.equal(s.store.claimHolder(), null, 'still free after a failure')
+  } finally { s.cleanup() }
+})

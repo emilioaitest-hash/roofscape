@@ -7,6 +7,7 @@ import { BRAND, dataRoot } from '@app/core'
 import { buildApi } from './api.js'
 import { startTicker } from './ticker.js'
 import { recoverInterruptedWork } from './recover.js'
+import { claimSingleInstance, AlreadyRunningError } from './single.js'
 import { EventStream } from './events.js'
 import { HttpError, readJson } from './router.js'
 import { daemonToken, tokenMatches, bearerFrom } from './auth.js'
@@ -21,6 +22,19 @@ import { daemonToken, tokenMatches, bearerFrom } from './auth.js'
  */
 const PORT = Number(process.env.ROOFSCAPE_PORT ?? 7717)
 const HOST = process.env.ROOFSCAPE_HOST ?? '127.0.0.1'
+
+// One service per data directory: two would each run the ticker, so every
+// standing order would fire twice and be paid for twice.
+let lock
+try {
+  lock = claimSingleInstance()
+} catch (error) {
+  if (error instanceof AlreadyRunningError) {
+    process.stderr.write(`\n${error.message}\n\n`)
+    process.exit(1)
+  }
+  throw error
+}
 
 const events = new EventStream()
 const api = buildApi(events)
@@ -128,10 +142,15 @@ server.listen(PORT, HOST, () => {
   }
 })
 
+// A crash still leaves the file behind; the next start finds nothing alive
+// behind it and clears it. This is for the ordinary exit.
+process.on('exit', () => lock.release())
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     process.stdout.write('\nShutting down.\n')
     stopTicker()
+    lock.release()
     events.closeAll()
     server.close(() => process.exit(0))
     // A goal in flight can hold the process open; do not wait forever for it.

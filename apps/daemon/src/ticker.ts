@@ -55,6 +55,15 @@ function run(events: EventStream): void {
         continue
       }
 
+      const store0 = BuildingStore.open(building.id)
+      const heldBy = store0.claimHolder()
+      store0.close()
+      if (heldBy !== null) {
+        // Somebody at a terminal has it. Leave the order due and try later:
+        // firing it now would only fail on the claim anyway.
+        continue
+      }
+
       const store = BuildingStore.open(building.id)
       const staffed = store.headcount() > 0
       store.close()
