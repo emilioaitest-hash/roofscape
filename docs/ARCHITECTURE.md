@@ -123,7 +123,11 @@ single exception, because tidying is its whole job.
 
 **Four layers.**
 
-1. *Working* — the current session, compressed past a threshold.
+1. *Working* — one task's own conversation, trimmed past a threshold. The
+   archives keep the cost of a *turn* flat as history grows; they do nothing for
+   the inside of a single task, where every step otherwise carries every earlier
+   step's output. Old tool results are shortened rather than dropped, because a
+   tool call with no answer is an exchange providers refuse.
 2. *Episodic* — what happened. Tasks, decisions, outcomes, timestamped.
 3. *Semantic* — durable distilled facts. "Deploy target is Fly, not Vercel."
 4. *Procedural* — playbooks. How this building does a release, in the steps that

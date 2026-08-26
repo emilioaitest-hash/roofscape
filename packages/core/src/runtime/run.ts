@@ -5,6 +5,7 @@ import { buildToolSet, TOOLS_FOR_ROLE } from '../tools/toolset.js'
 import type { AgentContext, EscalationKind } from '../tools/context.js'
 import { resolveLanguageModel, type Credentials } from '../providers/resolve.js'
 import { runClaudeTurn } from './claudeEngine.js'
+import { compressWorkingMemory } from './working.js'
 import type { Workspace } from '../tools/workspace.js'
 import type { BuildingStore } from '../store/buildingStore.js'
 import type { Building, Floor } from '../domain/building.js'
@@ -144,6 +145,20 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
       tools,
       abortSignal: deadline,
       maxOutputTokens: 8000,
+      // Working memory. Without this a long task pays for every earlier step's
+      // output on every later step, and a twenty-minute-old `search` result is
+      // charged for again and again.
+      prepareStep: ({ messages: soFar }) => {
+        const compressed = compressWorkingMemory(soFar)
+        if (compressed.saved > 0) {
+          request.onEvent?.({
+            kind: 'step',
+            detail: `trimmed ${compressed.saved.toLocaleString()} characters of earlier tool output`,
+          })
+          return { messages: compressed.messages }
+        }
+        return {}
+      },
       stopWhen: [
         stepCountIs(guard.maxSteps),
         () => shouldStop(state, guard),
