@@ -51,15 +51,24 @@ send the curator down — all from the page, none of it needing the CLI. The art
 comes from the same renderer the terminal uses, so the two cannot drift.
 Outstanding: the Tauri shell around it, and an installer.*
 
+## The lobby  ✅ done
+Not a numbered milestone — it was reserved in the architecture from the start and
+kept being deferred. The concierge sees every building, reads any archive, and
+hands work to whichever building's job it is. It holds nothing that can change
+anything, because somebody who can see everything should be able to alter very
+little. In the terminal as `roofscape ask`, and on the dashboard.
+
 ## M4 — Always on
 Docker image, VPS deployment, worker registration with capability tags so
 machine-specific tasks wait for the right machine. Phone access as a PWA.
 
 **Done when** work completes overnight with every local machine shut.
 
-*Done so far: the daemon, and standing orders — `--every daily --at 09:00`,
-checked every thirty seconds, catching up once rather than seven times after a
-machine has been asleep. Outstanding: a Docker image and somewhere to put it.*
+*Done so far: the daemon; standing orders — `--every daily --at 09:00`, checked
+every thirty seconds, catching up once rather than seven times after a machine
+has been asleep; and a Docker image with a deploy guide. Outstanding: actually
+building that image, which needs a machine with Docker on it — see the last
+section of `docs/DEPLOYING.md`, which says plainly that it has never been run.*
 
 ## M5 — Other people
 Multi-tenancy, onboarding, bring-your-own-credentials, billing, licensing, and

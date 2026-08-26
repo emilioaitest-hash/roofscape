@@ -97,6 +97,15 @@
   </section>
 
   <section class="panel">
+    <h2>Ask the concierge <span class="dim">— sees every building, changes nothing</span></h2>
+    <form class="inline" id="askForm">
+      <input type="text" id="askText" placeholder="What is everyone working on?" autocomplete="off">
+      <button class="go" type="submit" id="askGo">Ask</button>
+    </form>
+    <div id="answer" style="margin-top:12px; white-space:pre-wrap"></div>
+  </section>
+
+  <section class="panel">
     <h2>Put a goal to it <span class="dim" id="goalWho"></span></h2>
     <form class="inline" id="goalForm">
       <input type="text" id="goalText" placeholder="Add a farewell function to greet.js" autocomplete="off">
@@ -352,6 +361,27 @@ el('hireForm').onsubmit = async (event) => {
     toast(`${floor.name} joins as ${floor.role}.`)
     refreshAll()
   } catch (error) { oops(error) }
+}
+
+el('askForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const question = el('askText').value.trim()
+  if (!question) return
+  el('askGo').disabled = true
+  el('askGo').textContent = 'Looking…'
+  el('answer').textContent = ''
+  try {
+    const result = await api('/api/ask', { method: 'POST', body: JSON.stringify({ question }) })
+    el('answer').textContent = result.answer
+    el('askText').value = ''
+    refreshAll()
+  } catch (error) {
+    oops(error)
+    el('answer').textContent = ''
+  } finally {
+    el('askGo').disabled = false
+    el('askGo').textContent = 'Ask'
+  }
 }
 
 el('goalForm').onsubmit = async (event) => {

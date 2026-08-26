@@ -1,7 +1,7 @@
 import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
-  parseEvery, parseAtTime, describeSchedule,
+  parseEvery, parseAtTime, describeSchedule, ask,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
 } from '@app/core'
@@ -275,6 +275,44 @@ export function buildApi(events: EventStream): Router {
         ...(input.approveEverything === true ? { approveEverything: true } : {}),
       })
       return { started: true, building: building.id, watch: '/api/events' }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * Ask the concierge. Answers immediately; anything it hands to a building runs
+   * on afterwards and is watched on the event stream like any other goal.
+   */
+  router.post('/api/ask', async (ctx) => {
+    const input = await ctx.body<{ question?: string }>()
+    if (!input.question) throw badRequest('What would you like to know?')
+
+    const sky = skyline()
+    try {
+      const result = await ask({
+        question: input.question,
+        credentials: sky,
+        owner: sky.owner(),
+        onTool: (name) => events.emit({ kind: 'looking', detail: name }),
+        startGoal: async (buildingId, goal) => {
+          const target = sky.get(buildingId)
+          if (!target) return `There is no building ${buildingId}.`
+          if (working.has(target.id)) return `${target.name} is already working on something.`
+
+          const store = BuildingStore.open(target.id)
+          const staffed = store.headcount() > 0
+          const heldBy = store.claimHolder()
+          store.close()
+          if (!staffed) return `${target.name} has nobody in it yet.`
+          if (heldBy !== null) return `${target.name} is already being worked on.`
+
+          startGoal(events, target, goal, { source: 'concierge' })
+          return `Handed to ${target.name}. It is being worked on now.`
+        },
+      })
+      events.emit({ kind: 'answered', detail: result.answer.slice(0, 200) })
+      return result
     } finally {
       sky.close()
     }
