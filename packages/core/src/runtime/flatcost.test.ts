@@ -98,24 +98,56 @@ test('pinned notes are the one thing that does cost every turn', () => {
   }
 })
 
-test('recall stays fast enough to use when the archives are large', () => {
+test('recall of a specific thing does not slow down as the archives grow', () => {
+  // Measured against itself, not the clock: the suite runs ten files at once and
+  // an absolute budget failed at random, which teaches you to ignore a red build.
+  //
+  // The notes are deliberately varied. An earlier version made every note
+  // contain the search terms, and then asserted that recall stayed flat — but
+  // FTS5 scales with the number of *matches*, not the size of the corpus, so
+  // that test demanded something untrue and failed about half the time. A real
+  // query is selective, and that is the case worth defending.
   const { store, cleanup } = scratch()
   try {
     store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: POSTING })
-    for (let i = 0; i < 10_000; i++) {
-      store.remember({ scope: 'building', layer: 'episodic', text: `Note ${i} about the results table and the deploy target.` })
-    }
     store.remember({ scope: 'building', layer: 'semantic', text: 'The deploy target is Fly, not Vercel.' })
 
-    const started = Date.now()
-    const hits = store.recallByKeyword('deploy target Vercel', { limit: 6 })
-    const took = Date.now() - started
+    const topics = ['results table', 'race entries', 'club roster', 'photo gallery', 'email digest', 'ticket sales']
+    const fill = (from: number, to: number) => {
+      for (let i = from; i < to; i++) {
+        store.remember({
+          scope: 'building',
+          layer: 'episodic',
+          text: `Note ${i} about the ${topics[i % topics.length]} and what it needed.`,
+        })
+      }
+    }
 
-    assert.ok(hits.length > 0, 'it finds something')
-    assert.ok(took < 500, `recall over 10,001 notes took ${took}ms`)
+    fill(0, 200)
+    const small = time(() => store.recallByKeyword('Vercel deploy', { limit: 6 }))
+
+    fill(200, 10_000)
+    const large = time(() => store.recallByKeyword('Vercel deploy', { limit: 6 }))
+
+    assert.ok(store.recallByKeyword('Vercel', { limit: 6 }).length > 0, 'it still finds the needle')
+    assert.ok(
+      large < Math.max(small * 20, 10),
+      `recall went from ${small.toFixed(2)}ms at 201 notes to ${large.toFixed(2)}ms at 10,001 — that is not an index`,
+    )
     cleanup()
   } catch (error) {
     cleanup()
     throw error
   }
 })
+
+/** Median of a few runs, so one unlucky scheduling slice does not decide it. */
+function time(work: () => unknown): number {
+  const runs: number[] = []
+  for (let i = 0; i < 5; i++) {
+    const started = performance.now()
+    work()
+    runs.push(performance.now() - started)
+  }
+  return runs.sort((a, b) => a - b)[2]!
+}
