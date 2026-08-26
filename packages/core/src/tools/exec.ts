@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { judge } from './shell.js'
+import { environmentFor } from './environment.js'
 import { cap, type AgentContext } from './context.js'
 
 export interface ExecResult {
@@ -51,7 +52,9 @@ function run(command: string, cwd: string, timeoutSeconds: number): Promise<Exec
   return new Promise((resolve) => {
     const child = spawn('/bin/sh', ['-c', command], {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0', CI: '1' },
+      // Not `process.env`. An agent's command used to be able to read every key
+      // the owner had. See environment.ts.
+      env: environmentFor(),
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 

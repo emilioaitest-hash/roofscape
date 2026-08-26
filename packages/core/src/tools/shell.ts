@@ -54,6 +54,13 @@ export function judge(command: string): Verdict {
     }
   }
 
+  // An unterminated quote would make everything after it look like text, which
+  // is a way to hide a second command from the check below. A shell cannot run
+  // it either, so refusing costs nothing that was going to work.
+  if (unbalanced(trimmed)) {
+    return { allow: false, reason: 'Refused: that command has an unclosed quote.', escalate: false }
+  }
+
   for (const segment of segments(trimmed)) {
     const head = firstWord(segment)
     if (head === '') continue
@@ -71,9 +78,79 @@ export function judge(command: string): Verdict {
   return { allow: true }
 }
 
-/** Split on the operators that start a new command, so each head is checked. */
-const segments = (command: string): string[] =>
-  command.split(/(?:\|\||&&|[;|&])/).map((s) => s.trim()).filter(Boolean)
+/**
+ * Split on the operators that start a new command, so each head is checked —
+ * but only where those operators are really operators.
+ *
+ * A naive split refused `node -e "const m = await import('./x.js'); console.log(m.two)"`,
+ * because the semicolon inside the quotes looked like the start of a second
+ * command whose name was `console.log(m.two)"`. Ordinary work is full of
+ * quoted semicolons and pipes, and a filter that rejects real commands is one
+ * people learn to route around.
+ */
+/** True when the line ends inside a quote that was never closed. */
+export function unbalanced(command: string): boolean {
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i]!
+    if (quote) {
+      if (quote === '"' && char === '\\' && i + 1 < command.length) i++
+      else if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'") quote = char
+    else if (char === '\\' && i + 1 < command.length) i++
+  }
+  return quote !== null
+}
+
+function segments(command: string): string[] {
+  const out: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i]!
+
+    if (quote) {
+      current += char
+      // A backslash escapes the next character inside double quotes only;
+      // inside single quotes nothing is special, which is what makes the
+      // '\'' idiom work.
+      if (quote === '"' && char === '\\' && i + 1 < command.length) current += command[++i]!
+      else if (char === quote) quote = null
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char
+      current += char
+      continue
+    }
+
+    if (char === '\\' && i + 1 < command.length) {
+      current += char + command[++i]!
+      continue
+    }
+
+    const pair = command.slice(i, i + 2)
+    if (pair === '&&' || pair === '||') {
+      out.push(current)
+      current = ''
+      i += 1
+      continue
+    }
+    if (char === ';' || char === '|' || char === '&') {
+      out.push(current)
+      current = ''
+      continue
+    }
+    current += char
+  }
+
+  out.push(current)
+  return out.map((segment) => segment.trim()).filter(Boolean)
+}
 
 /** The command being run, past any leading `VAR=value` assignments. */
 function firstWord(segment: string): string {
