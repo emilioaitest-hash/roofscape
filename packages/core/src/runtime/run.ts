@@ -4,6 +4,7 @@ import { newGuardState, observe, shouldStop, loopingOn, explainStop, type Guard,
 import { buildToolSet, TOOLS_FOR_ROLE } from '../tools/toolset.js'
 import type { AgentContext, EscalationKind } from '../tools/context.js'
 import { resolveLanguageModel, type Credentials } from '../providers/resolve.js'
+import { runClaudeTurn } from './claudeEngine.js'
 import type { Workspace } from '../tools/workspace.js'
 import type { BuildingStore } from '../store/buildingStore.js'
 import type { Building, Floor } from '../domain/building.js'
@@ -82,6 +83,42 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
   const messages: ModelMessage[] = [
     { role: 'user', content: task ? taskPrompt(task) : (request.instruction ?? 'Report on where things stand.') },
   ]
+
+  // Two engines, one tool row. Which one ran the turn changes what it cost and
+  // never what the agent could do.
+  if (floor.posting.engine === 'claude-agent-sdk') {
+    const claude = await runClaudeTurn({
+      context,
+      system,
+      prompt: task ? taskPrompt(task) : (request.instruction ?? 'Report on where things stand.'),
+      allowedTools: allowed,
+      maxTurns: guard.maxSteps,
+      timeoutSeconds: guard.timeoutSeconds,
+      ...(floor.posting.model ? { model: floor.posting.model } : {}),
+      onTool: (name) => request.onEvent?.({ kind: 'tool', detail: name }),
+    })
+
+    store.recordSpend({
+      floor: floor.id,
+      task: task?.id ?? null,
+      provider: floor.posting.provider,
+      model: floor.posting.model,
+      inputTokens: claude.inputTokens,
+      outputTokens: claude.outputTokens,
+    })
+
+    const note = claude.error ?? (claude.finished ? 'Finished.' : 'Stopped without calling finish, so the work is not accounted for.')
+    if (!claude.finished) request.onEvent?.({ kind: 'stopped', detail: note })
+
+    return {
+      text: claude.text,
+      finished: claude.finished,
+      usage: { inputTokens: claude.inputTokens, outputTokens: claude.outputTokens },
+      steps: claude.turns,
+      stoppedBy: claude.error ? 'timeout' : null,
+      note,
+    }
+  }
 
   const model = resolveLanguageModel(floor.posting, credentials)
 

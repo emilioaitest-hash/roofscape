@@ -1,5 +1,6 @@
 import type { FloorRole, Posting } from '../domain/building.js'
 import { PROVIDERS, providerSpec } from './catalog.js'
+import { claudeExecutable } from '../runtime/claudeEngine.js'
 
 /**
  * What each role wants from a model. A manager is choosing what to do next and
@@ -76,7 +77,9 @@ export function defaultPosting(role: FloorRole, available: readonly string[]): P
  * identical either way.
  */
 function engineFor(provider: string): Posting['engine'] {
-  return provider === 'anthropic' && process.env.ROOFSCAPE_ENGINE === 'claude' ? 'claude-agent-sdk' : 'direct'
+  if (provider !== 'anthropic') return 'direct'
+  if (process.env.ROOFSCAPE_ENGINE === 'direct') return 'direct'
+  return claudeExecutable() ? 'claude-agent-sdk' : 'direct'
 }
 
 /**
