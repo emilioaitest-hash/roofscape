@@ -190,13 +190,17 @@ export function recordWhatHappened(
     review: Review | null
   },
 ): void {
+  // Kept short on purpose. A note is paid for every time it is recalled, and a
+  // long one also dilutes its own ranking — the words that matter are drowned by
+  // the ones that do not. The first version of this pasted whole review verdicts
+  // in and produced 1,500-character notes.
   const parts = [
-    `${event.assignee.name} (${event.assignee.role}) was asked to: ${event.task.goal}`,
-    event.succeeded ? `Outcome: ${event.summary}` : `It was not finished. ${event.summary}`,
+    `${event.assignee.name} (${event.assignee.role}) was asked to: ${truncate(event.task.goal, 160)}`,
+    event.succeeded ? `Outcome: ${truncate(event.summary, 240)}` : `Not finished: ${truncate(event.summary, 240)}`,
   ]
-  if (event.branch) parts.push(`Left on branch ${event.branch}.`)
+  if (event.branch) parts.push(`On branch ${event.branch}.`)
   if (event.review) {
-    parts.push(`${event.review.by} ${event.review.accepted ? 'accepted' : 'sent it back'}: ${truncate(event.review.verdict, 300)}`)
+    parts.push(`${event.review.by} ${event.review.accepted ? 'accepted it' : 'sent it back'}: ${truncate(firstLine(event.review.verdict), 120)}`)
   }
 
   store.remember({
@@ -250,6 +254,10 @@ async function reviewWork(
   const verdict = turn.finished?.summary ?? turn.note
   return { by: reviewer.name, accepted: /^\s*accept/i.test(verdict), verdict }
 }
+
+/** A verdict's first meaningful line is the verdict; the rest is its working. */
+const firstLine = (text: string): string =>
+  text.split('\n').map((line) => line.trim()).find((line) => line.length > 0) ?? text
 
 const truncate = (text: string, limit: number) =>
   text.length <= limit ? text : `${text.slice(0, limit - 1)}…`

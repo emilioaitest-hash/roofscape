@@ -71,3 +71,33 @@ test('an unfinished task is recorded as unfinished rather than quietly dropped',
     throw error
   }
 })
+
+test('a note stays short enough to be worth recalling', () => {
+  // The first version pasted whole review verdicts in and produced notes of
+  // 1,500 characters. A note is paid for every time it is recalled, and a long
+  // one drowns its own keywords.
+  const { store, cleanup } = scratch()
+  try {
+    const mgr = store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
+    const dev = store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: POSTING })
+    const task = store.assign({ by: mgr.id, to: dev.id, goal: 'G'.repeat(400) })
+
+    recordWhatHappened(store, {
+      task,
+      assignee: dev,
+      summary: 'S'.repeat(900),
+      succeeded: true,
+      branch: 'roofscape/tsk_1',
+      review: { by: 'Vet', accepted: true, verdict: `ACCEPT\n\n${'V'.repeat(900)}` },
+    })
+
+    const note = store.browse({ limit: 1 })[0]!
+    assert.ok(note.text.length < 700, `a note of ${note.text.length} characters is a transcript, not a note`)
+    assert.match(note.text, /ACCEPT/, 'the verdict itself survives the trimming')
+    assert.match(note.text, /Nib/)
+    cleanup()
+  } catch (error) {
+    cleanup()
+    throw error
+  }
+})
