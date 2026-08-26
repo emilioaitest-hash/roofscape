@@ -42,11 +42,11 @@ it. Installer.
 **Done when** someone who cannot code can break ground on a building and follow
 its work.
 
-*Done so far: the daemon, and a dashboard it serves — the skyline, staff, work,
-the approval desk, the archives, and a goal box that streams progress live. The
-art comes from the same renderer the terminal uses, so the two cannot drift.
-Outstanding: breaking ground and hiring from the page rather than the CLI, and
-the Tauri shell around it.*
+*Done so far: the daemon, and a dashboard it serves. Break ground, hire, put a
+goal, approve or refuse, move somebody to another model, search the archives and
+send the curator down — all from the page, none of it needing the CLI. The art
+comes from the same renderer the terminal uses, so the two cannot drift.
+Outstanding: the Tauri shell around it, and an installer.*
 
 ## M4 — Always on
 Docker image, VPS deployment, worker registration with capability tags so

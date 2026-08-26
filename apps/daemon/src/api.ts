@@ -1,6 +1,6 @@
 import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
-  rosterFor, defaultPosting, discoverProviders, describePosting, probeProvider,
+  rosterFor, ROSTER, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
 } from '@app/core'
@@ -326,6 +326,20 @@ export function buildApi(events: EventStream): Router {
       sky.close()
     }
   })
+
+  /** Who can be hired, and what each is for. The hiring screen needs both. */
+  router.get('/api/roles', () => ({
+    roles: ROSTER.map((entry) => ({
+      role: entry.role,
+      name: entry.suggestedName,
+      summary: entry.summary,
+    })),
+  }))
+
+  /** The forms a building passes through, so the page can show what is next. */
+  router.get('/api/tiers', () => ({
+    tiers: allTiers().map((tier) => ({ name: tier.name, blurb: tier.blurb })),
+  }))
 
   router.get('/api/providers', async () => {
     const sky = skyline()

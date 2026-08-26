@@ -7,8 +7,7 @@
 <style>
   :root {
     --bg: #faf9f7; --panel: #ffffff; --ink: #1b1a18; --dim: #6f6a63;
-    --line: #e3ded6; --accent: #7a5c3e; --lit: #d8a33c; --good: #4a7c59; --warn: #b0632c;
-    --radius: 10px;
+    --line: #e3ded6; --accent: #7a5c3e; --lit: #b8860b; --good: #3f6b4d; --warn: #a2551f;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -22,61 +21,59 @@
     font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
   }
   header {
-    padding: 20px 24px; border-bottom: 1px solid var(--line);
+    padding: 18px 24px; border-bottom: 1px solid var(--line);
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
   }
   h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
   .tagline { color: var(--dim); font-size: 13px; }
-  main { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
-  .panel {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 18px 20px;
-  }
+  main { max-width: 1080px; margin: 0 auto; padding: 22px; display: grid; gap: 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
   .panel h2 {
     font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
     color: var(--dim); margin: 0 0 12px; font-weight: 600;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
   }
-  pre.skyline {
-    font: 13px/1.15 ui-monospace, "SF Mono", Menlo, monospace;
-    margin: 0; overflow-x: auto; color: var(--ink); white-space: pre;
-  }
-  .buildings { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .chip {
+  pre.skyline { font: 13px/1.15 ui-monospace, "SF Mono", Menlo, monospace; margin: 0; overflow-x: auto; white-space: pre; }
+  .buildings { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .chip, .mini {
     border: 1px solid var(--line); background: transparent; color: var(--ink);
     border-radius: 999px; padding: 5px 13px; cursor: pointer; font: inherit; font-size: 13px;
   }
-  .chip:hover { border-color: var(--accent); }
+  .chip:hover, .mini:hover { border-color: var(--accent); }
   .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .mini { font-size: 12px; padding: 3px 11px; color: var(--dim); }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: center; }
   .row:last-child { border-bottom: 0; }
   .dim { color: var(--dim); }
   .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
-  form.goal { display: flex; gap: 10px; }
-  input[type=text] {
-    flex: 1; padding: 10px 13px; border-radius: 8px; font: inherit;
+  form.inline { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=text], select {
+    padding: 9px 12px; border-radius: 8px; font: inherit;
     border: 1px solid var(--line); background: var(--bg); color: var(--ink);
   }
-  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input[type=text] { flex: 1; min-width: 160px; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
   button.go {
-    padding: 10px 18px; border-radius: 8px; border: 0; cursor: pointer;
+    padding: 9px 18px; border-radius: 8px; border: 0; cursor: pointer;
     background: var(--accent); color: var(--bg); font: inherit; font-weight: 600;
   }
-  button.go:disabled { opacity: .5; cursor: default; }
-  #log {
-    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
-    max-height: 260px; overflow-y: auto; margin-top: 12px; color: var(--dim);
-  }
+  button.go:disabled { opacity: .45; cursor: default; }
+  #log { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; max-height: 240px; overflow-y: auto; margin-top: 12px; color: var(--dim); }
   #log div { padding: 2px 0; }
-  #log .hi { color: var(--ink); }
-  #log .lit { color: var(--lit); }
+  #log .hi { color: var(--ink); } #log .lit { color: var(--lit); } #log .bad { color: var(--warn); }
   .empty { color: var(--dim); font-style: italic; }
   .pill { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--dim); }
   .approve { display: flex; gap: 6px; }
   .approve button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--ink); }
-  .approve button.yes:hover { border-color: var(--good); color: var(--good); }
-  .approve button.no:hover { border-color: var(--warn); color: var(--warn); }
+  .approve .yes:hover { border-color: var(--good); color: var(--good); }
+  .approve .no:hover { border-color: var(--warn); color: var(--warn); }
+  .hidden { display: none; }
+  .stack { display: grid; gap: 10px; }
+  .note { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .note:last-child { border-bottom: 0; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 18px; border-radius: 999px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -88,14 +85,20 @@
 
 <main>
   <section class="panel">
-    <h2>The skyline</h2>
+    <h2>The skyline <button class="mini" id="showGround">Break ground</button></h2>
     <pre class="skyline" id="art">…</pre>
     <div class="buildings" id="chips"></div>
+    <form class="inline hidden" id="groundForm" style="margin-top:14px">
+      <input type="text" id="gName" placeholder="Name, e.g. Rowing Fans" autocomplete="off" required>
+      <input type="text" id="gPath" placeholder="Workspace, e.g. /Users/you/code/thing" autocomplete="off" required>
+      <input type="text" id="gCharter" placeholder="What is it for?" autocomplete="off">
+      <button class="go" type="submit">Break ground</button>
+    </form>
   </section>
 
   <section class="panel">
-    <h2>Put a goal to it</h2>
-    <form class="goal" id="goalForm">
+    <h2>Put a goal to it <span class="dim" id="goalWho"></span></h2>
+    <form class="inline" id="goalForm">
       <input type="text" id="goalText" placeholder="Add a farewell function to greet.js" autocomplete="off">
       <button class="go" type="submit" id="goalGo">Send</button>
     </form>
@@ -104,7 +107,12 @@
 
   <div class="cols">
     <section class="panel">
-      <h2>Staff</h2>
+      <h2>Staff <button class="mini" id="showHire">Hire</button></h2>
+      <form class="inline hidden stack" id="hireForm" style="margin-bottom:12px">
+        <select id="hRole"></select>
+        <input type="text" id="hName" placeholder="Name (optional)" autocomplete="off">
+        <button class="go" type="submit">Take them on</button>
+      </form>
       <div id="staff"></div>
     </section>
     <section class="panel">
@@ -119,7 +127,11 @@
       <div id="approvals"></div>
     </section>
     <section class="panel">
-      <h2>Archives</h2>
+      <h2>Archives <button class="mini" id="curateGo">Send the curator down</button></h2>
+      <form class="inline" id="searchForm" style="margin-bottom:10px">
+        <input type="text" id="searchText" placeholder="Search what it remembers" autocomplete="off">
+        <button class="mini" type="submit">Look</button>
+      </form>
       <div id="archives"></div>
     </section>
   </div>
@@ -130,7 +142,6 @@ const params = new URLSearchParams(location.search)
 const token = params.get('token') ?? sessionStorage.getItem('roofscape-token') ?? ''
 if (params.get('token')) {
   sessionStorage.setItem('roofscape-token', params.get('token'))
-  // Keep the token out of the address bar and out of the browser history.
   history.replaceState(null, '', location.pathname)
 }
 
@@ -139,79 +150,151 @@ const api = async (path, options = {}) => {
     ...options,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(options.headers ?? {}) },
   })
-  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? response.statusText)
-  return response.json()
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error ?? response.statusText)
+  return body
 }
 
 const el = (id) => document.getElementById(id)
-const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const row = (left, right = '') => `<div class="row"><span>${left}</span><span class="dim">${right}</span></div>`
 let current = null
 
-function line(left, right = '') {
-  return `<div class="row"><span>${left}</span><span class="dim">${right}</span></div>`
+function toast(text) {
+  const node = document.createElement('div')
+  node.className = 'toast'
+  node.textContent = text
+  document.body.append(node)
+  setTimeout(() => node.remove(), 3200)
 }
+
+function say(text, kind = '') {
+  const div = document.createElement('div')
+  div.className = kind
+  div.textContent = text
+  el('log').prepend(div)
+}
+
+const oops = (error) => { say(`— ${error.message}`, 'bad'); toast(error.message) }
 
 async function refreshSkyline() {
   const [{ art }, { buildings }] = await Promise.all([api('/api/skyline/art'), api('/api/skyline')])
   el('art').textContent = art
-  if (!current && buildings.length) current = buildings[0].id
-  el('chips').innerHTML = buildings
-    .map((b) => `<button class="chip" data-id="${esc(b.id)}" aria-pressed="${b.id === current}">
-        ${esc(b.name)} <span class="dim">${b.headcount}</span>${b.working ? ' ●' : ''}</button>`)
-    .join('') || '<span class="empty">Nothing built yet — use the CLI to break ground.</span>'
+  if ((!current || !buildings.some((b) => b.id === current)) && buildings.length) current = buildings[0].id
+  el('chips').innerHTML = buildings.length
+    ? buildings.map((b) => `<button class="chip" data-id="${esc(b.id)}" aria-pressed="${b.id === current}">
+        ${esc(b.name)} <span class="dim">${b.headcount}</span>${b.working ? ' ●' : ''}${b.pendingApprovals ? ' ⚑' : ''}</button>`).join('')
+    : '<span class="empty">Nothing built yet. Break ground above.</span>'
   for (const chip of el('chips').children) {
-    if (chip.dataset) chip.onclick = () => { current = chip.dataset.id; refreshAll() }
+    if (chip.dataset?.id) chip.onclick = () => { current = chip.dataset.id; refreshAll() }
   }
 }
 
 async function refreshBuilding() {
   if (!current) return
   const b = await api(`/api/buildings/${current}`)
+  el('goalWho').textContent = `${b.name} — ${b.tier}`
 
   el('staff').innerHTML = b.staff.length
-    ? b.staff.map((f) => line(`<strong>${esc(f.name)}</strong> <span class="pill">${esc(f.role)}</span>`, esc(f.describes))).join('')
-    : '<span class="empty">Nobody yet.</span>'
+    ? b.staff.map((f) => `<div class="row">
+        <span><strong>${esc(f.name)}</strong> <span class="pill">${esc(f.role)}</span></span>
+        <span class="dim mono" style="cursor:pointer" data-floor="${esc(f.id)}"
+              title="Click to move them to another model">${esc(f.describes)}</span></div>`).join('')
+    : '<span class="empty">Nobody yet. Hire someone.</span>'
+  el('staff').querySelectorAll('[data-floor]').forEach((node) => { node.onclick = () => movePrompt(node.dataset.floor) })
 
   const open = b.tasks.filter((t) => ['queued', 'working', 'awaiting-review'].includes(t.state))
-  const done = b.tasks.filter((t) => t.state === 'done' || t.state === 'awaiting-review').slice(-5).reverse()
+  const done = b.tasks.filter((t) => t.state === 'done').slice(-5).reverse()
   el('work').innerHTML =
-    (open.length ? open.map((t) => line(esc(t.goal.slice(0, 60)), esc(t.state))).join('') : '<span class="empty">Nothing on.</span>') +
-    (done.length ? `<h2 style="margin-top:16px">Finished</h2>` + done.map((t) => {
+    (open.length ? open.map((t) => row(esc(t.goal.slice(0, 58)), esc(t.state))).join('') : '<span class="empty">Nothing on.</span>') +
+    (done.length ? '<div class="dim" style="margin-top:14px;font-size:12px">FINISHED</div>' + done.map((t) => {
       const branch = (t.result?.artifacts ?? []).find((a) => a.startsWith('branch:'))
-      return line(esc(t.goal.slice(0, 54)), branch ? `<span class="mono">${esc(branch.slice(7))}</span>` : '')
+      return row(esc(t.goal.slice(0, 52)), branch ? `<span class="mono">${esc(branch.slice(7))}</span>` : '')
     }).join('') : '')
 
   el('approvals').innerHTML = b.approvals.length
     ? b.approvals.map((a) => `<div class="row"><span>${esc(a.intent)}</span>
         <span class="approve"><button class="yes" data-yes="${esc(a.id)}">Allow</button><button class="no" data-no="${esc(a.id)}">Refuse</button></span></div>`).join('')
     : '<span class="empty">Nothing waiting on you.</span>'
-  el('approvals').querySelectorAll('[data-yes]').forEach((btn) => {
-    btn.onclick = () => decide(btn.dataset.yes, true)
-  })
-  el('approvals').querySelectorAll('[data-no]').forEach((btn) => {
-    btn.onclick = () => decide(btn.dataset.no, false)
-  })
+  el('approvals').querySelectorAll('[data-yes]').forEach((n) => { n.onclick = () => decide(n.dataset.yes, true) })
+  el('approvals').querySelectorAll('[data-no]').forEach((n) => { n.onclick = () => decide(n.dataset.no, false) })
 
-  const a = b.archives
-  el('archives').innerHTML =
-    line('Notes', String(a.total)) + line('Pinned', String(a.pinned)) +
-    line('Expired', String(a.expired)) + line('Output tokens spent', b.spent.toLocaleString())
-
+  if (!el('searchText').value.trim()) await showArchives()
   el('goalGo').disabled = b.working
   el('goalGo').textContent = b.working ? 'Working…' : 'Send'
 }
 
-async function decide(id, granted) {
-  await api(`/api/approvals/${id}`, { method: 'POST', body: JSON.stringify({ granted }) })
-  refreshAll()
+async function showArchives(query) {
+  const path = `/api/buildings/${current}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
+  const { stats, notes } = await api(path)
+  el('archives').innerHTML =
+    `<div class="dim" style="font-size:12px;margin-bottom:8px">${stats.total} notes · ${stats.pinned} pinned · ${stats.expired} expired</div>` +
+    (notes.length
+      ? notes.slice(0, 12).map((n) => `<div class="note"><span class="pill">${esc(n.layer)}</span> ${esc(n.text.slice(0, 190))}</div>`).join('')
+      : '<span class="empty">Nothing found.</span>')
 }
 
-const refreshAll = () => Promise.all([refreshSkyline(), refreshBuilding()]).catch(report)
+async function decide(id, granted) {
+  try {
+    const result = await api(`/api/approvals/${id}`, { method: 'POST', body: JSON.stringify({ granted }) })
+    toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Approved.' : 'Refused.')
+    refreshAll()
+  } catch (error) { oops(error) }
+}
 
-function report(error) {
-  const div = document.createElement('div')
-  div.textContent = `— ${error.message}`
-  el('log').prepend(div)
+async function movePrompt(floorId) {
+  const { providers } = await api('/api/providers')
+  const reachable = providers.filter((p) => p.status.ok)
+  const provider = prompt(`Which provider?\n\nReachable: ${reachable.map((p) => p.name).join(', ') || 'none'}`)
+  if (!provider) return
+  const spec = providers.find((p) => p.name === provider)
+  const model = prompt(`Which model on ${provider}?`, spec?.suggested?.[0] ?? '')
+  if (!model) return
+  try {
+    await api(`/api/buildings/${current}/floors/${floorId}/posting`, {
+      method: 'POST',
+      body: JSON.stringify({ provider, model, engine: provider === 'anthropic' ? 'claude-agent-sdk' : 'direct' }),
+    })
+    toast('Moved.')
+    refreshAll()
+  } catch (error) { oops(error) }
+}
+
+const refreshAll = () => Promise.all([refreshSkyline(), refreshBuilding()]).catch(oops)
+
+el('showGround').onclick = () => el('groundForm').classList.toggle('hidden')
+el('showHire').onclick = () => el('hireForm').classList.toggle('hidden')
+
+el('groundForm').onsubmit = async (event) => {
+  event.preventDefault()
+  try {
+    const building = await api('/api/buildings', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: el('gName').value.trim(),
+        workspace: el('gPath').value.trim(),
+        charter: el('gCharter').value.trim() || undefined,
+      }),
+    })
+    current = building.id
+    el('groundForm').reset()
+    el('groundForm').classList.add('hidden')
+    toast(`${building.name} — ground broken.`)
+    refreshAll()
+  } catch (error) { oops(error) }
+}
+
+el('hireForm').onsubmit = async (event) => {
+  event.preventDefault()
+  try {
+    const floor = await api(`/api/buildings/${current}/hire`, {
+      method: 'POST',
+      body: JSON.stringify({ role: el('hRole').value, name: el('hName').value.trim() || undefined }),
+    })
+    el('hName').value = ''
+    toast(`${floor.name} joins as ${floor.role}.`)
+    refreshAll()
+  } catch (error) { oops(error) }
 }
 
 el('goalForm').onsubmit = async (event) => {
@@ -220,26 +303,47 @@ el('goalForm').onsubmit = async (event) => {
   if (!goal || !current) return
   el('log').innerHTML = ''
   el('goalText').value = ''
-  try {
-    await api(`/api/buildings/${current}/goal`, { method: 'POST', body: JSON.stringify({ goal }) })
-  } catch (error) { report(error) }
+  try { await api(`/api/buildings/${current}/goal`, { method: 'POST', body: JSON.stringify({ goal }) }) }
+  catch (error) { oops(error) }
 }
+
+el('searchForm').onsubmit = (event) => {
+  event.preventDefault()
+  showArchives(el('searchText').value.trim() || undefined).catch(oops)
+}
+
+el('curateGo').onclick = async () => {
+  el('curateGo').disabled = true
+  el('curateGo').textContent = 'Reading…'
+  try {
+    const result = await api(`/api/buildings/${current}/curate`, { method: 'POST' })
+    toast(`${result.before} notes → ${result.after}.`)
+    say(`curator: ${result.summary}`, 'hi')
+  } catch (error) { oops(error) }
+  finally {
+    el('curateGo').disabled = false
+    el('curateGo').textContent = 'Send the curator down'
+    refreshAll()
+  }
+}
+
+api('/api/roles').then(({ roles }) => {
+  el('hRole').innerHTML = roles.map((r) => `<option value="${esc(r.role)}">${esc(r.role)} — ${esc(r.summary)}</option>`).join('')
+}).catch(oops)
 
 const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
 stream.onopen = () => { el('conn').textContent = 'live' }
 stream.onerror = () => { el('conn').textContent = 'reconnecting…' }
 stream.onmessage = (message) => {
   const event = JSON.parse(message.data)
-  const div = document.createElement('div')
-  const loud = ['goal-started', 'goal-finished', 'goal-failed', 'hired', 'ground-broken'].includes(event.kind)
-  div.className = event.kind === 'tool' ? '' : loud ? 'hi' : 'lit'
-  div.textContent = event.kind === 'tool' ? `  · ${event.detail}` : `${event.kind}: ${event.detail ?? ''}`
-  el('log').prepend(div)
+  const loud = ['goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated'].includes(event.kind)
+  say(event.kind === 'tool' ? `  · ${event.detail}` : `${event.kind}: ${event.detail ?? ''}`,
+      event.kind === 'goal-failed' ? 'bad' : event.kind === 'tool' ? '' : loud ? 'hi' : 'lit')
   if (event.kind !== 'tool') refreshAll()
 }
 
 refreshAll()
-setInterval(refreshAll, 15000)
+setInterval(refreshAll, 20000)
 </script>
 </body>
 </html>
