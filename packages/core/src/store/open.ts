@@ -19,42 +19,67 @@ export function openDatabase(path: string, migrations: readonly Migration[]): Da
   if (path !== ':memory:') ensureDir(dirname(path))
   const db = new DatabaseSync(path)
 
+  // Before anything that can contend. Switching to WAL takes an exclusive lock,
+  // and with no busy timeout set yet it fails outright rather than waiting —
+  // so two processes opening the same new database at once had a real chance of
+  // one of them simply erroring. Found by running five writers against one
+  // building; it failed about one run in six.
+  db.exec('pragma busy_timeout = 5000')
   db.exec('pragma journal_mode = wal')
   db.exec('pragma foreign_keys = on')
-  db.exec('pragma busy_timeout = 5000')
   // Durability over speed: an agent's work log is not worth losing to a crash.
   db.exec('pragma synchronous = normal')
 
-  db.exec(`create table if not exists applied_migrations (
-    id integer primary key,
-    name text not null,
-    applied_at text not null
-  )`)
+  migrate(db, migrations)
+  return db
+}
 
-  const seen = new Set(
-    (db.prepare('select id from applied_migrations').all() as Array<{ id: number }>).map((r) => r.id),
-  )
+/**
+ * Apply what has not been applied, under one exclusive lock.
+ *
+ * All of it in a single `begin immediate`, not a transaction per migration: the
+ * race is between reading which have been applied and applying them, so a
+ * second process must not be able to read that list while the first is acting
+ * on it. It waits for the write lock instead, and then finds there is nothing
+ * to do.
+ */
+function migrate(db: DatabaseSync, migrations: readonly Migration[]): void {
+  db.exec('begin immediate')
+  try {
+    db.exec(`create table if not exists applied_migrations (
+      id integer primary key,
+      name text not null,
+      applied_at text not null
+    )`)
 
-  for (const migration of [...migrations].sort((a, b) => a.id - b.id)) {
-    if (seen.has(migration.id)) continue
-    db.exec('begin')
-    try {
-      db.exec(migration.sql)
+    const seen = new Set(
+      (db.prepare('select id from applied_migrations').all() as Array<{ id: number }>).map((r) => r.id),
+    )
+
+    for (const migration of [...migrations].sort((a, b) => a.id - b.id)) {
+      if (seen.has(migration.id)) continue
+      try {
+        db.exec(migration.sql)
+      } catch (cause) {
+        throw new Error(`Migration ${migration.id} (${migration.name}) failed: ${(cause as Error).message}`, { cause })
+      }
       db.prepare('insert into applied_migrations (id, name, applied_at) values (?, ?, ?)').run(
         migration.id,
         migration.name,
         new Date().toISOString(),
       )
-      db.exec('commit')
-    } catch (cause) {
-      db.exec('rollback')
-      throw new Error(`Migration ${migration.id} (${migration.name}) failed: ${(cause as Error).message}`, {
-        cause,
-      })
     }
+    db.exec('commit')
+  } catch (error) {
+    // A failure leaves the database at the last good version rather than
+    // half-way through one.
+    try {
+      db.exec('rollback')
+    } catch {
+      // Already rolled back by SQLite; nothing useful to add.
+    }
+    throw error
   }
-
-  return db
 }
 
 /** JSON in, text out — SQLite has no array type and we want none. */
