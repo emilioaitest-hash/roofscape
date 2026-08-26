@@ -1,0 +1,20 @@
+name: Change
+description: Something should work differently
+labels: [change]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard or impossible today? Describe the situation, not the solution.
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: Optional. If you already have a shape in mind, sketch it.
+  - type: textarea
+    id: cost
+    attributes:
+      label: What it would cost
+      description: Optional. What gets harder, slower, or more complicated if this happens?

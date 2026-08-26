@@ -11,5 +11,5 @@ the archive on the machine, and is fast enough — the model is 274MB and runs o
 an 8GB M1. Quality is a little below the best hosted models, which matters far
 less than it sounds when keyword search runs alongside it.
 
-**Cost.** Ollama becomes a dependency for memory search. Belfry degrades to
+**Cost.** Ollama becomes a dependency for memory search. Roofscape degrades to
 keyword-only if it is absent, rather than failing.

@@ -6,15 +6,15 @@
  */
 export const BRAND = {
   /** Display name, as written in prose and on screen. */
-  name: 'Towerscape',
+  name: 'Roofscape',
   /** Lowercase slug: binary name, config dir, package scope if ever published. */
-  slug: 'towerscape',
+  slug: 'roofscape',
   /** Data directory under the user's home. */
-  homeDir: '.towerscape',
+  homeDir: '.roofscape',
   /** Primary domain, once registered. */
-  domain: 'towerscape.ai',
+  domain: 'roofscape.ai',
   /** One line, for --help output and the installer. */
-  tagline: 'A skyline of your work. Every project a building; every hire a floor.',
+  tagline: 'Every project a building. Every hire a floor.',
 } as const
 
 export type Brand = typeof BRAND

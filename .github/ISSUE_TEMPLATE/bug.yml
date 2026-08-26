@@ -1,0 +1,20 @@
+name: Bug
+description: Something behaves differently than it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The shortest sequence that shows it.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `roofscape --version`, or the commit.

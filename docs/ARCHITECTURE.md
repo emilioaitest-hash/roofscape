@@ -4,8 +4,6 @@ What this is made of, and why each piece is shaped the way it is. Decisions with
 a real alternative are argued separately in `docs/decisions/`; this file is the
 map.
 
-> The product name is not settled. `belfry` appears below as a placeholder and is
-> a single find-and-replace away from whatever is chosen.
 
 ## 1. The shape: a service, and windows into it
 
@@ -84,7 +82,7 @@ building shares nothing with its neighbours. This is the main structural gain
 over the earlier design, where projects were floors inside one shared building
 and the account was the only real boundary.
 
-`belfry` ships with an **empty skyline**. No example projects. The first thing it
+Roofscape ships with an **empty skyline**. No example projects. The first thing it
 asks is what you are breaking ground on.
 
 ## 3. How work moves
@@ -157,7 +155,7 @@ its replacement is handed a written handover.
 
 ## 5. Models
 
-`belfry` supplies no model. It supplies a **chooser**, in the spirit of Hermes:
+Roofscape supplies no model. It supplies a **chooser**, in the spirit of Hermes:
 any provider, any model, picked per role.
 
 - **Providers** — Anthropic, OpenAI, Google, OpenRouter, xAI, Ollama and the rest,
@@ -168,7 +166,7 @@ any provider, any model, picked per role.
   instead of metered billing. Identical tools either way, so the choice changes
   what a turn costs and never what an agent can do.
 
-`belfry` never holds a subscription on anyone's behalf. It uses credentials the
+Roofscape never holds a subscription on anyone's behalf. It uses credentials the
 person running it already owns.
 
 **Routing is per role**, with defaults: a manager wants a strong reasoner, a

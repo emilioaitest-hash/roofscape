@@ -10,6 +10,6 @@ Model choice is per role.
 **Why.** The requirement was Hermes-grade flexibility, and a unified SDK gets
 twenty vendors on day one. The engine split exists because a Claude subscription
 carries higher limits than metered API billing, and a person who has one should
-be able to use it — without Belfry ever holding someone else's credentials.
+be able to use it — without Roofscape ever holding someone else's credentials.
 Identical tools on both engines means the choice never changes what an agent can
 do, only what it costs.
