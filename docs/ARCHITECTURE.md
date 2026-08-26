@@ -134,8 +134,9 @@ single exception, because tidying is its whole job.
    actually worked last time.
 
 **Why it stays cheap.** Memory is never pasted into a prompt wholesale. A turn
-carries a fixed core of roughly 1–2k tokens — the agent's identity, its pinned
-facts, a pointer to the building handbook — and nothing else. The rest arrives
+carries a fixed core — the agent's identity, its pinned facts, a pointer to the
+building handbook, and a paragraph saying that what it reads is evidence rather
+than instructions — and nothing else. It measures about 420 tokens. The rest arrives
 through a `recall` tool that searches on demand: keyword (SQLite FTS5) and
 meaning (vector similarity) together, ranked by recency, importance, and how
 often a memory has proved useful.
