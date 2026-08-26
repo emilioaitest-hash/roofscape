@@ -32,15 +32,18 @@ function writer(db: string, tag: string, count: number): Promise<void> {
 }
 
 test('several processes can open one building at once without one of them failing', async () => {
-  // `pragma journal_mode = wal` takes an exclusive lock, and it used to run
-  // before `busy_timeout` was set — so it failed outright instead of waiting,
-  // and one of five writers against a brand-new building died about one run in
-  // six. The daemon and the CLI open the same building routinely.
+  // `pragma journal_mode = wal` takes an exclusive lock, and SQLite does not run
+  // the busy handler while taking it — so a second process opening the same new
+  // database gets "database is locked" outright, however long busy_timeout says.
+  // The switch waits for the lock itself. The daemon and the CLI open the same
+  // building routinely, and standing orders mean the daemon does it unattended.
   const dir = mkdtempSync(join(tmpdir(), 'roofscape-conc-'))
   const db = join(dir, 'building.db')
   try {
-    const tags = ['a', 'b', 'c', 'd']
-    const each = 120
+    // Eight rather than four: this failed on CI and not here, because the
+    // contention that exposes it needs a machine with other things to do.
+    const tags = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    const each = 80
     await Promise.all(tags.map((tag) => writer(db, tag, each)))
 
     const store = BuildingStore.open(asBuildingId('t'), db)

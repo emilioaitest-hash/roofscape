@@ -19,19 +19,65 @@ export function openDatabase(path: string, migrations: readonly Migration[]): Da
   if (path !== ':memory:') ensureDir(dirname(path))
   const db = new DatabaseSync(path)
 
-  // Before anything that can contend. Switching to WAL takes an exclusive lock,
-  // and with no busy timeout set yet it fails outright rather than waiting —
-  // so two processes opening the same new database at once had a real chance of
-  // one of them simply erroring. Found by running five writers against one
-  // building; it failed about one run in six.
+  // Before anything that can contend.
   db.exec('pragma busy_timeout = 5000')
-  db.exec('pragma journal_mode = wal')
+  enableWal(db)
   db.exec('pragma foreign_keys = on')
   // Durability over speed: an agent's work log is not worth losing to a crash.
   db.exec('pragma synchronous = normal')
 
   migrate(db, migrations)
   return db
+}
+
+/**
+ * Switch the database to WAL, waiting for the lock ourselves.
+ *
+ * `busy_timeout` does not cover this one. Changing journal mode needs an
+ * exclusive lock, and SQLite does not run the busy handler while taking it — so
+ * a second process opening the same new database gets "database is locked"
+ * outright, however long the timeout says. Setting the timeout first made it
+ * rarer here and did not fix it; CI, on a slower and busier machine, failed
+ * anyway.
+ *
+ * The mode is a property of the file, not the connection, so only the first
+ * process to open a database ever has to do this — after that it is already WAL
+ * and this returns immediately.
+ *
+ * If it cannot be had, the database is left in its existing journal mode and
+ * opened regardless. That is slower under concurrency and entirely correct;
+ * refusing to open at all would be neither.
+ */
+function enableWal(db: DatabaseSync): void {
+  if (currentJournalMode(db) === 'wal') return
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try {
+      db.exec('pragma journal_mode = wal')
+      if (currentJournalMode(db) === 'wal') return
+    } catch {
+      // Held by somebody else mid-switch. Wait and look again.
+    }
+    sleepSync(20 * (attempt + 1))
+    if (currentJournalMode(db) === 'wal') return
+  }
+}
+
+function currentJournalMode(db: DatabaseSync): string {
+  try {
+    const row = db.prepare('pragma journal_mode').get() as { journal_mode?: string } | undefined
+    return String(row?.journal_mode ?? '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Sleep without an event loop. Opening a database is synchronous by design —
+ * every caller expects a store back, not a promise — so the wait has to be too.
+ */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
 }
 
 /**
