@@ -1,0 +1,13 @@
+{
+  "name": "@app/root",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build --force",
+    "test": "node --test --experimental-strip-types 'packages/*/src/**/*.test.ts'"
+  },
+  "devDependencies": { "typescript": "^5.7.0", "@types/node": "^24.0.0" }
+}
