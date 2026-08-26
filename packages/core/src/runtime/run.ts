@@ -4,6 +4,8 @@ import { newGuardState, observe, shouldStop, loopingOn, explainStop, type Guard,
 import { buildToolSet, TOOLS_FOR_ROLE } from '../tools/toolset.js'
 import type { AgentContext, EscalationKind } from '../tools/context.js'
 import { resolveLanguageModel, type Credentials } from '../providers/resolve.js'
+import { fallbacksFor, availableProviders } from '../providers/roles.js'
+import { classifyFailure, type Failure } from '../providers/failure.js'
 import { runClaudeTurn } from './claudeEngine.js'
 import { compressWorkingMemory } from './working.js'
 import type { Workspace } from '../tools/workspace.js'
@@ -128,92 +130,124 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     }
   }
 
-  const model = (request.resolveModel ?? ((posting) => resolveLanguageModel(posting, credentials)))(floor.posting)
-
   // A guard that only runs between steps cannot stop a call that never returns.
   // The first smoke test hung for fifteen minutes inside a single request while
   // a 300s task budget sat unconsumed, because no step had finished for it to
-  // check. This signal is the only thing that stops that case.
+  // check. This signal is the only thing that stops that case, and it spans
+  // every attempt: falling back must not reset the clock.
   const deadline = AbortSignal.timeout(guard.timeoutSeconds * 1000)
 
-  let result
-  try {
-    result = await generateText({
-      model,
-      system,
-      messages,
-      tools,
-      abortSignal: deadline,
-      maxOutputTokens: 8000,
-      // Working memory. Without this a long task pays for every earlier step's
-      // output on every later step, and a twenty-minute-old `search` result is
-      // charged for again and again.
-      prepareStep: ({ messages: soFar }) => {
-        const compressed = compressWorkingMemory(soFar)
-        if (compressed.saved > 0) {
-          request.onEvent?.({
-            kind: 'step',
-            detail: `trimmed ${compressed.saved.toLocaleString()} characters of earlier tool output`,
-          })
-          return { messages: compressed.messages }
-        }
-        return {}
-      },
-      stopWhen: [
-        stepCountIs(guard.maxSteps),
-        () => shouldStop(state, guard),
-        ({ steps }) => finishCall(steps) !== null,
-      ],
-      onStepFinish: (step) => {
-        observe(state, step)
-        for (const call of step.toolCalls ?? []) {
-          request.onEvent?.({ kind: 'tool', detail: call.toolName })
-        }
-        const looping = loopingOn(state)
-        if (looping) request.onEvent?.({ kind: 'step', detail: `repeating ${looping}` })
-      },
-    })
-  } catch (error) {
-    const timedOut = deadline.aborted
-    if (timedOut) state.stoppedBy = 'timeout'
+  const build = request.resolveModel ?? ((posting: Floor['posting']) => resolveLanguageModel(posting, credentials))
+
+  // Where this floor could work instead, if its own provider will not answer.
+  // A manager on a smaller model is worse than a manager on the right one, and
+  // very much better than no manager — which is the alternative.
+  const attempts: Floor['posting'][] = [
+    floor.posting,
+    ...fallbacksFor(floor.role, availableProviders(credentials), floor.posting),
+  ]
+
+  let result: Awaited<ReturnType<typeof generateText>> | null = null
+  let used = floor.posting
+  let lastFailure: Failure | null = null
+
+  for (const [index, posting] of attempts.entries()) {
+    try {
+      result = await generateText({
+        model: build(posting),
+        system,
+        messages,
+        tools,
+        abortSignal: deadline,
+        maxOutputTokens: 8000,
+        // Working memory. Without this a long task pays for every earlier step's
+        // output on every later step, and a twenty-minute-old `search` result is
+        // charged for again and again.
+        prepareStep: ({ messages: soFar }) => {
+          const compressed = compressWorkingMemory(soFar)
+          if (compressed.saved > 0) {
+            request.onEvent?.({
+              kind: 'step',
+              detail: `trimmed ${compressed.saved.toLocaleString()} characters of earlier tool output`,
+            })
+            return { messages: compressed.messages }
+          }
+          return {}
+        },
+        stopWhen: [
+          stepCountIs(guard.maxSteps),
+          () => shouldStop(state, guard),
+          ({ steps }) => finishCall(steps) !== null,
+        ],
+        onStepFinish: (step) => {
+          observe(state, step)
+          for (const call of step.toolCalls ?? []) {
+            request.onEvent?.({ kind: 'tool', detail: call.toolName })
+          }
+          const looping = loopingOn(state)
+          if (looping) request.onEvent?.({ kind: 'step', detail: `repeating ${looping}` })
+        },
+      })
+      used = posting
+      break
+    } catch (error) {
+      if (deadline.aborted) {
+        state.stoppedBy = 'timeout'
+        lastFailure = { kind: 'unavailable', worthFallingBackTo: false, message: 'no answer in time', remedy: null }
+        break
+      }
+      lastFailure = classifyFailure(error)
+      const more = index < attempts.length - 1
+      if (!lastFailure.worthFallingBackTo || !more) break
+      request.onEvent?.({
+        kind: 'stopped',
+        detail: `${posting.provider} could not take it (${lastFailure.kind}); trying ${attempts[index + 1]!.provider}`,
+      })
+    }
+  }
+
+  if (!result) {
     // Spend still happened even though the turn did not finish, and a budget
     // that ignores failed attempts is a budget that can be exhausted for free.
     store.recordSpend({
       floor: floor.id,
       task: task?.id ?? null,
-      provider: floor.posting.provider,
-      model: floor.posting.model,
+      provider: used.provider,
+      model: used.model,
       inputTokens: state.inputTokens,
       outputTokens: state.outputTokens,
     })
+    const note =
+      state.stoppedBy === 'timeout'
+        ? `Stopped: no answer within ${guard.timeoutSeconds}s. The model or provider is not responding.`
+        : lastFailure
+          ? `${lastFailure.message}${lastFailure.remedy ? ` — ${lastFailure.remedy}` : ''}`
+          : 'The model call failed.'
+    request.onEvent?.({ kind: 'stopped', detail: note })
     return {
       text: '',
       finished: null,
       usage: { inputTokens: state.inputTokens, outputTokens: state.outputTokens },
       steps: state.steps,
       stoppedBy: state.stoppedBy,
-      note: timedOut
-        ? `Stopped: no answer within ${guard.timeoutSeconds}s. The model or provider is not responding.`
-        : `The model call failed: ${(error as Error).message}`,
+      note,
     }
   }
 
-  // An agent that says its piece and stops has still answered. Discarding that
-  // because it did not call `finish` throws away work over a formality — the
-  // manager did exactly this on the first real run, assigning a task correctly
-  // and then having its summary recorded as "not accounted for". A turn is only
-  // unaccounted for when a guard cut it short.
   const finished =
     finishCall(result.steps) ??
     (state.stoppedBy === null && result.finishReason === 'stop' && result.text.trim().length > 0
       ? { summary: result.text.trim(), artifacts: [], succeeded: true }
       : null)
 
+  // Attributed to whichever posting actually answered, not the one that was
+  // asked first — otherwise a fallback's cost is filed under a provider that
+  // did no work.
   store.recordSpend({
     floor: floor.id,
     task: task?.id ?? null,
-    provider: floor.posting.provider,
-    model: floor.posting.model,
+    provider: used.provider,
+    model: used.model,
     inputTokens: result.totalUsage?.inputTokens ?? state.inputTokens,
     outputTokens: result.totalUsage?.outputTokens ?? state.outputTokens,
   })

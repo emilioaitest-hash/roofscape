@@ -131,5 +131,23 @@ async function pingLocal(baseUrl: string): Promise<boolean> {
   }
 }
 
+/**
+ * Where else this role could go, best first, excluding where it already is.
+ *
+ * Used when a provider will not answer. A manager falling back to a smaller
+ * model is worse than a manager on the right one and better than no manager,
+ * which is what the alternative is.
+ */
+export function fallbacksFor(
+  role: FloorRole,
+  available: readonly string[],
+  current: Posting,
+): Posting[] {
+  const appetite = APPETITE_BY_ROLE[role]
+  return PREFERENCE[appetite]
+    .filter(([provider]) => available.includes(provider) && provider !== current.provider)
+    .map(([provider, model]) => ({ provider, model, engine: engineFor(provider) }))
+}
+
 export const describePosting = (posting: Posting): string =>
   `${providerSpec(posting.provider)?.label ?? posting.provider} · ${posting.model}${posting.engine === 'claude-agent-sdk' ? ' (via Claude Code)' : ''}`

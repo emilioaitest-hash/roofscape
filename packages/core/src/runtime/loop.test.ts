@@ -8,6 +8,8 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { SkylineStore } from '../store/skylineStore.js'
 import { BuildingStore } from '../store/buildingStore.js'
 import { pursueGoal } from './orchestrate.js'
+import { runFloorTurn } from './run.js'
+import { Workspace } from '../tools/workspace.js'
 import type { Posting } from '../domain/building.js'
 
 const POSTING: Posting = { provider: 'anthropic', model: 'test', engine: 'direct' }
@@ -213,6 +215,103 @@ test('a reviewer who is never satisfied does not loop forever', async () => {
     assert.equal(item.reworks, 1, 'it tried once more and then stopped')
     assert.equal(item.review?.accepted, false)
     assert.equal(s.store.tasks()[0]!.state, 'escalated', 'and it is left for a person rather than retried again')
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a rate-limited provider does not end the work; another one picks it up', async () => {
+  // On a subscription plan this is not an edge case, it is Tuesday. Losing a
+  // whole goal to a usage limit is the difference between a tool that works
+  // unattended and one that does not.
+  const s = scratch()
+  try {
+    const hadKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = 'sk-for-tests'
+    try {
+      const coder = s.store.hire({
+        role: 'coder', name: 'Nib', charter: 'You write it.',
+        posting: { provider: 'anthropic', model: 'claude-sonnet-4-5', engine: 'direct' },
+      })
+      const task = s.store.assign({ by: coder.id, to: coder.id, goal: 'Write bye.js' })
+
+      const asked: string[] = []
+      const working = scriptedModel([
+        [{ tool: 'write_file', input: { path: 'bye.js', content: 'export const farewell = () => "Bye"\n' } }],
+        [{ tool: 'finish', input: { summary: 'Wrote it on the second provider.', artifacts: ['bye.js'], succeeded: true } }],
+      ])
+
+      const outcome = await runFloorTurn({
+        building: s.building, store: s.store, credentials: s.skyline,
+        floor: coder, task,
+        workspace: new Workspace(s.repo), cwd: s.repo,
+        ask: async () => false,
+        resolveModel: (posting) => {
+          asked.push(posting.provider)
+          if (posting.provider === 'anthropic') {
+            return new MockLanguageModelV4({
+              doGenerate: async () => {
+                throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 })
+              },
+            })
+          }
+          return working
+        },
+      })
+
+      assert.deepEqual(asked.slice(0, 2), ['anthropic', 'openai'], 'it asked the fallback after the limit')
+      assert.equal(outcome.finished?.succeeded, true, 'and the work got done')
+      assert.match(outcome.finished!.summary, /second provider/)
+
+      // The bill belongs to whoever did the work, not to the one that refused it.
+      const spent = s.store.spentOnTask(task.id)
+      assert.ok(spent > 0, 'and the spend was recorded')
+    } finally {
+      if (hadKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = hadKey
+    }
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a request nobody could satisfy is not tried at every provider in turn', async () => {
+  // Every provider refuses a model id that does not exist. Trying each just
+  // spends the timeout and tells the owner nothing new.
+  const s = scratch()
+  try {
+    const hadKey = process.env.OPENAI_API_KEY
+    process.env.OPENAI_API_KEY = 'sk-for-tests'
+    try {
+      const coder = s.store.hire({
+        role: 'coder', name: 'Nib', charter: 'x',
+        posting: { provider: 'anthropic', model: 'no-such-model', engine: 'direct' },
+      })
+      const task = s.store.assign({ by: coder.id, to: coder.id, goal: 'Anything' })
+
+      const asked: string[] = []
+      const outcome = await runFloorTurn({
+        building: s.building, store: s.store, credentials: s.skyline,
+        floor: coder, task,
+        workspace: new Workspace(s.repo), cwd: s.repo,
+        ask: async () => false,
+        resolveModel: (posting) => {
+          asked.push(posting.provider)
+          return new MockLanguageModelV4({
+            doGenerate: async () => {
+              throw Object.assign(new Error('model not found'), { statusCode: 404 })
+            },
+          })
+        },
+      })
+
+      assert.deepEqual(asked, ['anthropic'], 'it stopped after the first refusal')
+      assert.equal(outcome.finished, null)
+      assert.match(outcome.note, /malformed|model/i, 'and said what was actually wrong')
+    } finally {
+      if (hadKey === undefined) delete process.env.OPENAI_API_KEY
+      else process.env.OPENAI_API_KEY = hadKey
+    }
   } finally {
     s.cleanup()
   }
