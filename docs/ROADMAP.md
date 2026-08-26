@@ -34,13 +34,19 @@ flow for hires, archive-and-handover when a floor is vacated.
 **Done when** a building that needs a skill it hasn't got proposes a hire, you
 approve, and the new floor picks up work.
 
-## M3 — The skyline you can see
+## M3 — The skyline you can see  ◐ in progress
 Web dashboard: the skyline, each building at its true height, org charts, live
 tasks, the approval desk, the archives browser, spend. Tauri desktop shell around
 it. Installer.
 
 **Done when** someone who cannot code can break ground on a building and follow
 its work.
+
+*Done so far: the daemon, and a dashboard it serves — the skyline, staff, work,
+the approval desk, the archives, and a goal box that streams progress live. The
+art comes from the same renderer the terminal uses, so the two cannot drift.
+Outstanding: breaking ground and hiring from the page rather than the CLI, and
+the Tauri shell around it.*
 
 ## M4 — Always on
 Docker image, VPS deployment, worker registration with capability tags so

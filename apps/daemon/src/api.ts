@@ -1,5 +1,5 @@
 import {
-  SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt,
+  SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, defaultPosting, discoverProviders, describePosting, probeProvider,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
@@ -26,6 +26,34 @@ export function buildApi(events: EventStream): Router {
     claudeCode: Boolean(claudeExecutable()),
     watching: events.watching,
   }))
+
+  /**
+   * The skyline as drawn text. One source of truth for the art: the dashboard
+   * shows exactly what the terminal shows, because both ask for the same string.
+   */
+  router.get('/api/skyline/art', () => {
+    const sky = skyline()
+    try {
+      const views = sky.list().map((building) => {
+        const store = BuildingStore.open(building.id)
+        try {
+          const headcount = Math.max(1, store.headcount())
+          const open = store.tasks({ state: 'queued' }).length + store.tasks({ state: 'working' }).length
+          return {
+            name: building.name,
+            headcount,
+            working: store.busyFloors(),
+            note: open > 0 ? `${open} in hand` : `${store.headcount()} on staff`,
+          }
+        } finally {
+          store.close()
+        }
+      })
+      return { art: renderSkyline(views, { colour: false }) }
+    } finally {
+      sky.close()
+    }
+  })
 
   router.get('/api/skyline', () => {
     const sky = skyline()

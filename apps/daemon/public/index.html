@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roofscape</title>
+<style>
+  :root {
+    --bg: #faf9f7; --panel: #ffffff; --ink: #1b1a18; --dim: #6f6a63;
+    --line: #e3ded6; --accent: #7a5c3e; --lit: #d8a33c; --good: #4a7c59; --warn: #b0632c;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14130f; --panel: #1c1b17; --ink: #eae6df; --dim: #948d82;
+      --line: #2e2c26; --accent: #c9a227; --lit: #e8c15a; --good: #7fb08a; --warn: #d68b4f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    padding: 20px 24px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
+  .tagline { color: var(--dim); font-size: 13px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px 20px;
+  }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--dim); margin: 0 0 12px; font-weight: 600;
+  }
+  pre.skyline {
+    font: 13px/1.15 ui-monospace, "SF Mono", Menlo, monospace;
+    margin: 0; overflow-x: auto; color: var(--ink); white-space: pre;
+  }
+  .buildings { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .chip {
+    border: 1px solid var(--line); background: transparent; color: var(--ink);
+    border-radius: 999px; padding: 5px 13px; cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .dim { color: var(--dim); }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  form.goal { display: flex; gap: 10px; }
+  input[type=text] {
+    flex: 1; padding: 10px 13px; border-radius: 8px; font: inherit;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button.go {
+    padding: 10px 18px; border-radius: 8px; border: 0; cursor: pointer;
+    background: var(--accent); color: var(--bg); font: inherit; font-weight: 600;
+  }
+  button.go:disabled { opacity: .5; cursor: default; }
+  #log {
+    font-family: ui-monospace, Menlo, monospace; font-size: 12.5px;
+    max-height: 260px; overflow-y: auto; margin-top: 12px; color: var(--dim);
+  }
+  #log div { padding: 2px 0; }
+  #log .hi { color: var(--ink); }
+  #log .lit { color: var(--lit); }
+  .empty { color: var(--dim); font-style: italic; }
+  .pill { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--dim); }
+  .approve { display: flex; gap: 6px; }
+  .approve button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--ink); }
+  .approve button.yes:hover { border-color: var(--good); color: var(--good); }
+  .approve button.no:hover { border-color: var(--warn); color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Roofscape</h1>
+  <span class="tagline">Every project a building. Every hire a floor.</span>
+  <span class="tagline" id="conn" style="margin-left:auto"></span>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>The skyline</h2>
+    <pre class="skyline" id="art">…</pre>
+    <div class="buildings" id="chips"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Put a goal to it</h2>
+    <form class="goal" id="goalForm">
+      <input type="text" id="goalText" placeholder="Add a farewell function to greet.js" autocomplete="off">
+      <button class="go" type="submit" id="goalGo">Send</button>
+    </form>
+    <div id="log"></div>
+  </section>
+
+  <div class="cols">
+    <section class="panel">
+      <h2>Staff</h2>
+      <div id="staff"></div>
+    </section>
+    <section class="panel">
+      <h2>Work</h2>
+      <div id="work"></div>
+    </section>
+  </div>
+
+  <div class="cols">
+    <section class="panel">
+      <h2>Waiting for you</h2>
+      <div id="approvals"></div>
+    </section>
+    <section class="panel">
+      <h2>Archives</h2>
+      <div id="archives"></div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+const params = new URLSearchParams(location.search)
+const token = params.get('token') ?? sessionStorage.getItem('roofscape-token') ?? ''
+if (params.get('token')) {
+  sessionStorage.setItem('roofscape-token', params.get('token'))
+  // Keep the token out of the address bar and out of the browser history.
+  history.replaceState(null, '', location.pathname)
+}
+
+const api = async (path, options = {}) => {
+  const response = await fetch(path, {
+    ...options,
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(options.headers ?? {}) },
+  })
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error ?? response.statusText)
+  return response.json()
+}
+
+const el = (id) => document.getElementById(id)
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+let current = null
+
+function line(left, right = '') {
+  return `<div class="row"><span>${left}</span><span class="dim">${right}</span></div>`
+}
+
+async function refreshSkyline() {
+  const [{ art }, { buildings }] = await Promise.all([api('/api/skyline/art'), api('/api/skyline')])
+  el('art').textContent = art
+  if (!current && buildings.length) current = buildings[0].id
+  el('chips').innerHTML = buildings
+    .map((b) => `<button class="chip" data-id="${esc(b.id)}" aria-pressed="${b.id === current}">
+        ${esc(b.name)} <span class="dim">${b.headcount}</span>${b.working ? ' ●' : ''}</button>`)
+    .join('') || '<span class="empty">Nothing built yet — use the CLI to break ground.</span>'
+  for (const chip of el('chips').children) {
+    if (chip.dataset) chip.onclick = () => { current = chip.dataset.id; refreshAll() }
+  }
+}
+
+async function refreshBuilding() {
+  if (!current) return
+  const b = await api(`/api/buildings/${current}`)
+
+  el('staff').innerHTML = b.staff.length
+    ? b.staff.map((f) => line(`<strong>${esc(f.name)}</strong> <span class="pill">${esc(f.role)}</span>`, esc(f.describes))).join('')
+    : '<span class="empty">Nobody yet.</span>'
+
+  const open = b.tasks.filter((t) => ['queued', 'working', 'awaiting-review'].includes(t.state))
+  const done = b.tasks.filter((t) => t.state === 'done' || t.state === 'awaiting-review').slice(-5).reverse()
+  el('work').innerHTML =
+    (open.length ? open.map((t) => line(esc(t.goal.slice(0, 60)), esc(t.state))).join('') : '<span class="empty">Nothing on.</span>') +
+    (done.length ? `<h2 style="margin-top:16px">Finished</h2>` + done.map((t) => {
+      const branch = (t.result?.artifacts ?? []).find((a) => a.startsWith('branch:'))
+      return line(esc(t.goal.slice(0, 54)), branch ? `<span class="mono">${esc(branch.slice(7))}</span>` : '')
+    }).join('') : '')
+
+  el('approvals').innerHTML = b.approvals.length
+    ? b.approvals.map((a) => `<div class="row"><span>${esc(a.intent)}</span>
+        <span class="approve"><button class="yes" data-yes="${esc(a.id)}">Allow</button><button class="no" data-no="${esc(a.id)}">Refuse</button></span></div>`).join('')
+    : '<span class="empty">Nothing waiting on you.</span>'
+  el('approvals').querySelectorAll('[data-yes]').forEach((btn) => {
+    btn.onclick = () => decide(btn.dataset.yes, true)
+  })
+  el('approvals').querySelectorAll('[data-no]').forEach((btn) => {
+    btn.onclick = () => decide(btn.dataset.no, false)
+  })
+
+  const a = b.archives
+  el('archives').innerHTML =
+    line('Notes', String(a.total)) + line('Pinned', String(a.pinned)) +
+    line('Expired', String(a.expired)) + line('Output tokens spent', b.spent.toLocaleString())
+
+  el('goalGo').disabled = b.working
+  el('goalGo').textContent = b.working ? 'Working…' : 'Send'
+}
+
+async function decide(id, granted) {
+  await api(`/api/approvals/${id}`, { method: 'POST', body: JSON.stringify({ granted }) })
+  refreshAll()
+}
+
+const refreshAll = () => Promise.all([refreshSkyline(), refreshBuilding()]).catch(report)
+
+function report(error) {
+  const div = document.createElement('div')
+  div.textContent = `— ${error.message}`
+  el('log').prepend(div)
+}
+
+el('goalForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const goal = el('goalText').value.trim()
+  if (!goal || !current) return
+  el('log').innerHTML = ''
+  el('goalText').value = ''
+  try {
+    await api(`/api/buildings/${current}/goal`, { method: 'POST', body: JSON.stringify({ goal }) })
+  } catch (error) { report(error) }
+}
+
+const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
+stream.onopen = () => { el('conn').textContent = 'live' }
+stream.onerror = () => { el('conn').textContent = 'reconnecting…' }
+stream.onmessage = (message) => {
+  const event = JSON.parse(message.data)
+  const div = document.createElement('div')
+  const loud = ['goal-started', 'goal-finished', 'goal-failed', 'hired', 'ground-broken'].includes(event.kind)
+  div.className = event.kind === 'tool' ? '' : loud ? 'hi' : 'lit'
+  div.textContent = event.kind === 'tool' ? `  · ${event.detail}` : `${event.kind}: ${event.detail ?? ''}`
+  el('log').prepend(div)
+  if (event.kind !== 'tool') refreshAll()
+}
+
+refreshAll()
+setInterval(refreshAll, 15000)
+</script>
+</body>
+</html>

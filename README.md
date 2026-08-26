@@ -76,6 +76,12 @@ The CLI is one window onto the work. The daemon is the work:
 roofscaped                    # http://127.0.0.1:7717
 ```
 
+It prints a URL with a token in it. Open that and you get the dashboard: the
+skyline, who works where, what is in hand, the approval desk, and a box to put a
+goal to a building — with progress streaming in live as it is worked. The
+buildings are drawn by the same renderer the terminal uses, so the two cannot
+drift apart.
+
 It binds to loopback and requires a bearer token, kept in your data directory at
 `daemon.token`. That is not ceremony: the daemon starts agents, agents run shell
 commands, and an open port that does that is a remote shell with a nice API. It

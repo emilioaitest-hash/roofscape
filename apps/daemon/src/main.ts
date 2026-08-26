@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { BRAND, dataRoot } from '@app/core'
 import { buildApi } from './api.js'
 import { EventStream } from './events.js'
@@ -41,6 +44,13 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return
   }
 
+  // The page itself is not the secret; the token is, and the page has to be
+  // fetchable before it can present one. It ships no data of its own.
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    await sendDashboard(response)
+    return
+  }
+
   if (!tokenMatches(bearerFrom(request.headers.authorization) ?? url.searchParams.get('token') ?? undefined, token)) {
     send(response, 401, { error: 'Unauthorized.', remedy: `The token is in ${dataRoot()}/daemon.token` })
     return
@@ -73,6 +83,18 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
 }
 
+const HERE = dirname(fileURLToPath(import.meta.url))
+
+async function sendDashboard(response: ServerResponse): Promise<void> {
+  try {
+    const html = await readFile(join(HERE, '..', 'public', 'index.html'))
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': html.length })
+    response.end(html)
+  } catch {
+    send(response, 500, { error: 'The dashboard page is missing from this install.' })
+  }
+}
+
 /** Only pages served from this machine, and only when a browser says so. */
 const originAllowed = (origin: string | undefined): boolean =>
   origin !== undefined && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
@@ -89,6 +111,7 @@ server.listen(PORT, HOST, () => {
   process.stdout.write(`${BRAND.name} is running at ${where}\n`)
   process.stdout.write(`  data:  ${dataRoot()}\n`)
   process.stdout.write(`  token: ${dataRoot()}/daemon.token\n`)
+  process.stdout.write(`\n  Open:  ${where}/?token=${token}\n`)
   if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
     process.stdout.write('\n  Bound beyond this machine. Anyone who reaches this port and holds the\n')
     process.stdout.write('  token can run shell commands here. Put it behind something.\n')
