@@ -1,6 +1,6 @@
 import { renderSkyline, tierOf, nextTierAt, type BuildingView } from '@app/core'
 import { openSkyline, openBuilding, findBuilding } from '../context.js'
-import { say, dim, bold, colour, heading } from '../ui.js'
+import { say, dim, bold, colour, heading, amber } from '../ui.js'
 
 /** The home screen: every building, at its true height. */
 export function showSkyline(): void {
@@ -18,17 +18,22 @@ export function showSkyline(): void {
     return
   }
 
+  let waiting = 0
   const views: BuildingView[] = buildings.map((building) => {
     const store = openBuilding(building.id)
     const headcount = store.headcount()
     const busy = store.busyFloors()
     const open = store.tasks({ state: 'queued' }).length + store.tasks({ state: 'working' }).length
+    const pending = store.pendingApprovals().length
+    waiting += pending
     store.close()
     return {
       name: building.name,
       headcount: Math.max(1, headcount),
       working: busy,
-      note: open > 0 ? `${open} in hand` : `${headcount} on staff`,
+      // What is stalled matters more than what is busy: work waiting on you is
+      // work not happening, and it should not have to be gone looking for.
+      note: pending > 0 ? `${pending} for you` : open > 0 ? `${open} in hand` : `${headcount} on staff`,
     }
   })
 
@@ -44,6 +49,10 @@ export function showSkyline(): void {
     say(`  ${bold(building.name)} ${dim(`(${building.id})`)} — ${tier.name}${toGo}`)
   }
   say()
+  if (waiting > 0) {
+    say(`  ${amber(`${waiting} thing${waiting === 1 ? '' : 's'} waiting on you`)} ${dim('— roofscape lobby')}`)
+    say()
+  }
   skyline.close()
 }
 
