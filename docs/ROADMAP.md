@@ -15,7 +15,7 @@ human touching anything but the approval prompts.
 branch with a passing test file, on a Claude subscription, in about four
 minutes. The loop also runs in CI against a scripted model, with no key.*
 
-## M1 — The archives  ◐ in progress
+## M1 — The archives  ✅ done
 Three scopes, four layers. The `recall` tool over FTS5 plus vectors. Local
 embeddings. The nightly curator. Token accounting per turn, so the flat-cost
 claim is measured rather than asserted.
@@ -23,9 +23,12 @@ claim is measured rather than asserted.
 **Done when** an agent's second week is visibly better than its first, and the
 per-turn token count has not risen with it.
 
-*Done so far: three scopes, four layers, FTS5 recall, automatic history, the
-curator, and per-turn token accounting. Outstanding: measuring the flat-cost
-claim rather than asserting it, and optional embeddings (see decision 0011).*
+*Three scopes, four layers, FTS5 recall, automatic history, the curator, and
+per-turn token accounting. The flat-cost claim is measured rather than asserted:
+between ten notes and ten thousand the prompt grows by under forty characters.
+Working memory trims a single task's own conversation, which is the cost the
+archives never addressed. Optional embeddings remain out, deliberately — see
+decision 0011.*
 
 ## M2 — Hiring
 The hiring manager, the stock roster, agent definitions as data, the approval
@@ -53,6 +56,10 @@ Docker image, VPS deployment, worker registration with capability tags so
 machine-specific tasks wait for the right machine. Phone access as a PWA.
 
 **Done when** work completes overnight with every local machine shut.
+
+*Done so far: the daemon, and standing orders — `--every daily --at 09:00`,
+checked every thirty seconds, catching up once rather than seven times after a
+machine has been asleep. Outstanding: a Docker image and somewhere to put it.*
 
 ## M5 — Other people
 Multi-tenancy, onboarding, bring-your-own-credentials, billing, licensing, and

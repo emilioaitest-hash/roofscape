@@ -118,6 +118,18 @@ Two engines run a turn, with an identical tool row either way: `direct` against
 any provider's API, and `claude-agent-sdk` through the Claude Code you already
 have. Which engine ran a turn changes what it cost, never what the agent could do.
 
+## When things go wrong
+
+A provider that will not answer does not end the work. A rate limit, an outage or
+a stale key moves that floor to the next provider that suits its role — a manager
+on a smaller model is worse than a manager on the right one, and much better than
+no manager. A model id that does not exist is *not* retried elsewhere, because
+every provider will refuse it.
+
+Work the reviewer sends back goes back to whoever did it, once, with the verdict
+in front of them. After that it is left for you: two who disagree do not converge
+by being asked again.
+
 ## Status
 
 M0 is done: a real goal on a real repository produces a reviewed branch, with a
