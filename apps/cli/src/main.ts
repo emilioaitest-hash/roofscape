@@ -9,12 +9,14 @@ import { post } from './commands/post.js'
 import { serve } from './commands/serve.js'
 import { schedule, schedules, unschedule } from './commands/schedule.js'
 import { budget } from './commands/budget.js'
+import { ask } from './commands/ask.js'
 import { say, dim, bold, fail, red } from './ui.js'
 
 const HELP = `
 ${bold(BRAND.name)} — ${BRAND.tagline}
 
   ${bold('roofscape')}                          the skyline: every building, at its height
+  ${bold('ask')} <question>                    ask the concierge, who can see every building
 
   ${bold('ground')} <name> [--workspace DIR]    break ground on a new building
   ${bold('building')} [name]                    one building in detail
@@ -127,6 +129,9 @@ async function main(): Promise<void> {
       return post(first, opts)
     case 'curate':
       return curateArchives(opts)
+    case 'ask':
+    case 'chat':
+      return ask(rest || undefined, opts)
     case 'budget':
     case 'spend':
       return budget({

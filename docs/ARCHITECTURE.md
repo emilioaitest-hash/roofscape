@@ -70,7 +70,7 @@ names never would.
 | **Building** | One company or project. Its own workspace, repos, staff, memory, budget, schedule. |
 | **Floor** | One agent. Floors are added as you hire, and the building grows. |
 | **Top floor** | The **manager**. Owns the backlog, decomposes goals, assigns work, reviews what returns, escalates to you. It rides up as the building grows — always the top. |
-| **Lobby** | Ground floor. Where *you* walk in: the building's charter, its status, the approval desk, and the **hiring manager**'s office. |
+| **Lobby** | Ground floor. Where *you* walk in: the building's charter, its status, the approval desk, and the **hiring manager**'s office. The **concierge** stands in it — the only one who can see the whole skyline, because buildings share nothing with each other. It reads anything and changes nothing. |
 | **Archives** | Below ground. All of this building's memory, and the curator who works down there at night. See §4. |
 | **Mailroom** | The message bus. Typed, durable, one inbox per floor. |
 | **Payroll** | Tokens and cost, metered per task, per floor, per building. Funds budgets now and billing later. |
@@ -208,8 +208,8 @@ service, the interface and the app.
 
 ## 9. Deliberately not here yet
 
-Multi-tenancy, billing, the building-template marketplace, cross-building chat,
-phone access, container-per-building isolation. Each is anticipated in the seams
+Multi-tenancy, billing, the building-template marketplace, phone access, and
+container-per-building isolation. Each is anticipated in the seams
 above and scheduled in `docs/ROADMAP.md`. None is built before the first building
 does real work, because a product that scales beautifully and does nothing is the
 failure mode this design is trying to avoid.

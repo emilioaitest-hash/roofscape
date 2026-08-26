@@ -3,11 +3,14 @@ import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { buildSdkMcpServer, qualifiedToolNames } from '../tools/claudeAdapter.js'
+import { buildSdkMcpServer, serverFor, qualifiedToolNames, type BoundTool } from '../tools/claudeAdapter.js'
 import type { AgentContext } from '../tools/context.js'
 
 export interface ClaudeTurnRequest {
-  context: AgentContext
+  /** A floor's context, or a bare working directory for something that is not one. */
+  context: AgentContext | { cwd: string }
+  /** Supplied directly by callers that are not a floor. */
+  boundTools?: readonly BoundTool[]
   system: string
   prompt: string
   allowedTools: readonly string[]
@@ -52,7 +55,9 @@ export async function runClaudeTurn(request: ClaudeTurnRequest): Promise<ClaudeT
     }
   }
 
-  const server = buildSdkMcpServer(request.context, request.allowedTools)
+  const server = request.boundTools
+    ? serverFor(request.boundTools)
+    : buildSdkMcpServer(request.context as AgentContext, request.allowedTools)
   const abort = new AbortController()
   const deadline = setTimeout(() => abort.abort(), request.timeoutSeconds * 1000)
 

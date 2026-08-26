@@ -118,6 +118,20 @@ Two engines run a turn, with an identical tool row either way: `direct` against
 any provider's API, and `claude-agent-sdk` through the Claude Code you already
 have. Which engine ran a turn changes what it cost, never what the agent could do.
 
+## Asking across everything
+
+```sh
+roofscape ask "what is everyone working on?"
+roofscape ask "which building should handle the login bug?"
+roofscape ask "fix the results table on the rowing site"
+```
+
+Buildings deliberately share nothing, so nobody inside one can see the skyline.
+The concierge in the lobby can: it reads any building, searches any archive, and
+hands work to the building whose job it is. It holds nothing that can change
+anything — no files, no shell, no hiring. Somebody who can see everything should
+be able to alter very little.
+
 ## What it may spend
 
 ```sh
