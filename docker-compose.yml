@@ -1,0 +1,25 @@
+services:
+  roofscape:
+    build: .
+    image: roofscape
+    restart: unless-stopped
+    ports:
+      # Loopback on the host, deliberately. The service can start agents, which
+      # run shell commands — publishing it to 0.0.0.0 puts that on the internet.
+      # Reach it over an SSH tunnel; see docs/DEPLOYING.md.
+      - '127.0.0.1:7717:7717'
+    volumes:
+      # Everything it knows. Losing this loses every building's memory.
+      - roofscape-data:/data
+      # The repositories the buildings work in.
+      - ./work:/work
+    environment:
+      # The container has no Claude Code and no way to log in to one, so it
+      # needs a key. Put them in a .env file beside this one.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ROOFSCAPE_CLAUDE_BIN: none
+
+volumes:
+  roofscape-data:

@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+.scratch
+*.md
+!README.md
+docs
+data
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
