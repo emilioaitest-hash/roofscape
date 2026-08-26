@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SkylineStore } from './skylineStore.js'
 import { BuildingStore } from './buildingStore.js'
-import { slugify } from './idgen.js'
+import { slugify, newId } from './idgen.js'
 import { asBuildingId } from '../domain/ids.js'
 import type { Posting } from '../domain/building.js'
 
@@ -296,4 +296,26 @@ test('a floor can be moved to a different model without being rehired', () => {
     assert.equal(moved.hiredAt, dev.hiredAt, 'and they have been here just as long')
     b.close()
   } finally { cleanup() }
+})
+
+test('ids do not collide at the volume a real building reaches', () => {
+  // Six characters gave thirty bits, and CI found the birthday bound the hard
+  // way: ten thousand memories in one test, a UNIQUE constraint failure about
+  // one run in twenty, and a lost write every time it happened.
+  const { dir, cleanup } = scratch()
+  try {
+    const b = openBuilding(dir)
+    const count = 20_000
+    for (let i = 0; i < count; i++) {
+      b.remember({ scope: 'building', layer: 'episodic', text: `Note ${i}` })
+    }
+    assert.equal(b.memoryCount(), count, 'every write landed')
+    b.close()
+  } finally { cleanup() }
+})
+
+test('an id is still short enough to read and match on a prefix', () => {
+  const id = newId('tsk')
+  assert.match(id, /^tsk_[a-z2-9]{12}$/)
+  assert.ok(id.length <= 16, 'and short enough to sit in a table')
 })
