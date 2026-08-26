@@ -54,3 +54,17 @@ test('the same tool with different arguments is not a loop', () => {
 test('a turn that simply finished says so', () => {
   assert.equal(explainStop(newGuardState(), GUARD), 'Finished.')
 })
+
+test('the stop explanations name the guard that fired, not a generic failure', () => {
+  // The owner reads these. "It stopped" is not actionable; "the token budget was
+  // reached" tells them to raise it or split the task.
+  for (const [stoppedBy, pattern] of [
+    ['budget', /budget/],
+    ['timeout', /past/],
+    ['steps', /rounds/],
+  ] as const) {
+    const state = newGuardState()
+    state.stoppedBy = stoppedBy
+    assert.match(explainStop(state, GUARD), pattern)
+  }
+})

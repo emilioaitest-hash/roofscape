@@ -1,5 +1,9 @@
 # 0005 — Embeddings run locally by default
 
+> **Superseded by [0011](0011-recall-works-without-anything-installed.md).** This
+> decision assumed Ollama was installed because it happened to be on the
+> development machine. It was removed, and the reasoning did not survive it.
+
 **Decided.** `nomic-embed-text` via Ollama, with `sqlite-vec` for search.
 Hosted embedding APIs are a setting, not a rewrite.
 

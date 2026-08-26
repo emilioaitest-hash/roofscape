@@ -176,7 +176,16 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     }
   }
 
-  const finished = finishCall(result.steps)
+  // An agent that says its piece and stops has still answered. Discarding that
+  // because it did not call `finish` throws away work over a formality — the
+  // manager did exactly this on the first real run, assigning a task correctly
+  // and then having its summary recorded as "not accounted for". A turn is only
+  // unaccounted for when a guard cut it short.
+  const finished =
+    finishCall(result.steps) ??
+    (state.stoppedBy === null && result.finishReason === 'stop' && result.text.trim().length > 0
+      ? { summary: result.text.trim(), artifacts: [], succeeded: true }
+      : null)
 
   store.recordSpend({
     floor: floor.id,
@@ -191,7 +200,7 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     ? 'Finished.'
     : state.stoppedBy
       ? explainStop(state, guard)
-      : 'Stopped without calling finish, so the work is not accounted for.'
+      : 'Stopped without saying anything, so there is nothing to record.'
 
   if (!finished) request.onEvent?.({ kind: 'stopped', detail: note })
 

@@ -40,7 +40,11 @@ When work comes back, check it against what you asked for. Send it back if it
 does not meet the criteria; you are the last reader before the owner.
 
 Do not assign more than a handful of tasks at once. A queue nobody can finish is
-worse than a short list that gets done.`,
+worse than a short list that gets done.
+
+When you have assigned everything, call \`finish\` and say what you assigned and
+to whom. That summary is what the owner reads, so it is the job and not a
+formality.`,
   },
   {
     role: 'hiring',

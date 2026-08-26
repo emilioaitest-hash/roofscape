@@ -46,6 +46,10 @@ export async function goal(text: string | undefined, options: { building?: strin
       say(`  ${mark} ${bold(item.floor.name)} — ${item.task.goal.slice(0, 70)}`)
       say(dim(`      ${item.summary.slice(0, 160)}`))
       if (item.branch) say(dim(`      branch: ${item.branch}`))
+      if (item.review) {
+        const mark = item.review.accepted ? green('accepted') : amber('sent back')
+        say(dim(`      ${mark} by ${item.review.by}: ${item.review.verdict.slice(0, 120)}`))
+      }
     }
   }
 

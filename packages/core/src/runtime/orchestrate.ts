@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { runFloorTurn, asTaskResult, type TurnEvent } from './run.js'
 import { Workspace } from '../tools/workspace.js'
-import { openWorktree, closeWorktree, summariseWork, commitAll, isRepo } from '../tools/git.js'
+import { openWorktree, closeWorktree, summariseWork, commitAll, isRepo, fullDiff } from '../tools/git.js'
 import type { BuildingStore } from '../store/buildingStore.js'
 import type { Credentials } from '../providers/resolve.js'
 import type { Building, Floor } from '../domain/building.js'
@@ -21,9 +21,22 @@ export interface OrchestrationDeps {
 
 export interface GoalOutcome {
   managerSummary: string
-  worked: Array<{ task: Task; floor: Floor; summary: string; succeeded: boolean; branch: string | null }>
+  worked: Array<{
+    task: Task
+    floor: Floor
+    summary: string
+    succeeded: boolean
+    branch: string | null
+    review: Review | null
+  }>
   outstanding: number
   tokensSpent: number
+}
+
+export interface Review {
+  by: string
+  accepted: boolean
+  verdict: string
 }
 
 /**
@@ -99,8 +112,20 @@ export async function pursueGoal(deps: OrchestrationDeps, goal: string, options:
         ...result,
         artifacts: branch ? [...result.artifacts, `branch:${branch}`] : result.artifacts,
       })
-      worked.push({ task, floor: assignee, summary: result.summary, succeeded, branch })
       report(`  ${succeeded ? 'done' : 'stopped'} — ${truncate(result.summary, 90)}`)
+
+      // Work that claims to be finished is read by somebody who could not have
+      // written it. Work that already failed is not: there is nothing to judge,
+      // and a review of an admitted failure is a turn spent agreeing.
+      const review = succeeded
+        ? await reviewWork({ building, store, credentials, ask, report }, task, workplace.cwd, result.summary)
+        : null
+      if (review) {
+        store.setTaskState(task.id, review.accepted ? 'done' : 'escalated')
+        report(`  ${review.accepted ? 'accepted' : 'sent back'} by ${review.by} — ${truncate(review.verdict, 80)}`)
+      }
+
+      worked.push({ task, floor: assignee, summary: result.summary, succeeded, branch, review })
     } finally {
       if (workplace.branch) await closeWorktree(building.workspace, workplace.cwd, { keepBranch: true })
     }
@@ -132,6 +157,48 @@ async function placeToWork(building: Building, task: Task, assignee: Floor) {
     return { workspace: new Workspace(building.workspace), cwd: building.workspace, branch: null as string | null }
   }
   return { workspace: new Workspace(opened.path), cwd: opened.path, branch: opened.branch }
+}
+
+/**
+ * Hand the work to the reviewer, if there is one.
+ *
+ * The reviewer is given the diff and the acceptance criteria and nothing that
+ * can change a file, so its only possible output is a judgement. A building
+ * without a reviewer simply skips this — it is not made up by the manager.
+ */
+async function reviewWork(
+  deps: Pick<OrchestrationDeps, 'building' | 'store' | 'credentials' | 'ask' | 'report'>,
+  task: Task,
+  where: string,
+  summary: string,
+): Promise<Review | null> {
+  const { building, store, credentials, ask } = deps
+  const reviewer = store.floorByRole('reviewer')
+  if (!reviewer) return null
+
+  const diff = await fullDiff(where, 'HEAD')
+  const turn = await runFloorTurn({
+    building, store, credentials, floor: reviewer, task: null,
+    instruction: [
+      'Judge this piece of work against what was asked for.',
+      '',
+      `What was asked: ${task.goal}`,
+      '',
+      'It is done when:',
+      ...task.acceptance.map((line) => `  · ${line}`),
+      '',
+      `What the author says they did: ${summary}`,
+      '',
+      diff.trim().length > 0 ? `The change:\n\n${diff.slice(0, 12_000)}` : '(No file changes were made.)',
+      '',
+      'Say for each criterion whether it is met, then give a verdict. Put the word',
+      'ACCEPT or REJECT at the start of your finish summary.',
+    ].join('\n'),
+    workspace: new Workspace(where), cwd: where, ask,
+  })
+
+  const verdict = turn.finished?.summary ?? turn.note
+  return { by: reviewer.name, accepted: /^\s*accept/i.test(verdict), verdict }
 }
 
 const truncate = (text: string, limit: number) =>
