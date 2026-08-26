@@ -68,6 +68,25 @@ roofscape goal "Add a farewell function to greet.js"
 roofscape                       # the skyline
 ```
 
+## Running it as a service
+
+The CLI is one window onto the work. The daemon is the work:
+
+```sh
+roofscaped                    # http://127.0.0.1:7717
+```
+
+It binds to loopback and requires a bearer token, kept in your data directory at
+`daemon.token`. That is not ceremony: the daemon starts agents, agents run shell
+commands, and an open port that does that is a remote shell with a nice API. It
+will bind elsewhere if you set `ROOFSCAPE_HOST`, and says so loudly when you do.
+
+`GET /api/skyline`, `GET /api/buildings/:id`, `POST /api/buildings/:id/goal`,
+`GET /api/approvals`, and `GET /api/events` — a live stream of progress, so a
+dashboard can watch a goal being worked rather than poll for it. This is what the
+dashboard and the desktop app will talk to, and what runs on a VPS when you want
+work finishing overnight.
+
 ## Bring your own model
 
 Roofscape supplies no model. It supplies a chooser: Anthropic, OpenAI, Google,
