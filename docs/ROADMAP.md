@@ -2,16 +2,16 @@
 
 Each milestone ends with something that works, not something that compiles.
 
-## M0 — One floor does real work
+## M0 — One building does real work
 The daemon, SQLite state, the provider layer with a working model chooser, the
-message bus, and three agents: manager, coder, reviewer. A floor is created from
-a charter. A goal becomes tasks, the tasks get done in a git worktree, the branch
-comes back for review. A minimal CLI drives all of it.
+mailroom, and three floors: manager, coder, reviewer. A building is broken ground
+on from a charter. A goal becomes tasks, the tasks get done in a git worktree,
+the branch comes back for review. A minimal CLI drives all of it.
 
 **Done when** a real goal on a real repo produces a reviewed branch without a
 human touching anything but the approval prompts.
 
-## M1 — Memory
+## M1 — The archives
 Three scopes, four layers. The `recall` tool over FTS5 plus vectors. Local
 embeddings. The nightly curator. Token accounting per turn, so the flat-cost
 claim is measured rather than asserted.
@@ -21,16 +21,18 @@ per-turn token count has not risen with it.
 
 ## M2 — Hiring
 The hiring manager, the stock roster, agent definitions as data, the approval
-flow for hires, archive-and-handover on dismissal.
+flow for hires, archive-and-handover when a floor is vacated.
 
-**Done when** a floor that needs a skill it lacks proposes a hire, you approve,
-and the new agent picks up work.
+**Done when** a building that needs a skill it hasn't got proposes a hire, you
+approve, and the new floor picks up work.
 
-## M3 — The building you can see
-Web dashboard: the building, its floors, org charts, live tasks, the approval
-queue, the memory browser, spend. Tauri desktop shell around it. Installer.
+## M3 — The skyline you can see
+Web dashboard: the skyline, each building at its true height, org charts, live
+tasks, the approval desk, the archives browser, spend. Tauri desktop shell around
+it. Installer.
 
-**Done when** someone who cannot code can add a floor and follow its work.
+**Done when** someone who cannot code can break ground on a building and follow
+its work.
 
 ## M4 — Always on
 Docker image, VPS deployment, worker registration with capability tags so
@@ -39,9 +41,9 @@ machine-specific tasks wait for the right machine. Phone access as a PWA.
 **Done when** work completes overnight with every local machine shut.
 
 ## M5 — Other people
-Multi-tenancy, onboarding, bring-your-own-credentials, billing, licensing, the
-agent-template marketplace. Container-per-floor isolation before any public
-release.
+Multi-tenancy, onboarding, bring-your-own-credentials, billing, licensing, and
+the building-template marketplace. Container-per-building isolation before any
+public release.
 
-**Done when** somebody who is not the author runs a floor successfully without
+**Done when** somebody who is not the author runs a building successfully without
 being talked through it.
