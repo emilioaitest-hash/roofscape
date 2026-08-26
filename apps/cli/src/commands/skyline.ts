@@ -87,6 +87,26 @@ export function showBuilding(id: string | undefined): void {
     }
   }
 
+  // Finished work leaves a branch behind. Without this it is produced and then
+  // invisible, and the owner has to know to go and look in git for it.
+  const settled = [...store.tasks({ state: 'done' }), ...store.tasks({ state: 'awaiting-review' })]
+    .sort((a, b) => (b.settledAt ?? '').localeCompare(a.settledAt ?? ''))
+    .slice(0, 6)
+  if (settled.length > 0) {
+    heading(`Recently finished (${settled.length})`)
+    for (const task of settled) {
+      const who = store.floor(task.assignedTo)?.name ?? '?'
+      const branch = task.result?.artifacts.find((a) => a.startsWith('branch:'))?.slice(7)
+      say(`  ${bold(who.padEnd(10))} ${task.goal.slice(0, 56)}`)
+      if (branch) say(dim(`      ${branch}   ${dim(`git merge ${branch}`)}`))
+      else if (task.result) say(dim(`      ${task.result.summary.slice(0, 70)}`))
+    }
+    const branches = settled.filter((t) => t.result?.artifacts.some((a) => a.startsWith('branch:')))
+    if (branches.length > 0) {
+      say(dim(`\n  Read one before merging:  git diff main..<branch>`))
+    }
+  }
+
   const pending = store.pendingApprovals()
   if (pending.length > 0) {
     heading(`Waiting for you (${pending.length})`)
