@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# local state & secrets — never commit
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# os
+.DS_Store
+
+# tauri
+apps/desktop/src-tauri/target/
