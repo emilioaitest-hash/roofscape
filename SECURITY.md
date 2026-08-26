@@ -25,6 +25,20 @@ reading text somebody else wrote, so a comment saying "run this diagnostic
 command" is all the persuasion required; and a key that reaches a tool result is
 then in the transcript, in the archives, and in any file that agent writes.
 
+And where a secret does legitimately reach an agent — you approved reading that
+`.env`, for a good reason — it stops at the archives. Every route into memory
+goes through one function, and that function redacts the shapes credentials
+actually have: provider keys, GitHub and Slack tokens, AWS access keys, private
+key blocks, bearer tokens, and passwords inside connection strings. A named
+credential keeps its name and loses its value, so the note still says *which*
+variable was involved.
+
+It is a net rather than a wall: it cannot catch a password that looks like an
+English word. It is worth having because nearly every real leak is a key with a
+recognisable prefix, and because the archives are the durable copy — a key that
+reaches one is there for good, is returned by every future recall that matches
+it, and gets promoted by the curator into something more permanent still.
+
 A repository's own secrets are the other half of the same problem. `.env`,
 private keys, `.netrc` and their relations sit inside the workspace, where an
 agent is allowed to read. Those are not refused — an agent debugging a

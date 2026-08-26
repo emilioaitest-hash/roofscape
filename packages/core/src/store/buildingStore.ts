@@ -3,6 +3,7 @@ import { openDatabase, toJson, fromJson, toBool, fromBool, now, allAs, getAs } f
 import { BUILDING_MIGRATIONS } from './schema/building.js'
 import { buildingDbPath } from './paths.js'
 import { newId } from './idgen.js'
+import { redactSecrets } from './redact.js'
 import {
   asApprovalId, asFloorId, asMemoryId, asMessageId, asTaskId,
   type ApprovalId, type BuildingId, type FloorId, type MemoryId, type MessageId, type TaskId,
@@ -374,7 +375,21 @@ export class BuildingStore {
 
   // ---- the archives ------------------------------------------------------
 
+  /**
+   * Write something to the archives.
+   *
+   * Every route into memory comes through here — an agent's `remember`, the
+   * history the building writes for itself, the curator's consolidations — which
+   * is why the redaction lives here rather than at each caller. A note is the
+   * durable copy: a key that reaches one is there for good, is returned by every
+   * future recall that matches it, and gets promoted into something more
+   * permanent by the curator.
+   */
   remember(input: RememberInput): MemoryRecord {
+    // The marker left in its place is the record that it happened: it is visible
+    // in the archives, it survives consolidation, and it needs no second table.
+    input = { ...input, text: redactSecrets(input.text).text }
+
     const record: MemoryRecord = {
       id: asMemoryId(newId('mem')),
       scope: input.scope,
