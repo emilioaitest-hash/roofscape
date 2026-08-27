@@ -512,9 +512,14 @@ function facadeSign(design: BuildingDesign, top: number, width: number): string 
     : Math.min(9.5, fitted)
   const y = top + 4
 
+  // The board is the palette's darkest value rather than its trim, because trim
+  // on an oxblood or a sage building is close enough to the wall that the
+  // lettering ends up sitting on nothing. Every palette's `glass` is dark, so
+  // the same near-white text reads on all of them.
   return `<g class="rs-sign">
-  <rect x="${round(-boardWidth / 2)}" y="${round(y)}" width="${round(boardWidth)}" height="${boardHeight}" rx="1.5" fill="${design.palette.trim}" opacity="0.9"/>
-  <rect x="${round(-boardWidth / 2)}" y="${round(y)}" width="${round(boardWidth)}" height="1.2" fill="${design.accent}" opacity="0.9"/>
+  <rect x="${round(-boardWidth / 2)}" y="${round(y)}" width="${round(boardWidth)}" height="${boardHeight}" rx="1.5" fill="${design.palette.glass}"/>
+  <rect x="${round(-boardWidth / 2 - 1)}" y="${round(y - 1)}" width="${round(boardWidth + 2)}" height="${boardHeight + 2}" rx="2" fill="none" stroke="${design.palette.trim}" stroke-width="1"/>
+  <rect x="${round(-boardWidth / 2)}" y="${round(y)}" width="${round(boardWidth)}" height="1.4" fill="${design.accent}" opacity="0.95"/>
   <text class="rs-sign-text" x="0" y="${round(y + boardHeight - 4)}" text-anchor="middle" font-size="${round(size)}">${esc(text)}</text>
 </g>`
 }
