@@ -31,10 +31,25 @@ export interface BuildingState {
 }
 
 export interface CityOptions {
+  /**
+   * Draw onto a canvas at least this wide, with the row centred in it.
+   *
+   * The page knows how wide it is and the daemon does not, so the page says.
+   * Without it a city of two buildings is a small drawing marooned in the
+   * middle of a large dark rectangle, which reads as a failure to load.
+   */
+  width?: number
+  /**
+   * Aim for this total height, by giving the sky whatever is left over. Ignored
+   * when the tallest building already needs more than that.
+   */
+  height?: number
   /** Space between plots. */
   gap?: number
   /** Left and right margin. */
   margin?: number
+  /** Narrowest canvas to draw onto. A single portrait wants a much tighter one. */
+  minWidth?: number
   /** Draw the hazy anonymous skyline behind. Off for a single portrait. */
   backdrop?: boolean
   /** Draw the nameplate under each building. */
@@ -885,14 +900,46 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
 
   const lotWidth = 150
   const bodyWidth = designs.reduce((sum, d) => sum + Math.max(d.design.width, 96), 0)
-  const gaps = gap * Math.max(0, designs.length - (options.emptyLot === false ? 1 : 0))
-  const width = Math.max(760, margin * 2 + bodyWidth + gaps + (options.emptyLot === false ? 0 : lotWidth))
+  const gapCount = Math.max(0, designs.length - (options.emptyLot === false ? 1 : 0))
+  const rowWidth = bodyWidth + gap * gapCount + (options.emptyLot === false ? 0 : lotWidth)
 
-  const tallest = designs.reduce((max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)), 120)
-  const skyAbove = Math.max(150, Math.round(tallest * 0.28))
+  /**
+   * A short row is drawn larger.
+   *
+   * The first thing anybody ever sees here is one shack, and one shack at the
+   * scale a row of thirty needs is a speck in the middle of a large dark
+   * rectangle. Scaling toward a comfortable row width means a new skyline reads
+   * as a place from the first building, and a crowded one still fits.
+   */
+  const zoom = Math.min(1.75, Math.max(1, 860 / Math.max(1, rowWidth)))
+  const scaled = rowWidth * zoom
+  const natural = margin * 2 + scaled
+
+  const tallest =
+    designs.reduce((max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)), 120) * zoom
   const belowGround = options.labels === false ? 40 : 118
+  // A city wants sky above it; a portrait wants a margin. The backdrop being
+  // off is what distinguishes the two, and it is the portrait that turns it off.
+  const portrait = options.backdrop === false
+  const skyAbove = portrait
+    ? Math.max(34, Math.round(tallest * 0.1))
+    : Math.max(140, Math.round(tallest * 0.24))
   const groundY = skyAbove + tallest
   const height = groundY + belowGround
+
+  /**
+   * Match the shape of the hole rather than the size of it.
+   *
+   * The page scales this to its own height, so the only thing that has to agree
+   * is the ratio. A city too narrow for its frame is widened with pavement, and
+   * the buildings stay the size they were drawn; a city too wide for it is left
+   * alone and scrolls, because shrinking thirty buildings to fit one screen is
+   * how you get thirty buildings nobody can tell apart.
+   */
+  const aspect = options.width && options.height ? options.width / options.height : 0
+  const width = Math.max(options.minWidth ?? 760, natural, aspect > 0 ? Math.round(height * aspect) : 0)
+  // Spare width becomes pavement on both sides rather than a hole on one.
+  const spare = (width - natural) / 2
 
   const parts: string[] = []
   parts.push(
@@ -916,14 +963,17 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   parts.push(`<rect x="0" y="${round(groundY + 15)}" width="${round(width)}" height="1" fill="#ffffff" opacity="0.05"/>`)
 
   // Lamps first, so a building stands in front of the one beside it.
-  parts.push(streetlights(designs.map((d) => Math.max(d.design.width, 96)), margin, gap, groundY))
+  parts.push(
+    streetlights(designs.map((d) => Math.max(d.design.width, 96) * zoom), margin + spare, gap * zoom, groundY),
+  )
 
-  let x = margin
+  let x = margin + spare
   for (const { design, state, note } of designs) {
     const slot = Math.max(design.width, 96)
-    const centre = x + slot / 2
+    const centre = x + (slot * zoom) / 2
+    // Scaled about its own feet, so the whole row still stands on one street.
     parts.push(
-      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${esc(design.name)} — ${esc(design.tier.name)}, ${design.headcount} on staff" transform="translate(${round(centre)} ${round(groundY)})">`,
+      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${esc(design.name)} — ${esc(design.tier.name)}, ${design.headcount} on staff" transform="translate(${round(centre)} ${round(groundY)}) scale(${round(zoom)})">`,
     )
     parts.push(buildingSvg(design, state))
     if (options.labels !== false) parts.push(nameplate(design, state, slot + gap * 0.8, note))
@@ -932,11 +982,11 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
       `<rect class="rs-hit" x="${round(-slot / 2 - gap / 2)}" y="${round(-design.height - 40)}" width="${round(slot + gap)}" height="${round(design.height + 40 + (options.labels === false ? 10 : 90))}" fill="transparent"/>`,
     )
     parts.push('</g>')
-    x += slot + gap
+    x += (slot + gap) * zoom
   }
 
   if (options.emptyLot !== false) {
-    parts.push(emptyLot(x, groundY, lotWidth))
+    parts.push(emptyLot(x, groundY, lotWidth * zoom, zoom))
   }
 
   parts.push('</svg>')
@@ -1126,9 +1176,10 @@ const clip = (text: string, max: number): string =>
   text.length > Math.max(4, max) ? `${text.slice(0, Math.max(3, max - 1))}…` : text
 
 /** Where the next one goes. An empty skyline should still look like a place. */
-function emptyLot(x: number, groundY: number, width: number): string {
-  return `<g class="rs-lot" data-lot="1" tabindex="0" role="button" aria-label="Break ground on a new building" transform="translate(${round(x + width / 2)} ${round(groundY)})">
-  <rect class="rs-lot-plot" x="${round(-width / 2)}" y="-120" width="${round(width)}" height="120" rx="6"/>
+function emptyLot(x: number, groundY: number, width: number, zoom = 1): string {
+  const inner = width / zoom
+  return `<g class="rs-lot" data-lot="1" tabindex="0" role="button" aria-label="Break ground on a new building" transform="translate(${round(x + width / 2)} ${round(groundY)}) scale(${round(zoom)})">
+  <rect class="rs-lot-plot" x="${round(-inner / 2)}" y="-120" width="${round(inner)}" height="120" rx="6"/>
   <path class="rs-lot-plus" d="M -13 -60 L 13 -60 M 0 -73 L 0 -47" stroke-width="2.6" stroke-linecap="round" fill="none"/>
   <text class="rs-lot-text" x="0" y="34" text-anchor="middle">Break ground</text>
   <text class="rs-note" x="0" y="54" text-anchor="middle">an empty lot</text>
@@ -1217,11 +1268,20 @@ const CITY_STYLE = `<style>
   }
 </style>`
 
-/** One building on its own, for a company's own page. */
+/**
+ * One building on its own, for a company's own page.
+ *
+ * Framed tight. The city's minimum canvas is there so a row of buildings has
+ * somewhere to stand; applied to a single portrait it produces one small
+ * building adrift in a great deal of sky.
+ */
 export function portraitSvg(building: CityBuilding, options: CityOptions = {}): string {
   return citySvg([building], {
     gap: 0,
-    margin: 44,
+    margin: 30,
+    minWidth: 0,
+    width: 300,
+    height: 380,
     backdrop: options.backdrop ?? false,
     labels: options.labels ?? false,
     emptyLot: false,

@@ -1,0 +1,470 @@
+/**
+ * Roofscape, as a place rather than a control panel.
+ *
+ * The city is the product, so everything around it is drafting paper and brass:
+ * quiet ground, warm light, one accent that is the same amber as a lit window.
+ * Nothing here competes with the skyline, because the skyline is the thing
+ * somebody opened this to look at.
+ *
+ * The scale is a fourth: 4, 8, 12, 16, 24, 32, 48. Sizes and radii come off it
+ * too, so a panel put together from these values lines up with one somebody
+ * else put together a month later.
+ */
+
+:root {
+  /* Ground. Deep indigo, not black — the sky in the drawing starts here. */
+  --sink:    #0b0a10;
+  --bg:      #100f17;
+  --panel:   #17161f;
+  --raised:  #1e1c28;
+  --line:    #2a2734;
+  --line-hi: #3a3648;
+
+  /* Ink. */
+  --ink:     #efe9df;
+  --ink-mid: #b6aea0;
+  --dim:     #948b7e;
+  --faint:   #6b6459;
+
+  /* Light. The accent is the colour of a window with somebody behind it. */
+  --lit:     #e8c15a;
+  --lit-dim: #8a7434;
+  --warm:    #d4703a;
+  --good:    #7fb08a;
+  --bad:     #d16a5a;
+  --cool:    #7f93c4;
+
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --fast: .16s var(--ease);
+  --med:  .26s var(--ease);
+
+  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --topbar-h: 54px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  overflow-x: hidden;
+}
+
+/* The skyline is the screen, not a banner on it, so it takes what is left
+   after the bar at the top and the strip at the bottom have had theirs. */
+main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#screenCity { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.01em; }
+h1 { font-size: 27px; line-height: 1.15; }
+h2 { font-size: 19px; }
+h3 { font-size: 15px; }
+p { margin: 0; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+.hidden { display: none !important; }
+.dim { color: var(--dim); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+
+/* A label in an architectural drawing: small, spaced, and out of the way. */
+.eyebrow, .pane-title, .ask-label, .tallies dt, .cut-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .11em;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+/* ── the bar across the top ─────────────────────────────────────────────── */
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  height: var(--topbar-h);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--sink) 86%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex; align-items: center; gap: 9px;
+  background: none; border: 0; padding: 4px 6px; border-radius: var(--r-sm);
+  transition: background var(--fast);
+}
+.brand:hover { background: #ffffff0d; }
+.brand-name { font-weight: 650; letter-spacing: -.01em; font-size: 15px; }
+
+/* A lit window, three pixels wide. The whole product in one mark. */
+.brand-mark {
+  width: 15px; height: 17px; border-radius: 2px;
+  background: linear-gradient(#2b2838, #211f2c);
+  border: 1px solid var(--line-hi);
+  position: relative; flex: none;
+}
+.brand-mark::after {
+  content: ""; position: absolute; inset: 3px 3px auto 3px; height: 4px;
+  border-radius: 1px; background: var(--lit);
+  box-shadow: 0 0 6px #e8c15a99;
+}
+
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--dim); min-width: 0; }
+.crumbs .sep { color: var(--faint); }
+.crumbs .here { color: var(--ink); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+.live { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--faint); }
+.live i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
+.live.on i { background: var(--good); box-shadow: 0 0 7px #7fb08a99; }
+.live.off i { background: var(--bad); }
+
+/* ── buttons ────────────────────────────────────────────────────────────── */
+
+.solid {
+  background: var(--lit); color: #241d07; border: 0;
+  padding: 9px 17px; border-radius: var(--r-sm);
+  font-weight: 650; letter-spacing: .005em;
+  transition: filter var(--fast), transform var(--fast);
+}
+.solid:hover:not(:disabled) { filter: brightness(1.09); }
+.solid:active:not(:disabled) { transform: translateY(1px); }
+.solid:disabled { opacity: .45; cursor: default; }
+
+.ghost {
+  background: transparent; color: var(--ink-mid);
+  border: 1px solid var(--line-hi); border-radius: var(--r-sm);
+  padding: 6px 13px; font-size: 13px; font-weight: 550;
+  transition: border-color var(--fast), color var(--fast), background var(--fast);
+}
+.ghost:hover:not(:disabled) { border-color: var(--lit-dim); color: var(--ink); background: #ffffff08; }
+.ghost:disabled { opacity: .5; cursor: default; }
+
+.update { border-color: var(--lit-dim); color: var(--lit); }
+.update:hover:not(:disabled) { background: var(--lit); border-color: var(--lit); color: #241d07; }
+
+input[type=text], select, textarea {
+  background: var(--sink); color: var(--ink);
+  border: 1px solid var(--line-hi); border-radius: var(--r-sm);
+  padding: 9px 12px;
+  transition: border-color var(--fast), box-shadow var(--fast);
+}
+input::placeholder { color: var(--faint); }
+input:focus, select:focus, textarea:focus, button:focus-visible {
+  outline: none; border-color: var(--lit-dim);
+  box-shadow: 0 0 0 3px #e8c15a26;
+}
+button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
+
+/* ── screens ────────────────────────────────────────────────────────────── */
+
+.screen { animation: rise var(--med) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+
+/* ── the skyline ────────────────────────────────────────────────────────── */
+
+.city-frame {
+  position: relative; flex: 1; min-height: 320px;
+  display: flex; flex-direction: column;
+  background: var(--sink); border-bottom: 1px solid var(--line);
+}
+
+.city-scroll {
+  flex: 1; min-height: 0;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin; scrollbar-color: var(--line-hi) transparent;
+}
+.city-scroll::-webkit-scrollbar { height: 9px; }
+.city-scroll::-webkit-scrollbar-thumb { background: var(--line-hi); border-radius: var(--r-pill); }
+.city-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* The daemon draws to the shape this box reports; the page scales it by
+   height. A city wider than the frame then scrolls at a size you can still
+   read, instead of being shrunk until every building looks the same. */
+.city-art { min-width: 100%; height: 100%; display: flex; justify-content: center; }
+.city-art svg { display: block; height: 100%; width: auto; max-width: none; }
+
+.loading { padding: 120px 0; text-align: center; color: var(--faint); font-size: 13px; }
+
+/* Under the tallies rather than over the drawing. A hint that has to sit on
+   top of the thing it is describing is a hint in the wrong place. */
+.city-hint { font-size: 12.5px; color: var(--faint); margin-top: 12px; }
+
+/* ── the strip under the city ───────────────────────────────────────────── */
+
+.strip { border-bottom: 1px solid var(--line); background: var(--bg); }
+.strip-inner {
+  max-width: 1180px; margin: 0 auto; padding: 20px 24px;
+  display: grid; grid-template-columns: 1fr minmax(320px, 460px); gap: 32px; align-items: start;
+}
+@media (max-width: 860px) { .strip-inner { grid-template-columns: 1fr; gap: 20px; } }
+
+.tallies { display: flex; flex-wrap: wrap; gap: 8px 32px; }
+.tallies div { display: flex; flex-direction: column; gap: 2px; }
+.tallies dd { margin: 0; font-size: 25px; font-weight: 600; line-height: 1.1; letter-spacing: -.02em; }
+.tallies .accent dd { color: var(--lit); }
+.tallies .warn dd { color: var(--warm); }
+
+.ask-row { display: flex; gap: 8px; margin-top: 7px; }
+.ask-row input { flex: 1; min-width: 0; }
+.ask-note { font-size: 12px; color: var(--faint); margin-top: 6px; }
+
+.answer {
+  max-width: 1180px; margin: 0 auto; padding: 0 24px 22px;
+  white-space: pre-wrap; font-size: 14.5px; color: var(--ink-mid);
+  animation: rise var(--med) both;
+}
+.answer strong { color: var(--ink); }
+
+/* ── a building ─────────────────────────────────────────────────────────── */
+
+.building-head {
+  max-width: 1180px; margin: 0 auto; padding: 28px 24px 22px;
+  display: grid; grid-template-columns: auto 1fr; gap: 32px; align-items: end;
+}
+@media (max-width: 780px) { .building-head { grid-template-columns: 1fr; gap: 18px; } }
+
+.portrait {
+  width: 210px; flex: none;
+  border-radius: var(--r-lg); overflow: hidden;
+  background: var(--sink); border: 1px solid var(--line);
+}
+.portrait svg { display: block; width: 100%; height: auto; }
+@media (max-width: 780px) { .portrait { width: 150px; } }
+
+.building-meta { min-width: 0; }
+.charter { color: var(--dim); margin-top: 5px; max-width: 62ch; }
+
+.vitals { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
+.vital {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-pill); padding: 4px 13px; font-size: 13px;
+}
+.vital b { font-weight: 600; }
+.vital span { color: var(--dim); font-size: 12px; }
+.vital.lit { border-color: var(--lit-dim); }
+.vital.lit b { color: var(--lit); }
+.vital.warn { border-color: #d4703a66; }
+.vital.warn b { color: var(--warm); }
+
+.goal { display: flex; gap: 8px; margin-top: 18px; max-width: 640px; }
+.goal input { flex: 1; min-width: 0; }
+
+/* ── tabs ───────────────────────────────────────────────────────────────── */
+
+.tabs {
+  max-width: 1180px; margin: 0 auto; padding: 0 24px;
+  display: flex; gap: 3px; border-bottom: 1px solid var(--line);
+  overflow-x: auto; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 11px 14px; color: var(--dim); font-size: 14px; font-weight: 550;
+  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: color var(--fast), border-color var(--fast);
+}
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--ink); border-bottom-color: var(--lit); }
+
+.badge {
+  background: var(--warm); color: #2a1206; font-size: 11px; font-weight: 700;
+  min-width: 18px; height: 18px; border-radius: var(--r-pill);
+  display: inline-flex; align-items: center; justify-content: center; padding: 0 5px;
+}
+.badge.quiet { background: var(--line-hi); color: var(--ink-mid); }
+
+.panes { max-width: 1180px; margin: 0 auto; padding: 24px; }
+.pane { animation: rise .2s var(--ease) both; }
+.pane-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.pane-sub { font-size: 13px; margin: -6px 0 14px; }
+
+/* ── the cutaway: one floor per agent ───────────────────────────────────── */
+
+[data-pane="floors"] { display: grid; grid-template-columns: 1fr 280px; gap: 24px; align-items: start; }
+@media (max-width: 900px) { [data-pane="floors"] { grid-template-columns: 1fr; } }
+
+.cutaway {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  overflow: hidden; background: var(--panel);
+}
+
+/* The roof, so the stack reads as a building and not as a list. */
+.cut-roof {
+  height: 26px;
+  background: repeating-linear-gradient(-45deg, #24212e 0 7px, #1f1c29 7px 14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.floor {
+  display: grid; grid-template-columns: 42px 1fr auto; gap: 14px; align-items: center;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  transition: background var(--fast);
+  position: relative;
+}
+.floor:hover { background: var(--raised); }
+
+/* The storey number, set like the plate beside a lift. */
+.floor-no {
+  font-family: var(--mono); font-size: 12px; color: var(--faint);
+  text-align: center; padding: 3px 0; border-radius: var(--r-sm);
+  background: var(--sink); border: 1px solid var(--line);
+}
+
+.floor-who { min-width: 0; }
+.floor-name { font-weight: 600; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cut-role { font-weight: 600; }
+.floor-on {
+  font-size: 12.5px; color: var(--dim); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52ch;
+}
+.floor-model { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+.floor-model button {
+  background: none; border: 0; padding: 0; color: inherit; font: inherit;
+  text-decoration: underline; text-decoration-color: var(--line-hi); text-underline-offset: 3px;
+}
+.floor-model button:hover { color: var(--ink-mid); }
+
+.floor-right { display: flex; align-items: center; gap: 10px; }
+
+/* Status, said the way a person would say it. */
+.state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); white-space: nowrap; }
+.state i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.state.working { color: var(--lit); }
+.state.working i { background: var(--lit); box-shadow: 0 0 8px #e8c15aaa; animation: throb 2.2s ease-in-out infinite; }
+.state.blocked { color: var(--bad); }
+.state.blocked i { background: var(--bad); }
+.state.review  { color: var(--cool); }
+.state.review i { background: var(--cool); }
+.state.next i { background: var(--ink-mid); }
+@keyframes throb { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* A floor with somebody working on it is lit from inside. */
+.floor.is-working { background: linear-gradient(90deg, #e8c15a12, transparent 62%); }
+.floor.is-working::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--lit);
+}
+
+.floor.top-floor .floor-no { border-color: var(--lit-dim); color: var(--lit); }
+
+.cut-band {
+  padding: 12px 16px; background: var(--raised);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.cut-band:last-child { border-bottom: 0; }
+.cut-band .cut-role { margin-bottom: 1px; }
+.cut-band-what { font-size: 13px; color: var(--dim); }
+/* Below ground, so it is drawn as below ground. */
+.cut-band.below { background: #131118; }
+
+.empty-floors { padding: 34px 20px; text-align: center; color: var(--faint); font-size: 13.5px; }
+
+.hire-box {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--panel); padding: 16px; position: sticky; top: calc(var(--topbar-h) + 16px);
+}
+.hire-box p { font-size: 12.5px; margin: 4px 0 12px; }
+.hire-box form { display: grid; gap: 8px; }
+.hire-box select, .hire-box input { width: 100%; }
+.next-form { font-size: 12.5px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+/* ── rows: work, approvals, orders, notes ───────────────────────────────── */
+
+.work-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-bottom: 24px; }
+@media (max-width: 780px) { .work-cols { grid-template-columns: 1fr; gap: 18px; } }
+
+.row {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 11px 0; border-bottom: 1px solid var(--line);
+}
+.row:last-child { border-bottom: 0; }
+.row-main { min-width: 0; }
+.row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-sub { font-size: 12.5px; color: var(--faint); margin-top: 2px; }
+.row-right { display: flex; align-items: center; gap: 7px; flex: none; }
+
+.pill {
+  font-size: 11px; letter-spacing: .04em; border: 1px solid var(--line-hi);
+  border-radius: var(--r-pill); padding: 2px 9px; color: var(--dim); white-space: nowrap;
+}
+.pill.lit { border-color: var(--lit-dim); color: var(--lit); }
+.pill.good { border-color: #7fb08a66; color: var(--good); }
+.pill.bad { border-color: #d16a5a66; color: var(--bad); }
+.pill.branch { font-family: var(--mono); font-size: 11px; }
+
+.row-form { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.row-form input { flex: 1; min-width: 140px; }
+.row-form input#sEvery { max-width: 110px; flex: none; }
+.row-form input#sAt { max-width: 96px; flex: none; }
+
+.empty { color: var(--faint); font-size: 13.5px; padding: 18px 0; font-style: italic; }
+
+.note-row { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: baseline; }
+.note-row:last-child { border-bottom: 0; }
+.note-row p { font-size: 13.5px; color: var(--ink-mid); min-width: 0; }
+
+.feed-box { border-top: 1px solid var(--line); padding-top: 18px; }
+.feed { font-family: var(--mono); font-size: 12px; max-height: 260px; overflow-y: auto; }
+.feed div { padding: 2px 0; color: var(--dim); }
+.feed .hi { color: var(--ink); }
+.feed .lit { color: var(--lit); }
+.feed .bad { color: var(--bad); }
+.feed .tool { color: var(--faint); padding-left: 14px; }
+
+/* ── dialog ─────────────────────────────────────────────────────────────── */
+
+dialog {
+  border: 1px solid var(--line-hi); border-radius: var(--r-lg);
+  background: var(--panel); color: var(--ink);
+  padding: 24px; width: min(460px, calc(100vw - 32px));
+  box-shadow: 0 24px 70px #00000080;
+}
+dialog::backdrop { background: #06050a; opacity: .68; backdrop-filter: blur(3px); }
+dialog h2 { margin-bottom: 4px; }
+dialog p { font-size: 13px; margin-bottom: 16px; }
+dialog label { display: block; font-size: 12.5px; color: var(--dim); margin-bottom: 12px; }
+dialog label input { width: 100%; margin-top: 5px; }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* ── toasts ─────────────────────────────────────────────────────────────── */
+
+.toasts {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column-reverse; gap: 8px; z-index: 90; align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: var(--raised); border: 1px solid var(--line-hi); color: var(--ink);
+  padding: 9px 17px; border-radius: var(--r-pill); font-size: 13.5px;
+  box-shadow: 0 10px 32px #00000066;
+  animation: pop var(--med) both;
+}
+.toast.bad { border-color: #d16a5a80; }
+.toast.good { border-color: #7fb08a80; }
+@keyframes pop { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}

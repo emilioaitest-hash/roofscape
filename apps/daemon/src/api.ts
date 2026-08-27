@@ -2,14 +2,73 @@ import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   parseEvery, parseAtTime, describeSchedule, ask,
+  citySvg, portraitSvg, designFor,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
+  type Floor, type Task,
 } from '@app/core'
 import { Router, HttpError, badRequest, notFound, readJson, type Ctx } from './router.js'
 import type { EventStream } from './events.js'
 
 /** One goal at a time per building. Two managers assigning at once is chaos. */
 const working = new Set<string>()
+
+/**
+ * What one floor is doing, worked out from the work it holds.
+ *
+ * There is no status column, deliberately: a stored status is a second source of
+ * truth that goes stale the moment a process dies holding it. The tasks table
+ * already knows, and it survives a crash.
+ */
+export type FloorState = 'working' | 'next' | 'review' | 'blocked' | 'idle'
+
+const RANK: Record<FloorState, number> = { working: 0, blocked: 1, review: 2, next: 3, idle: 4 }
+
+function floorStates(staff: readonly Floor[], open: readonly Task[]): Map<string, { state: FloorState; task: Task | null }> {
+  const out = new Map<string, { state: FloorState; task: Task | null }>()
+  for (const floor of staff) out.set(floor.id, { state: 'idle', task: null })
+
+  for (const task of open) {
+    const held = out.get(task.assignedTo)
+    if (!held) continue
+    const state: FloorState =
+      task.state === 'working' ? 'working'
+      : task.state === 'escalated' ? 'blocked'
+      : task.state === 'awaiting-review' || task.state === 'awaiting-approval' ? 'review'
+      : 'next'
+    // A floor holding several things is described by the most pressing of them.
+    if (RANK[state] < RANK[held.state]) out.set(task.assignedTo, { state, task })
+  }
+  return out
+}
+
+/** The buildings, with everything the skyline needs to draw itself. */
+function skylineViews(sky: SkylineStore) {
+  return sky.list().map((building) => {
+    const store = BuildingStore.open(building.id)
+    try {
+      const headcount = store.headcount()
+      const open = store.openTasks()
+      const pending = store.pendingApprovals().length
+      const inHand = open.filter((t) => t.state === 'queued' || t.state === 'working').length
+      return {
+        id: building.id as string,
+        name: building.name,
+        headcount,
+        tier: tierOf(Math.max(1, headcount)).name,
+        nextTierAt: nextTierAt(Math.max(1, headcount)),
+        working: store.busyFloors(),
+        waiting: pending,
+        busy: working.has(building.id),
+        open: inHand,
+        pendingApprovals: pending,
+        note: inHand > 0 ? `${inHand} in hand` : `${headcount} on staff`,
+      }
+    } finally {
+      store.close()
+    }
+  })
+}
 
 export const isWorking = (buildingId: string): boolean => working.has(buildingId)
 
@@ -112,26 +171,43 @@ export function buildApi(events: EventStream): Router {
     const sky = skyline()
     try {
       return {
-        buildings: sky.list().map((building) => {
-          const store = BuildingStore.open(building.id)
-          try {
-            const headcount = store.headcount()
-            const tier = tierOf(Math.max(1, headcount))
-            return {
-              id: building.id,
-              name: building.name,
-              headcount,
-              tier: tier.name,
-              nextTierAt: nextTierAt(Math.max(1, headcount)),
-              busy: store.busyFloors(),
-              open: store.tasks({ state: 'queued' }).length + store.tasks({ state: 'working' }).length,
-              pendingApprovals: store.pendingApprovals().length,
-              working: working.has(building.id),
-            }
-          } finally {
-            store.close()
-          }
-        }),
+        buildings: skylineViews(sky).map((view) => ({
+          ...view,
+          // The old shape called the busy-floor count `busy` and the
+          // running-goal flag `working`; the drawn city needs the opposite
+          // sense of both. Kept alongside the new names so the CLI, which asks
+          // this endpoint the old question, still gets the old answer.
+          busy: view.working,
+          working: view.busy,
+        })),
+        owner: sky.owner(),
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * The skyline, drawn.
+   *
+   * Rendered here rather than in the browser so that the page cannot invent a
+   * building the rest of the product has never heard of. The page's job is to
+   * put this string on the screen and notice which one was clicked.
+   */
+  router.get('/api/skyline/city', (ctx) => {
+    const sky = skyline()
+    try {
+      const views = skylineViews(sky)
+      // The page says how much room it has; a drawing that does not fill it
+      // reads as one that failed to load. Clamped so a nonsense query string
+      // cannot ask for a canvas nothing can render.
+      const asked = (name: string, max: number) => {
+        const value = Number(ctx.query.get(name))
+        return Number.isFinite(value) && value > 0 ? { [name]: Math.min(Math.round(value), max) } : {}
+      }
+      return {
+        svg: citySvg(views, { ...asked('width', 6000), ...asked('height', 3000) }),
+        buildings: views,
         owner: sky.owner(),
       }
     } finally {
@@ -145,17 +221,46 @@ export function buildApi(events: EventStream): Router {
       const building = buildingOr404(sky, ctx.params.id!)
       const store = BuildingStore.open(building.id)
       try {
+        const headcount = store.headcount()
+        const staff = store.staff()
+        const open = store.openTasks()
+        const recent = store.recentTasks(12)
+        const states = floorStates(staff, open)
+        const design = designFor({ id: building.id, name: building.name, headcount })
+
         return {
           ...building,
-          tier: tierOf(Math.max(1, store.headcount())).name,
-          staff: store.staff().map((floor) => ({
-            id: floor.id, name: floor.name, role: floor.role, level: floor.level,
-            posting: floor.posting, describes: describePosting(floor.posting),
-          })),
+          tier: tierOf(Math.max(1, headcount)).name,
+          nextTierAt: nextTierAt(Math.max(1, headcount)),
+          headcount,
+          look: { palette: design.palette.name, crown: design.crown, accent: design.accent },
+          portrait: portraitSvg({
+            id: building.id,
+            name: building.name,
+            headcount,
+            working: store.busyFloors(),
+            waiting: store.pendingApprovals().length,
+            busy: working.has(building.id),
+          }),
+          staff: staff.map((floor) => {
+            const held = states.get(floor.id)
+            return {
+              id: floor.id, name: floor.name, role: floor.role, level: floor.level,
+              posting: floor.posting, describes: describePosting(floor.posting),
+              hiredAt: floor.hiredAt,
+              state: held?.state ?? 'idle',
+              on: held?.task ? { id: held.task.id, goal: held.task.goal, state: held.task.state } : null,
+            }
+          }),
+          open,
+          recent,
+          // The old field, still the last forty in creation order, because the
+          // CLI reads it and a screen is not a reason to break a terminal.
           tasks: store.tasks().slice(-40),
           approvals: store.pendingApprovals(),
           archives: store.archiveStats(),
           spent: store.spentSince('1970-01-01T00:00:00.000Z'),
+          spentThisMonth: store.spentThisMonth(),
           working: working.has(building.id),
         }
       } finally {

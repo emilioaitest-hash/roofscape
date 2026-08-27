@@ -65,9 +65,16 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
 
   // The page itself is not the secret; the token is, and the page has to be
-  // fetchable before it can present one. It ships no data of its own.
+  // fetchable before it can present one. It ships no data of its own, and
+  // neither do its stylesheet and script — a browser cannot put an
+  // authorization header on a <link> or a <script src>, so gating them would
+  // mean inlining the whole dashboard into one file to avoid the problem.
   if (url.pathname === '/' || url.pathname === '/index.html') {
-    await sendDashboard(response)
+    await sendAsset(response, 'index.html')
+    return
+  }
+  if (ASSETS.has(url.pathname)) {
+    await sendAsset(response, url.pathname.slice(1))
     return
   }
 
@@ -105,13 +112,34 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-async function sendDashboard(response: ServerResponse): Promise<void> {
+/**
+ * Everything the dashboard is allowed to fetch off disk, named one by one.
+ *
+ * A list rather than a directory walk: this is the one part of the service that
+ * answers before the token is checked, and a path that reaches the filesystem
+ * without an allowlist is the shape of bug that ends up reading `daemon.token`.
+ */
+const ASSETS = new Map<string, string>([
+  ['/app.css', 'text/css; charset=utf-8'],
+  ['/app.js', 'text/javascript; charset=utf-8'],
+])
+
+const TYPES: Record<string, string> = { 'index.html': 'text/html; charset=utf-8' }
+
+async function sendAsset(response: ServerResponse, name: string): Promise<void> {
+  const type = TYPES[name] ?? ASSETS.get(`/${name}`) ?? 'application/octet-stream'
   try {
-    const html = await readFile(join(HERE, '..', 'public', 'index.html'))
-    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': html.length })
-    response.end(html)
+    const body = await readFile(join(HERE, '..', 'public', name))
+    response.writeHead(200, {
+      'content-type': type,
+      'content-length': body.length,
+      // The page and its assets are rebuilt with the daemon, and a stale one
+      // against a new API is a bug report that reads like a haunting.
+      'cache-control': 'no-store',
+    })
+    response.end(body)
   } catch {
-    send(response, 500, { error: 'The dashboard page is missing from this install.' })
+    send(response, 500, { error: `The dashboard is missing ${name} from this install.` })
   }
 }
 

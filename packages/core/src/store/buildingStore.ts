@@ -175,6 +175,32 @@ export class BuildingStore {
     return allAs<TaskRow>(this.db.prepare(sql), ...params).map((r) => hydrateTask(r, this.buildingId))
   }
 
+  /**
+   * Work that has not settled. Every screen that shows what a building is doing
+   * wants exactly this, and none of them wants the four thousand tasks it did
+   * last spring — which is what `tasks()` with no filter hands back.
+   */
+  openTasks(): Task[] {
+    return allAs<TaskRow>(
+      this.db.prepare(
+        `select * from tasks
+         where state in ('queued', 'working', 'awaiting-review', 'awaiting-approval', 'escalated')
+         order by created_at`,
+      ),
+    ).map((r) => hydrateTask(r, this.buildingId))
+  }
+
+  /** The last few things it finished, newest first. */
+  recentTasks(limit = 12): Task[] {
+    return allAs<TaskRow>(
+      this.db.prepare(
+        `select * from tasks where settled_at is not null
+         order by settled_at desc limit ?`,
+      ),
+      limit,
+    ).map((r) => hydrateTask(r, this.buildingId))
+  }
+
   /** How many floors have work in hand — which is what lights their windows. */
   busyFloors(): number {
     return getAs<{ n: number }>(
