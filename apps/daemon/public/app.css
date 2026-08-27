@@ -598,3 +598,26 @@ dialog#settingsDialog { width: min(560px, calc(100vw - 32px)); }
 @media (prefers-reduced-motion: reduce) {
   .rs-stars, .rs-far, .rs-mid { transition: none; transform: none !important; }
 }
+
+/* ── a building changing form ───────────────────────────────────────────── */
+
+/* Applied by the page, not by the renderer: the drawing has no idea a building
+   just grew, and it should not — it draws what is there now. Only the page
+   remembers what was there a moment ago. */
+.rs-grew { animation: grew 2.6s var(--ease) both; transform-box: view-box; }
+.rs-grew .rs-name { animation: grew-name 2.6s var(--ease) both; }
+
+@keyframes grew {
+  0%   { filter: none; }
+  12%  { filter: drop-shadow(0 0 26px #e8c15acc) drop-shadow(0 0 8px #e8c15a); }
+  55%  { filter: drop-shadow(0 0 18px #e8c15a99); }
+  100% { filter: none; }
+}
+@keyframes grew-name {
+  0%, 100% { fill: #f2ece1; }
+  20%, 60% { fill: #ffd98d; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-grew, .rs-grew .rs-name { animation: none; }
+}

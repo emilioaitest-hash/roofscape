@@ -124,10 +124,25 @@ function cityBox() {
   }
 }
 
+/**
+ * What form each building was in last time we looked.
+ *
+ * Empty on first load on purpose: opening the app is not an occasion, and a
+ * congratulation for something that happened last week is worse than silence.
+ */
+const knownForms = new Map()
+
 async function refreshCity() {
   const box = cityBox()
   const { svg, buildings } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
   skyline = buildings
+
+  const grew = []
+  for (const building of buildings) {
+    const was = knownForms.get(building.id)
+    if (was !== undefined && was !== building.tier) grew.push({ ...building, was })
+    knownForms.set(building.id, building.tier)
+  }
 
   // Redraw only when the shape of the city changed. A goal starting is a class
   // toggle; a hire is a new storey and needs the daemon to draw it again.
@@ -139,6 +154,7 @@ async function refreshCity() {
   }
   paintCityState()
   paintTallies()
+  for (const building of grew) itGrew(building)
   // Telling somebody to click a building when there are none is the sort of
   // small dishonesty that makes a first run feel unfinished.
   el('cityHint').textContent = buildings.length
@@ -185,6 +201,26 @@ function wireParallax() {
 
   // Settle back when the pointer leaves, rather than freezing mid-lean.
   frame.addEventListener('mouseleave', () => { at = { x: 0, y: 0 }; apply() })
+}
+
+/**
+ * A building has changed form. This is the moment the ladder exists for.
+ *
+ * Watching a shack become a walk-up because the work justified two more hires
+ * is, per decision 0009, most of the reason anybody comes back — and until now
+ * it happened in a silent repaint you would only notice if you were staring at
+ * the right part of the screen. So it gets a beat: the new building is scrolled
+ * into view and lit, and it is said out loud what it has become.
+ */
+function itGrew(building) {
+  const plot = el('cityArt').querySelector(`[data-building="${CSS.escape(building.id)}"]`)
+  if (plot) {
+    plot.classList.add('rs-grew')
+    plot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+    setTimeout(() => plot.classList.remove('rs-grew'), 2600)
+  }
+  const article = /^[aeiou]/i.test(building.tier) ? 'an' : 'a'
+  toast(`${building.name} is ${article} ${building.tier} now.`, 'good')
 }
 
 function wireCity() {
