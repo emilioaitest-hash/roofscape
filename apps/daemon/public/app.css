@@ -655,3 +655,66 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   .rs-stars, .rs-far, .rs-mid { transform: none !important; }
   .spin, .rs-grew, .rs-grew .rs-name { animation: none; }
 }
+
+/* ── the approval desk ──────────────────────────────────────────────────── */
+
+/**
+ * A docket somebody left for you.
+ *
+ * The edge is terracotta because this is the one thing on any screen that is
+ * about you rather than about work, and the two answers sit side by side rather
+ * than at the end of a row — a decision that cannot be undone should not be one
+ * click away from a decision you were only skimming past.
+ */
+.docket {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--flag);
+  border-radius: var(--r-surface);
+  background: var(--panel);
+  padding: var(--s4);
+  margin-bottom: var(--s3);
+}
+.docket:last-child { margin-bottom: 0; }
+
+.docket-head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+.docket-when { font-size: var(--t-micro); color: var(--ink-4); margin-left: auto; }
+.docket-intent { font-size: var(--t-lead); line-height: 1.35; margin-top: var(--s2); }
+.docket-if { font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s1); }
+.docket-answer { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s4); }
+
+/* An empty desk says what the desk is for, not that it is empty. */
+.desk-clear {
+  border: 1px dashed var(--line-strong); border-radius: var(--r-surface);
+  padding: var(--s6) var(--s5); text-align: center;
+}
+.desk-clear p { font-size: var(--t-body); }
+.desk-clear p.dim { font-size: var(--t-small); margin-top: var(--s2); max-width: 52ch; margin-inline: auto; }
+
+/* ── the archives, which are below ground ───────────────────────────────── */
+
+.archive-shelf {
+  background: #131118;
+  border: 1px solid var(--line); border-radius: var(--r-surface);
+  padding: var(--s1) var(--s4);
+  margin-top: var(--s3);
+}
+.archive-stats {
+  display: flex; gap: var(--s5); flex-wrap: wrap;
+  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
+  font-size: var(--t-micro); color: var(--ink-4);
+}
+.archive-stats b { color: var(--ink-2); font-weight: 600; }
+
+/* ── standing orders ────────────────────────────────────────────────────── */
+
+.order {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
+}
+.order:last-child { border-bottom: 0; }
+.order-main { min-width: 0; }
+.order-goal { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-when { font-size: var(--t-micro); color: var(--ink-4); margin-top: 2px; }
+/* A paused order is present but not running, so it is drawn that way. */
+.order.paused .order-goal { color: var(--ink-4); }
+.order-right { display: flex; align-items: center; gap: var(--s1); flex: none; }

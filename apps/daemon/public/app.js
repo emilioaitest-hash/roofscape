@@ -433,20 +433,47 @@ function paintWork(building) {
 const who = (building, floorId) =>
   esc(building.staff.find((f) => f.id === floorId)?.name ?? 'somebody who has left')
 
+/**
+ * The approval desk, as a desk.
+ *
+ * Each of these is a docket somebody left for you, and the decision is the only
+ * thing on the screen that cannot be undone — so it gets room, its own edge in
+ * the colour that means *you*, and the two answers side by side rather than a
+ * row you might click through by accident.
+ */
 function paintApprovals(building) {
+  // What granting it actually does, said in the fewest ordinary words.
+  const consequence = {
+    hire: 'Somebody joins, and the building grows a storey.',
+    publish: 'This leaves the building.',
+    send: 'This goes to somebody outside.',
+    deploy: 'This reaches the world.',
+    spend: 'This costs money.',
+    merge: 'This lands on main.',
+  }
+
   el('approvals').innerHTML = building.approvals.length
     ? building.approvals
         .map(
-          (approval) => `<div class="row"><div class="row-main">
-            <div class="row-title">${esc(approval.intent)}</div>
-            <div class="row-sub">${esc(approval.kind)} · asked ${ago(approval.createdAt)}</div>
-          </div><div class="row-right">
-            <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
-            <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
-          </div></div>`,
+          (approval) => `<div class="docket">
+            <div class="docket-head">
+              <span class="kind k-${esc(approval.kind)}">${esc(approval.kind)}</span>
+              <span class="docket-when">${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}</span>
+            </div>
+            <p class="docket-intent">${esc(approval.intent)}</p>
+            <p class="docket-if">${esc(consequence[approval.kind] ?? 'This reaches outside the building.')}</p>
+            <div class="docket-answer">
+              <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
+              <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
+            </div>
+          </div>`,
         )
         .join('')
-    : '<p class="empty">Nothing waiting on you.</p>'
+    : `<div class="desk-clear">
+         <p>The desk is clear.</p>
+         <p class="dim">Anything that reaches outside the building — publishing, sending,
+            deploying, spending, merging to main, hiring — stops here first.</p>
+       </div>`
 
   for (const node of el('approvals').querySelectorAll('[data-yes]')) {
     node.onclick = () => decide(node.getAttribute('data-yes'), true)
@@ -468,16 +495,26 @@ async function paintSchedules() {
   el('schedules').innerHTML = mine.length
     ? mine
         .map(
-          (order) => `<div class="row"><div class="row-main">
-            <div class="row-title">${order.enabled ? '' : '<span class="pill">paused</span> '}${esc(clip(order.goal, 64))}</div>
-            <div class="row-sub">${esc(order.reads)}${order.lastRunAt ? ` · last ran ${ago(order.lastRunAt)}` : ''}</div>
-          </div><div class="row-right">
-            <button class="ghost" data-toggle="${esc(order.id)}">${order.enabled ? 'Pause' : 'Start'}</button>
-            <button class="ghost" data-drop="${esc(order.id)}">Drop</button>
-          </div></div>`,
+          (order) => `<div class="order ${order.enabled ? '' : 'paused'}">
+            <div class="order-main">
+              <div class="order-goal">${esc(order.goal)}</div>
+              <div class="order-when">${esc(order.reads)}${
+                order.lastRunAt ? ` · last ran ${ago(order.lastRunAt)}` : ' · not run yet'
+              }${order.enabled ? '' : ' · paused'}</div>
+            </div>
+            <div class="order-right">
+              <button class="ghost" data-toggle="${esc(order.id)}">${order.enabled ? 'Pause' : 'Start'}</button>
+              <button class="ghost" data-drop="${esc(order.id)}">Drop</button>
+            </div>
+          </div>`,
         )
         .join('')
-    : '<p class="empty">Nothing recurring. Standing orders run whether or not anybody is watching.</p>'
+    : `<div class="desk-clear">
+         <p>Nothing recurring.</p>
+         <p class="dim">A standing order runs whether or not anybody is watching — at 3am, on a
+            machine you left on. Checked every thirty seconds, and caught up once rather than
+            seven times after a laptop has been asleep.</p>
+       </div>`
 
   for (const node of el('schedules').querySelectorAll('[data-toggle]')) {
     node.onclick = () => changeSchedule(node.getAttribute('data-toggle'), { enabled: node.textContent === 'Start' })
@@ -491,13 +528,19 @@ async function paintArchives(query) {
   const path = `/api/buildings/${encodeURIComponent(view.building)}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
   const { stats, notes } = await api(path)
   el('archives').innerHTML =
-    `<p class="dim pane-sub">${stats.total} notes · ${stats.pinned} pinned · ${stats.expired} expired</p>` +
+    `<div class="archive-shelf">
+      <div class="archive-stats">
+        <span><b>${stats.total}</b> notes</span>
+        <span><b>${stats.pinned}</b> pinned</span>
+        <span><b>${stats.expired}</b> expired</span>
+      </div>` +
     (notes.length
       ? notes
           .slice(0, 20)
           .map((note) => `<div class="note-row"><span class="pill">${esc(note.layer)}</span><p>${esc(clip(note.text, 240))}</p></div>`)
           .join('')
-      : '<p class="empty">Nothing found.</p>')
+      : `<p class="empty">${query ? 'Nothing found down here.' : 'Nothing written down yet. Agents record what turned out to be true as they work.'}</p>`) +
+    '</div>'
 }
 
 // ── the mailroom ───────────────────────────────────────────────────────────
