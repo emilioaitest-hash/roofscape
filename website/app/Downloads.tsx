@@ -71,9 +71,16 @@ export function Downloads({ version, available }: { version: string | null; avai
       </p>
       {primary.startsWith('mac') ? (
         <p className="fineprint">
-          <strong>First time on macOS:</strong> right-click the app and choose <em>Open</em>, then
-          <em> Open</em> again. macOS will say the developer cannot be verified, because the app
-          carries its own signature rather than one Apple has certified. Once per version.
+          <strong>First time on macOS:</strong> macOS will block it and say Apple cannot verify it.
+          Click <em>Done</em>, then open <em>System Settings → Privacy &amp; Security</em>, scroll
+          down and click <em>Open Anyway</em>. Once per version.
+        </p>
+      ) : null}
+      {primary.startsWith('mac') ? (
+        <p className="fineprint">
+          It says that because the app is signed with its own certificate rather than one Apple has
+          certified. On macOS 14 and earlier the same thing is done by right-clicking the app and
+          choosing <em>Open</em> — Apple removed that shortcut in macOS 15.
         </p>
       ) : null}
     </>
