@@ -1,6 +1,12 @@
 node_modules/
 dist/
 build/
+# electron-builder's buildResources directory is source, not output, and the
+# rule above swallowed it. The signing hook was ignored, never committed, and
+# every release build failed on a module it could not find — while building
+# here kept working, because here the file was on disk.
+!apps/desktop/build/
+!apps/desktop/build/**
 .turbo/
 *.tsbuildinfo
 
