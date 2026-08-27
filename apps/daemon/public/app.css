@@ -631,8 +631,30 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 .row-form { display: flex; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
 .row-form input { flex: 1; min-width: 140px; }
-.row-form input#sEvery { max-width: 110px; flex: none; }
-.row-form input#sAt { max-width: 96px; flex: none; }
+
+/**
+ * Setting a standing order.
+ *
+ * The interval takes a small syntax — 30m, 4h, daily, weekly — and the form
+ * said so only in the error you got for guessing wrong. Labelled fields, the
+ * accepted forms under the one that needs them, and the fact that leaving the
+ * time empty is allowed rather than unfinished.
+ */
+.order-form {
+  display: grid; grid-template-columns: 1fr 140px 120px auto;
+  gap: var(--s3); align-items: start;
+  border: 1px solid var(--line); border-radius: var(--r-surface);
+  background: var(--panel); padding: var(--s4);
+  margin-bottom: var(--s4);
+}
+@media (max-width: 780px) { .order-form { grid-template-columns: 1fr; } }
+.order-form label {
+  display: block; font-size: var(--t-plate);
+  text-transform: uppercase; letter-spacing: .11em; font-weight: 600; color: var(--ink-3);
+}
+.order-form input { width: 100%; margin-top: var(--s1); text-transform: none; letter-spacing: normal; }
+.order-form button { align-self: start; margin-top: 20px; }
+.order-form .field-note { text-transform: none; letter-spacing: normal; font-weight: 400; }
 
 /* Empty states say what the thing is for, not that it is empty. */
 .empty { color: var(--ink-4); font-size: var(--t-small); padding: var(--s4) 0; font-style: italic; }

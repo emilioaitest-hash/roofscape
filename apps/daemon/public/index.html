@@ -201,10 +201,22 @@
 
       <div class="pane hidden" data-pane="orders">
         <h3 class="pane-title">Standing orders <button class="ghost" id="showSchedule" type="button">Add one</button></h3>
-        <form class="row-form hidden" id="scheduleForm">
-          <input type="text" id="sGoal" placeholder="Check the build still passes" autocomplete="off" required>
-          <input type="text" id="sEvery" placeholder="daily" value="daily" autocomplete="off">
-          <input type="text" id="sAt" placeholder="09:00" autocomplete="off">
+        <!-- Three bare boxes, one of them wanting a syntax nobody could guess.
+             The interval accepts 30m, 4h, daily, weekly — which the error
+             message said only once you had already got it wrong. -->
+        <form class="order-form hidden" id="scheduleForm">
+          <label class="order-goal-field">What should it do, every time?
+            <input type="text" id="sGoal" placeholder="Check the build still passes"
+                   autocomplete="off" required>
+          </label>
+          <label>How often
+            <input type="text" id="sEvery" placeholder="daily" value="daily" autocomplete="off">
+            <span class="field-note dim">30m, 4h, daily, weekly</span>
+          </label>
+          <label>At
+            <input type="text" id="sAt" placeholder="09:00" autocomplete="off">
+            <span class="field-note dim">Optional — without one it runs an interval from now.</span>
+          </label>
           <button class="solid" type="submit">Set it</button>
         </form>
         <div id="schedules"></div>

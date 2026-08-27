@@ -756,12 +756,16 @@ async function paintArchives(query) {
   const path = `/api/buildings/${encodeURIComponent(view.building)}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
   const { stats, notes } = await api(path)
   el('archives').innerHTML =
-    `<div class="archive-shelf">
-      <div class="archive-stats">
-        <span><b>${stats.total}</b> notes</span>
-        <span><b>${stats.pinned}</b> pinned</span>
-        <span><b>${stats.expired}</b> expired</span>
-      </div>` +
+    `<div class="archive-shelf">` +
+    // Three zeros above "Nothing written down yet" is the same fact told twice,
+    // the second time in a way that says nothing.
+    (stats.total
+      ? `<div class="archive-stats">
+           <span><b>${stats.total}</b> notes</span>
+           <span><b>${stats.pinned}</b> pinned</span>
+           <span><b>${stats.expired}</b> expired</span>
+         </div>`
+      : '') +
     (notes.length
       ? notes
           .slice(0, 20)
