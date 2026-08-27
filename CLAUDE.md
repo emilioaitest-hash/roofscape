@@ -35,6 +35,24 @@ rather than a rename across the tree.
 `website/` is deliberately outside the npm workspaces. It has React and Next in
 it, which the daemon and the CLI have no business resolving.
 
+## The data directory
+
+Everything an installation knows lives in `~/.roofscape`: the skyline database,
+one folder per building, the daemon's token and its lock. None of it is in this
+repository and none of it is in the packaged app — `dataRoot()` finds it at
+runtime, which is why a build you downloaded and a build you made from source
+show the same buildings on the same machine. When someone reports that the app
+shipped their data, this is what they have found, and the answer is in
+`packages/core/src/store/paths.ts` rather than anywhere in the tree.
+
+`ROOFSCAPE_HOME` overrides it. That is how the tests get their own, and how you
+look at a first run without losing what you have.
+
+Quit the app before deleting any of it. The app stops the daemon it started,
+which releases the lock and closes the databases; deleting the directory under a
+live daemon leaves it writing into files that are no longer there. Then
+`rm -rf ~/.roofscape`, which is rebuilt empty on the next start.
+
 ## Things that have already gone wrong
 
 **The desktop app has no interface of its own.** It loads the dashboard the
@@ -60,6 +78,17 @@ given. Building here and building from what is committed are different tests.
 **Verify the shipped artifact, not the local build.** A signature that is valid
 on this machine says nothing about the one people download. Fetch the published
 file and check that.
+
+**A second service needs a second port, not just a second data directory.** The
+single-instance lock is per data directory — `daemon.pid` lives inside
+`dataRoot()` — so a fresh `ROOFSCAPE_HOME` walks straight past it and collides on
+the port instead. The failure is an unhandled `EADDRINUSE`, not the message
+written for two services meeting. Set `ROOFSCAPE_PORT` as well.
+
+**The macOS app does not inherit your shell.** An app launched from Finder gets
+launchd's environment, so `ROOFSCAPE_CLAUDE_BIN=none` exported in a terminal does
+nothing to the installed app. `launchctl setenv` reaches it, and does not survive
+a reboot. Run the app from a terminal and the variable behaves as written.
 
 ## Releases and the app
 
