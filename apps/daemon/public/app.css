@@ -755,3 +755,48 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .working-since { font-size: var(--t-micro); color: var(--ink-4); font-variant-numeric: tabular-nums; }
+
+/* ── work in hand ───────────────────────────────────────────────────────── */
+
+/**
+ * A task, with the terms it was agreed on.
+ *
+ * Every task carries acceptance criteria settled before anybody started — the
+ * thing that stops a hand-off going round in a circle — and none of it was on
+ * any screen. It is the most distinctive thing about how work moves here, so it
+ * is on the card rather than a click away.
+ */
+.task {
+  border: 1px solid var(--line); border-radius: var(--r-surface);
+  background: var(--panel); padding: var(--s3) var(--s4);
+  margin-bottom: var(--s2);
+  position: relative;
+}
+.task:last-child { margin-bottom: 0; }
+
+/* Being worked on lights it, the same as a storey and a window. */
+.task.is-working { background: linear-gradient(90deg, #e8c15a12, transparent 70%); }
+.task.is-working::before {
+  content: ""; position: absolute; left: 0; top: var(--s3); bottom: var(--s3); width: 2px;
+  background: var(--lamp); border-radius: var(--r-pill);
+}
+
+.task-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.task-goal { min-width: 0; line-height: 1.35; }
+.task-who { font-size: var(--t-micro); color: var(--ink-4); margin-top: 2px; }
+
+.task-accept {
+  list-style: none; margin: var(--s2) 0 0; padding: 0;
+  border-top: 1px solid var(--line); padding-top: var(--s2);
+}
+.task-accept li {
+  font-size: var(--t-micro); color: var(--ink-3);
+  padding-left: var(--s3); position: relative; margin-top: var(--s1);
+}
+.task-accept li:first-child { margin-top: 0; }
+/* A tick outline: the condition is agreed, not yet met. */
+.task-accept li::before {
+  content: ""; position: absolute; left: 0; top: 6px;
+  width: 6px; height: 6px; border-radius: 2px;
+  border: 1px solid var(--line-strong);
+}

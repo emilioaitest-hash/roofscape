@@ -405,15 +405,26 @@ function paintWork(building) {
   el('workOpen').innerHTML = open.length
     ? open
         .map(
-          (task) => `<div class="row"><div class="row-main">
-            <div class="row-title">${esc(clip(task.goal, 74))}</div>
-            <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.createdAt)}</div>
-          </div><div class="row-right">
-            <span class="pill ${kind[task.state] ?? ''}">${esc(state[task.state] ?? task.state)}</span>
-          </div></div>`,
+          (task) => `<div class="task ${task.state === 'working' ? 'is-working' : ''}">
+            <div class="task-head">
+              <div class="task-goal">${esc(task.goal)}</div>
+              <span class="pill ${kind[task.state] ?? ''}">${esc(state[task.state] ?? task.state)}</span>
+            </div>
+            <div class="task-who">${who(building, task.assignedTo)} · ${ago(task.createdAt)}</div>
+            ${
+              // Every task carries how it will be judged, agreed before anybody
+              // started — which is most of what stops a hand-off going in a
+              // circle, and it was not on any screen.
+              (task.acceptance ?? []).length
+                ? `<ul class="task-accept">${task.acceptance
+                    .map((line) => `<li>${esc(clip(line, 120))}</li>`)
+                    .join('')}</ul>`
+                : ''
+            }
+          </div>`,
         )
         .join('')
-    : '<p class="empty">Nothing on. Put a goal to it.</p>'
+    : `<p class="empty">Nothing on. Put a goal to it and the manager will break it into work.</p>`
 
   el('workDone').innerHTML = building.recent.length
     ? building.recent
