@@ -372,12 +372,16 @@ function paintCutaway(building) {
   el('cutaway').innerHTML = `
     <div class="cut-roof"></div>
     ${floors}
-    <div class="cut-band">
+    <div class="cut-band street">
       <div>
         <div class="cut-role">Lobby</div>
         <div class="cut-band-what">Where you walk in. The approval desk is here.</div>
       </div>
-      ${building.approvals.length ? `<span class="pill lit">${plural(building.approvals.length, 'waiting')}</span>` : ''}
+      ${building.approvals.length
+        // Not `plural`: "waiting" is already the right word for any number of
+        // them, and pluralising it produced "2 waitings".
+        ? `<span class="pill warn">${building.approvals.length} waiting on you</span>`
+        : ''}
     </div>
     <div class="cut-band below">
       <div>
