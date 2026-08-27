@@ -1157,15 +1157,30 @@ if (desktop) {
     button.disabled = !enabled
     button.classList.remove('hidden')
   }
+  // What the button does depends on what this platform can actually do.
+  let act = () => desktop.restartToUpdate()
+
   desktop.onUpdate((state) => {
-    if (state.phase === 'ready') offer(`Restart to update to ${state.version}`, true)
-    else if (state.phase === 'downloading') offer(`Downloading update… ${state.percent ?? 0}%`, false)
-    else if (state.phase === 'available') offer('Update found…', false)
-    else button.classList.add('hidden')
+    if (state.phase === 'ready') {
+      act = () => desktop.restartToUpdate()
+      offer(`Restart to update to ${state.version}`, true)
+    } else if (state.phase === 'manual') {
+      // macOS, until these builds carry a real certificate: Squirrel will not
+      // install an update whose signature it cannot verify, so offering a
+      // restart here would be offering something that fails. Offer the download.
+      act = () => desktop.openDownload?.()
+      offer(`Version ${state.version} is out — get it`, true)
+    } else if (state.phase === 'downloading') {
+      offer(`Downloading update… ${state.percent ?? 0}%`, false)
+    } else if (state.phase === 'available') {
+      offer('Update found…', false)
+    } else {
+      button.classList.add('hidden')
+    }
   })
   // Downloading happens on its own; the restart is the only part that is ours
   // to choose, because nothing should be replaced under somebody mid-goal.
-  button.onclick = () => { if (!button.disabled) desktop.restartToUpdate() }
+  button.onclick = () => { if (!button.disabled) act() }
 }
 
 wireParallax()

@@ -150,6 +150,13 @@ ipcMain.on('update:install', () => {
   void stopDaemon(daemon?.owned ?? false).then(() => updates?.installNow())
 })
 
+// Where an update cannot install itself — macOS, until these builds carry a
+// real certificate — the offer is the download rather than a restart.
+ipcMain.on('update:download', () => {
+  const url = updates?.downloadUrl()
+  if (url) void shell.openExternal(url)
+})
+
 // Closing the last window ends the app on every platform, macOS included. The
 // daemon is the thing that runs without a window, and it is reachable without
 // this app; an invisible copy of the app on top of it helps nobody.

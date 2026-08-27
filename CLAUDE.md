@@ -133,6 +133,19 @@ for a Developer ID: without one, macOS auto-update does not work at all, because
 Squirrel validates the signature before installing. Windows and Linux update
 normally.
 
+So the app does not pretend otherwise. `updater.ts` asks whether an update can
+install itself — `process.platform !== 'darwin'` unless a real certificate is
+present — and where it cannot, it turns off `autoDownload` and
+`autoInstallOnAppQuit` and offers the download page instead of a restart.
+Without that it fetched 130MB it could never use, offered "Restart to update",
+failed the signature check, and then retried the failing install on every
+subsequent quit.
+
+The day a Developer ID appears, set `CSC_LINK` and `CSC_KEY_PASSWORD` and drop
+`CSC_IDENTITY_AUTO_DISCOVERY: false` from the release workflow. Nothing else
+changes: the ad-hoc hook already stands aside when a real certificate is set,
+and the updater's own check flips with it.
+
 `executableName` belongs under `linux` only. At the top level it also renames the
 macOS bundle.
 
