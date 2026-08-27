@@ -3,8 +3,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { BRAND, dataRoot } from '@app/core'
-import { buildApi } from './api.js'
+import { BRAND, dataRoot, SkylineStore, BuildingStore } from '@app/core'
+import { buildApi, startGoal, isWorking } from './api.js'
+import { Mailbridge } from './bridge.js'
 import { startTicker } from './ticker.js'
 import { recoverInterruptedWork } from './recover.js'
 import { claimSingleInstance, AlreadyRunningError } from './single.js'
@@ -37,7 +38,34 @@ try {
 }
 
 const events = new EventStream()
-const api = buildApi(events)
+
+/**
+ * Discord, if it has been set up. Constructed either way so that switching it on
+ * from the dashboard does not need a restart.
+ */
+const bridge = new Mailbridge({
+  events,
+  startGoal: (buildingId, goal, source) => {
+    const sky = SkylineStore.open()
+    try {
+      const building = sky.get(buildingId)
+      if (!building) return 'There is no such building any more.'
+      if (isWorking(building.id)) return `${building.name} is already working on something.`
+      const store = BuildingStore.open(building.id)
+      const staffed = store.headcount() > 0
+      const heldBy = store.claimHolder()
+      store.close()
+      if (!staffed) return `${building.name} has nobody in it yet.`
+      if (heldBy !== null) return `${building.name} is already being worked on.`
+      startGoal(events, building, goal, { source })
+      return `Started. ${building.name} is on it.`
+    } finally {
+      sky.close()
+    }
+  },
+})
+
+const api = buildApi(events, bridge)
 const token = daemonToken()
 // Before anything else: a task left mid-flight by a crash or a closed lid is
 // marked working with nothing left to finish it.
@@ -161,6 +189,8 @@ server.listen(PORT, HOST, () => {
   process.stdout.write(`  token: ${dataRoot()}/daemon.token\n`)
   process.stdout.write(`\n  Open:  ${where}/?token=${token}\n`)
   process.stdout.write('\n  Standing orders are checked every 30 seconds.\n')
+  bridge.reload()
+  if (bridge.status.state !== 'off') process.stdout.write('  Discord bridge: connecting.\n')
   if (recovered > 0) {
     process.stdout.write(`  ${recovered} interrupted task${recovered === 1 ? '' : 's'} put back in the queue.\n`)
   }
@@ -178,6 +208,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     process.stdout.write('\nShutting down.\n')
     stopTicker()
+    bridge.stop()
     lock.release()
     events.closeAll()
     server.close(() => process.exit(0))

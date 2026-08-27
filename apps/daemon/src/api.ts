@@ -3,9 +3,10 @@ import {
   rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   parseEvery, parseAtTime, describeSchedule, ask,
   citySvg, portraitSvg, designFor,
+  readBridgeConfig, writeBridgeConfig, describeToken, listGuilds, listChannels,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
-  type Floor, type Task,
+  type Floor, type Task, type MessageId,
 } from '@app/core'
 import { Router, HttpError, badRequest, notFound, readJson, type Ctx } from './router.js'
 import type { EventStream } from './events.js'
@@ -122,7 +123,13 @@ export function startGoal(
     })
 }
 
-export function buildApi(events: EventStream): Router {
+/** What the daemon's Discord bridge exposes to the API, and nothing more. */
+export interface BridgeHandle {
+  reload(): void
+  readonly status: { state: string; detail?: string; as?: string; since?: string }
+}
+
+export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   const router = new Router()
 
   const skyline = () => SkylineStore.open()
@@ -473,6 +480,194 @@ export function buildApi(events: EventStream): Router {
       if (input.remove === true) sky.unschedule(found.id)
       else if (input.enabled !== undefined) sky.setScheduleEnabled(found.id, input.enabled)
       return { ok: true }
+    } finally {
+      sky.close()
+    }
+  })
+
+  // ---- the mailroom -------------------------------------------------------
+
+  /**
+   * The correspondence, with the names filled in.
+   *
+   * Ids are what the database holds and names are what a person reads, so the
+   * translation happens here rather than in the page — the page does not have
+   * the staff list of a building it is not looking at.
+   */
+  router.get('/api/buildings/:id/mail', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        const staff = new Map(store.staff({ includeVacated: true }).map((f) => [f.id as string, f]))
+        const named = (who: string | null) => {
+          if (who === null) return { id: null, name: sky.owner().name || 'You', role: 'owner' }
+          const floor = staff.get(who)
+          return floor
+            ? { id: floor.id, name: floor.name, role: floor.role }
+            : { id: who, name: 'somebody who has left', role: 'former staff' }
+        }
+        const limit = Math.min(200, Math.max(1, Number(ctx.query.get('limit')) || 60))
+        return {
+          messages: store.conversation({ limit }).map((message) => ({
+            id: message.id,
+            kind: message.kind,
+            from: named(message.from),
+            to: named(message.to),
+            body: message.body,
+            inReplyTo: message.inReplyTo,
+            readAt: message.readAt,
+            createdAt: message.createdAt,
+            /** The owner is null at either end; the page colours those differently. */
+            mine: message.from === null,
+          })),
+          unread: store.unreadCounts(),
+          staff: store.staff().map((f) => ({ id: f.id, name: f.name, role: f.role })),
+        }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The owner writes to a floor. This is the half of the bus that was missing. */
+  router.post('/api/buildings/:id/mail', async (ctx) => {
+    const input = await ctx.body<{ to?: string; body?: string; kind?: string; inReplyTo?: string }>()
+    if (!input.body?.trim()) throw badRequest('An empty message is not worth sending.')
+
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        // Addressed to a floor by id, or to whoever runs the place.
+        const to = input.to && input.to !== 'manager'
+          ? store.floor(input.to as FloorId)
+          : store.floorByRole('manager')
+        if (!to) throw notFound(`floor "${input.to ?? 'manager'}"`)
+        if (to.vacatedAt) throw badRequest(`${to.name} no longer works here.`)
+
+        const message = store.post({
+          kind: (input.kind as 'note') ?? 'note',
+          from: null,
+          to: to.id,
+          body: input.body.trim().slice(0, 4000),
+          ...(input.inReplyTo ? { inReplyTo: input.inReplyTo as MessageId } : {}),
+        })
+        events.emit({
+          kind: 'posted', building: building.id, floor: to.id,
+          detail: `to ${to.name}: ${input.body.trim().slice(0, 120)}`,
+          data: { from: 'owner' },
+        })
+        return { ...message, toName: to.name }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The owner has read their post. */
+  router.post('/api/buildings/:id/mail/read', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        return { marked: store.markAllRead(null) }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  // ---- the Discord bridge -------------------------------------------------
+
+  /**
+   * How the bridge is set up, and how it is getting on.
+   *
+   * The token never comes back out — only enough of it to recognise which one
+   * is stored. A screen that can show you a bot token is a screenshot away from
+   * giving it to somebody else.
+   */
+  router.get('/api/bridge', () => {
+    const sky = skyline()
+    try {
+      const config = readBridgeConfig(sky)
+      const names = new Map(sky.list().map((b) => [b.id as string, b.name]))
+      return {
+        connected: config.token !== null,
+        token: describeToken(config),
+        tokenKind: config.tokenKind,
+        guild: config.guild,
+        mirrorAll: config.mirrorAll,
+        enabled: config.enabled,
+        wired: Object.entries(config.channels).map(([building, channel]) => ({
+          building, channel, buildingName: names.get(building) ?? building,
+        })),
+        status: bridge?.status ?? { state: 'off', detail: 'This daemon has no bridge.' },
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  router.post('/api/bridge', async (ctx) => {
+    const input = await ctx.body<{
+      token?: string | null; tokenKind?: 'literal' | 'env' | 'none'
+      guild?: string | null; mirrorAll?: boolean; enabled?: boolean
+      wire?: { building: string; channel: string | null }
+    }>()
+
+    const sky = skyline()
+    try {
+      const current = readBridgeConfig(sky)
+      const patch: Parameters<typeof writeBridgeConfig>[1] = {}
+      if (input.token !== undefined) patch.token = input.token
+      if (input.tokenKind !== undefined) patch.tokenKind = input.tokenKind
+      if (input.guild !== undefined) patch.guild = input.guild
+      if (input.mirrorAll !== undefined) patch.mirrorAll = input.mirrorAll
+      if (input.enabled !== undefined) patch.enabled = input.enabled
+
+      if (input.wire) {
+        const building = buildingOr404(sky, input.wire.building)
+        const channels = { ...current.channels }
+        // A null channel unwires it, rather than leaving a mapping to nowhere.
+        if (input.wire.channel) channels[building.id] = input.wire.channel
+        else delete channels[building.id]
+        patch.channels = channels
+      }
+
+      const config = writeBridgeConfig(sky, patch)
+      bridge?.reload()
+      events.emit({ kind: 'bridge-changed', detail: config.enabled ? 'settings saved' : 'switched off' })
+      return { ok: true, connected: config.token !== null, token: describeToken(config) }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The servers and channels the bot can see, so nobody has to copy an id. */
+  router.get('/api/bridge/places', async () => {
+    const sky = skyline()
+    try {
+      const config = readBridgeConfig(sky)
+      if (!config.token) throw badRequest('Set a bot token first.')
+      const guilds = await listGuilds(config.token)
+      const guild = config.guild ?? guilds[0]?.id ?? null
+      return {
+        guilds,
+        guild,
+        channels: guild ? await listChannels(config.token, guild) : [],
+      }
+    } catch (error) {
+      throw new HttpError(422, (error as Error).message)
     } finally {
       sky.close()
     }

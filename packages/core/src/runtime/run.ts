@@ -81,6 +81,11 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
   const allowed = floor.tools.length > 0 ? floor.tools : (TOOLS_FOR_ROLE[floor.role] ?? TOOLS_FOR_ROLE.coder!)
   const tools = buildToolSet(context, allowed)
 
+  // Post is counted, not delivered. Handing an agent its inbox unasked would
+  // put it in every prompt whether or not it matters; being told there is some
+  // costs a line, and `check_mail` fetches it only when it is worth reading.
+  const unread = allowed.includes('check_mail') ? store.inbox(floor.id).length : 0
+
   const system = coreSystemPrompt({
     building,
     floor,
@@ -88,6 +93,7 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     pinned: store.pinned(floor.id),
     workspaceDisplay: workspace.display(cwd),
     memoryCount: store.memoryCount(),
+    unread,
   })
 
   const messages: ModelMessage[] = [

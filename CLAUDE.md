@@ -71,6 +71,22 @@ swallowed it once: every release build failed on a module it could not find,
 while building here kept working because the file was on disk. There is an
 explicit un-ignore for it now.
 
+**The dashboard is three files now, and the daemon serves them from a list.**
+`index.html`, `app.css`, `app.js` in `apps/daemon/public/`. The list is in
+`main.ts` and is deliberately an allowlist rather than a directory walk: that
+route answers *before* the token is checked, and `daemon.token` lives one
+directory up from the files it serves.
+
+**Rebuild and restart together.** The daemon loads its bundle once, so a rebuild
+alone leaves it serving the old API to a freshly built page. The symptom is a
+screen that looks right and behaves as though half your changes vanished, which
+costs a good twenty minutes before anybody thinks to look at the process.
+
+**A CSS class built from data needs a namespace.** Message kinds were rendered
+as `class="kind answer"`, and `.answer` was already the concierge's answer panel
+— whose `margin: 0 auto` centred the pill in the middle of every row. They are
+`k-answer` and so on now. Anything interpolated from a value gets a prefix.
+
 **Verify packaging from a clean checkout.** The bug above passed every local
 test and failed every CI run, and the difference was a file git had never been
 given. Building here and building from what is committed are different tests.
@@ -110,6 +126,13 @@ normally.
 
 `executableName` belongs under `linux` only. At the top level it also renames the
 macOS bundle.
+
+**Discord's MESSAGE CONTENT is a switch in their developer portal.** Without it
+the bot connects, reports itself live, and receives every message with the
+content blank. There is no error and nothing in the product can detect it — a
+quiet channel and a misconfigured one look identical from here. It is the first
+thing to check when the bridge is connected and nothing arrives, and it is
+written down in `docs/DISCORD.md` for the same reason.
 
 ## The website
 

@@ -18,8 +18,11 @@ export function coreSystemPrompt(input: {
   pinned: readonly MemoryRecord[]
   workspaceDisplay: string
   memoryCount: number
+  /** Unread post waiting for this floor. Costs nothing on a turn with none. */
+  unread?: number
 }): string {
   const { building, floor, colleagues, pinned, workspaceDisplay, memoryCount } = input
+  const unread = input.unread ?? 0
 
   const others = colleagues
     .filter((c) => c.id !== floor.id)
@@ -46,6 +49,16 @@ export function coreSystemPrompt(input: {
     `Your working directory is ${workspaceDisplay}. Paths are relative to it, and`,
     'you cannot reach outside it.',
     '',
+    // Only when there is some. The core prompt is paid for on every turn
+    // forever, and a line saying "you have no post" is a line bought daily to
+    // say nothing.
+    ...(unread > 0
+      ? [
+          `You have ${unread} unread message${unread === 1 ? '' : 's'} waiting. Read them with`,
+          '`check_mail` before you start — one of them may change what you are about to do.',
+          '',
+        ]
+      : []),
     'How to work here:',
     `  · The archives hold ${memoryCount.toLocaleString()} note${memoryCount === 1 ? '' : 's'}. Use \`recall\` before assuming`,
     '    anything about how this building does things. It is cheaper than being wrong.',

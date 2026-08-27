@@ -226,7 +226,7 @@ async function refreshBuilding() {
   paintWork(building)
   paintApprovals(building)
   paintNextForm(building)
-  await Promise.all([paintSchedules(), paintArchives()])
+  await Promise.all([paintSchedules(), paintArchives(), paintMail()])
 }
 
 const vital = (value, label, kind = '') =>
@@ -411,6 +411,185 @@ async function paintArchives(query) {
       : '<p class="empty">Nothing found.</p>')
 }
 
+// ── the mailroom ───────────────────────────────────────────────────────────
+
+/**
+ * The correspondence, drawn as a channel.
+ *
+ * It reads like chat and is not: every line is a typed, durable record with a
+ * sender, a recipient and a kind, which is the whole of decision 0002. The kind
+ * stays visible on every row so that never stops being obvious.
+ */
+async function paintMail() {
+  if (!view.building) return
+  const { messages, unread, staff } = await api(`/api/buildings/${encodeURIComponent(view.building)}/mail`)
+
+  badge('badgeMail', unread.owner ?? 0)
+
+  const stuck = el('thread').scrollTop + el('thread').clientHeight >= el('thread').scrollHeight - 40
+  el('thread').innerHTML = messages.length
+    ? messages
+        .map((message) => {
+          const owner = message.from.id === null
+          return `<div class="post ${owner ? 'from-owner' : ''} ${!message.readAt && !owner ? 'unread' : ''}">
+            <div class="post-who">${esc(initials(message.from.name))}</div>
+            <div>
+              <div class="post-top">
+                <span class="post-name">${esc(message.from.name)}</span>
+                <span class="kind k-${esc(message.kind)}">${esc(message.kind.replace('_', ' '))}</span>
+                <span class="post-to">to ${esc(message.to.name)}</span>
+                <span class="post-when">${ago(message.createdAt)}</span>
+              </div>
+              <div class="post-body">${esc(message.body)}</div>
+            </div>
+          </div>`
+        })
+        .join('')
+    : `<p class="empty" style="padding:22px 16px">Nothing has been said yet. Write to somebody — it lands in their
+       inbox and they read it the next time they are set to work.</p>`
+
+  // Follow the conversation only if they were already at the bottom of it.
+  if (stuck) el('thread').scrollTop = el('thread').scrollHeight
+
+  const previous = el('mailTo').value
+  el('mailTo').innerHTML = staff
+    .map((floor) => `<option value="${esc(floor.id)}">${esc(floor.name)} — ${esc(floor.role)}</option>`)
+    .join('')
+  if (previous && staff.some((f) => f.id === previous)) el('mailTo').value = previous
+
+  paintBridge()
+}
+
+const initials = (name) => {
+  const words = String(name ?? '?').split(/[\s\-_]+/).filter(Boolean)
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return (words[0][0] + words[1][0]).toUpperCase()
+}
+
+el('mailForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const body = el('mailBody').value.trim()
+  if (!body || !view.building) return
+  el('mailBody').value = ''
+  try {
+    const sent = await post(`/api/buildings/${encodeURIComponent(view.building)}/mail`, {
+      to: el('mailTo').value,
+      body,
+    })
+    toast(`Left for ${sent.toName}.`, 'good')
+    await paintMail()
+    el('thread').scrollTop = el('thread').scrollHeight
+  } catch (error) { oops(error) }
+}
+
+// ── the Discord bridge ─────────────────────────────────────────────────────
+
+let bridge = null
+
+/**
+ * How the post is getting out, shown where the post is.
+ *
+ * The state is the daemon's, not the page's: a gateway that keeps dropping
+ * should say so here rather than looking connected because the settings are
+ * filled in.
+ */
+async function paintBridge() {
+  try {
+    bridge = await api('/api/bridge')
+  } catch {
+    el('mailBridge').innerHTML = ''
+    return
+  }
+  const wired = bridge.wired.find((w) => w.building === view.building)
+  const live = bridge.status.state === 'live' && wired
+  const said =
+    !bridge.connected ? 'Discord not set up'
+    : !wired ? 'not wired to a channel'
+    : bridge.status.state === 'live' ? `carried to Discord${bridge.status.as ? ` as ${bridge.status.as}` : ''}`
+    : bridge.status.state === 'refused' ? 'Discord refused the token'
+    : bridge.status.detail ?? bridge.status.state
+
+  el('mailBridge').className = `mail-bridge ${live ? 'on' : ''}`
+  el('mailBridge').innerHTML =
+    `<span class="dot"></span><span>${esc(said)}</span>
+     <button class="ghost" id="bridgeOpen" type="button">${wired ? 'Change' : 'Connect Discord'}</button>`
+  el('bridgeOpen').onclick = openBridge
+}
+
+async function openBridge() {
+  el('dToken').value = ''
+  el('dTokenNote').textContent = bridge?.token ? `Currently ${bridge.token}. Leave blank to keep it.` : 'Not set yet.'
+  el('dMirrorAll').checked = Boolean(bridge?.mirrorAll)
+  el('bridgeDialog').showModal()
+  await loadPlaces()
+}
+
+/** Ask Discord what the bot can see, so nobody has to hunt for an id. */
+async function loadPlaces() {
+  el('dPlacesNote').textContent = 'Asking Discord…'
+  try {
+    const places = await api('/api/bridge/places')
+    el('dGuild').innerHTML = places.guilds
+      .map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`)
+      .join('')
+    if (places.guild) el('dGuild').value = places.guild
+    el('dChannel').innerHTML = places.channels
+      .map((c) => `<option value="${esc(c.id)}">#${esc(c.name)}</option>`)
+      .join('')
+    const wired = bridge?.wired.find((w) => w.building === view.building)
+    if (wired) el('dChannel').value = wired.channel
+    el('dPlacesNote').textContent = places.channels.length
+      ? 'Pick the channel this building should use.'
+      : 'That server has no text channel the bot can see.'
+  } catch (error) {
+    el('dGuild').innerHTML = ''
+    el('dChannel').innerHTML = ''
+    el('dPlacesNote').textContent = error.message
+  }
+}
+
+el('dGuild').onchange = async () => {
+  try {
+    await post('/api/bridge', { guild: el('dGuild').value })
+    await loadPlaces()
+  } catch (error) { oops(error) }
+}
+
+el('dCancel').onclick = () => el('bridgeDialog').close()
+
+el('dUnwire').onclick = async () => {
+  try {
+    await post('/api/bridge', { wire: { building: view.building, channel: null } })
+    el('bridgeDialog').close()
+    toast('Disconnected from Discord.')
+    await paintBridge()
+  } catch (error) { oops(error) }
+}
+
+el('bridgeForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const typed = el('dToken').value.trim()
+  const body = { mirrorAll: el('dMirrorAll').checked, enabled: true }
+  if (typed) {
+    // "env:NAME" keeps the secret out of the database, the same way a provider
+    // credential can.
+    const asEnv = typed.startsWith('env:')
+    body.token = asEnv ? typed.slice(4).trim() : typed
+    body.tokenKind = asEnv ? 'env' : 'literal'
+  }
+  if (el('dGuild').value) body.guild = el('dGuild').value
+  if (el('dChannel').value) body.wire = { building: view.building, channel: el('dChannel').value }
+
+  try {
+    await post('/api/bridge', body)
+    el('bridgeDialog').close()
+    el('dToken').value = ''
+    toast('Saved. Connecting to Discord…', 'good')
+    setTimeout(() => paintBridge().catch(() => {}), 1500)
+  } catch (error) { oops(error) }
+}
+
 // ── things you can do ──────────────────────────────────────────────────────
 
 async function decide(id, granted) {
@@ -458,6 +637,12 @@ el('goHome').onclick = goHome
 
 function selectTab(name) {
   view.tab = name
+  // Opening your post is reading it.
+  if (name === 'mail' && view.building) {
+    post(`/api/buildings/${encodeURIComponent(view.building)}/mail/read`)
+      .then(() => badge('badgeMail', 0))
+      .catch(() => {})
+  }
   for (const tab of el('tabs').querySelectorAll('.tab')) {
     tab.classList.toggle('on', tab.dataset.tab === name)
   }
@@ -599,6 +784,8 @@ stream.onmessage = (message) => {
   if (event.kind === 'goal-failed') toast(event.detail ?? 'That goal failed.', 'bad')
   if (event.kind === 'asked') toast('Something needs your say-so.')
 
+  if (event.kind === 'posted' && view.screen === 'building') paintMail().catch(() => {})
+  if (event.kind === 'bridge' || event.kind === 'bridge-changed') paintBridge().catch(() => {})
   if (RESHAPES.has(event.kind)) drawnShape = ''
   // Tool chatter arrives many times a second; refreshing on it would mean a
   // request per tool call and a page that never settles.

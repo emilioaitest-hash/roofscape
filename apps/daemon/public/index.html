@@ -72,6 +72,7 @@
       <button role="tab" class="tab on" data-tab="floors">The building</button>
       <button role="tab" class="tab" data-tab="work">Work<span class="badge hidden" id="badgeWork"></span></button>
       <button role="tab" class="tab" data-tab="desk">Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
+      <button role="tab" class="tab" data-tab="mail">Mailroom<span class="badge hidden" id="badgeMail"></span></button>
       <button role="tab" class="tab" data-tab="orders">Standing orders</button>
       <button role="tab" class="tab" data-tab="archives">Archives</button>
     </nav>
@@ -114,6 +115,23 @@
         <div id="approvals"></div>
       </div>
 
+      <div class="pane hidden" data-pane="mail">
+        <div class="mail-head">
+          <div>
+            <h3 class="pane-title">The mailroom</h3>
+            <p class="dim pane-sub">Typed, durable, one inbox per floor — and you are in it.
+              Every line here is a record, not a chat log.</p>
+          </div>
+          <div class="mail-bridge" id="mailBridge"></div>
+        </div>
+        <div class="thread" id="thread"></div>
+        <form class="composer" id="mailForm">
+          <select id="mailTo" aria-label="Who to write to"></select>
+          <input type="text" id="mailBody" autocomplete="off" placeholder="Write to somebody in the building…">
+          <button class="solid" type="submit">Send</button>
+        </form>
+      </div>
+
       <div class="pane hidden" data-pane="orders">
         <h3 class="pane-title">Standing orders <button class="ghost" id="showSchedule" type="button">Add one</button></h3>
         <form class="row-form hidden" id="scheduleForm">
@@ -154,6 +172,41 @@
     <div class="dialog-buttons">
       <button type="button" class="ghost" id="groundCancel">Never mind</button>
       <button type="submit" class="solid">Break ground</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Discord, as a door onto the mailroom rather than a second inbox. -->
+<dialog id="bridgeDialog">
+  <form method="dialog" id="bridgeForm">
+    <h2>Carry the post to Discord</h2>
+    <p class="dim">A channel becomes a window onto this building's mailroom. What is said there
+      lands in the manager's inbox; what the building says comes back out. Start a line with
+      <code>!goal</code> to set it working from your phone.</p>
+
+    <label>Bot token
+      <input type="password" id="dToken" autocomplete="off" placeholder="Paste it, or type env:MY_VAR">
+      <span class="field-note dim" id="dTokenNote"></span>
+    </label>
+
+    <div class="two-up">
+      <label>Server
+        <select id="dGuild"></select></label>
+      <label>Channel
+        <select id="dChannel"></select></label>
+    </div>
+    <p class="field-note dim" id="dPlacesNote">Save a token first, then this fills itself in.</p>
+
+    <label class="check">
+      <input type="checkbox" id="dMirrorAll">
+      <span>Mirror the whole mailroom, not only what involves you.
+        <span class="dim">Off is quieter: most internal post is machinery.</span></span>
+    </label>
+
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="dUnwire">Disconnect</button>
+      <button type="button" class="ghost" id="dCancel">Never mind</button>
+      <button type="submit" class="solid">Save</button>
     </div>
   </form>
 </dialog>
