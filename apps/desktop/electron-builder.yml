@@ -1,0 +1,52 @@
+appId: ai.roofscape.desktop
+productName: Roofscape
+copyright: Copyright © 2026 Emilio F.
+
+directories:
+  output: release
+  buildResources: build
+
+# Only the bundles and the page they serve. There is no node_modules tree in the
+# app, because build.mjs bundled everything the daemon needs into one file.
+files:
+  - dist/**
+  - public/**
+  - package.json
+
+# The daemon is started as a real child process, and the page is read off disk by
+# that child. Both have to be files an ordinary process can open, not entries
+# inside the asar archive.
+asarUnpack:
+  - dist/daemon.mjs
+  - dist/daemon.mjs.map
+  - public/**
+
+publish:
+  provider: github
+  owner: emilioaitest-hash
+  repo: roofscape
+
+mac:
+  category: public.app-category.developer-tools
+  # zip is not an alternative to dmg here: Squirrel.Mac updates from the zip and
+  # people download the dmg, so shipping only one breaks one of the two.
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  category: Development
+  target:
+    - target: AppImage
+      arch: [x64, arm64]

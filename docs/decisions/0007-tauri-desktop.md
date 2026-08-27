@@ -1,5 +1,9 @@
 # 0007 — Tauri for the desktop app
 
+**Superseded by 0012**, which chose Electron. The reasoning below held while the
+daemon was something the owner installed separately; it stopped holding once the
+daemon had to ship inside a downloadable app.
+
 **Decided.** Tauri.
 
 **Alternative.** Electron.

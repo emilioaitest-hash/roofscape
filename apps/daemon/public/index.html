@@ -73,6 +73,9 @@
   .stack { display: grid; gap: 10px; }
   .note { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--line); }
   .note:last-child { border-bottom: 0; }
+  .update { border-color: var(--lit); color: var(--lit); margin-left: 10px; }
+  .update:hover:not(:disabled) { background: var(--lit); border-color: var(--lit); color: var(--bg); }
+  .update:disabled { cursor: default; opacity: .75; }
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 18px; border-radius: 999px; font-size: 13px; }
 </style>
 </head>
@@ -81,6 +84,7 @@
   <h1>Roofscape</h1>
   <span class="tagline">Every project a building. Every hire a floor.</span>
   <span class="tagline" id="conn" style="margin-left:auto"></span>
+  <button class="mini update hidden" id="update" type="button"></button>
 </header>
 
 <main>
@@ -431,6 +435,32 @@ stream.onmessage = (message) => {
 
 refreshAll()
 setInterval(refreshAll, 20000)
+
+/**
+ * Updates, when this page is inside the desktop app.
+ *
+ * In a browser there is no `window.roofscape`, so none of this runs and the
+ * button stays hidden — the same page, serving both, without a second copy of
+ * the dashboard to keep in step.
+ */
+const desktop = window.roofscape
+if (desktop) {
+  const button = el('update')
+  const show = (text, enabled) => {
+    button.textContent = text
+    button.disabled = !enabled
+    button.classList.remove('hidden')
+  }
+  desktop.onUpdate((state) => {
+    if (state.phase === 'ready') show(`Restart to update to ${state.version}`, true)
+    else if (state.phase === 'downloading') show(`Downloading update… ${state.percent ?? 0}%`, false)
+    else if (state.phase === 'available') show('Update found…', false)
+    else button.classList.add('hidden')
+  })
+  // Downloading happens on its own; the restart is the only part that is ours
+  // to choose, because nothing should be replaced under somebody mid-goal.
+  button.onclick = () => { if (!button.disabled) desktop.restartToUpdate() }
+}
 </script>
 </body>
 </html>
