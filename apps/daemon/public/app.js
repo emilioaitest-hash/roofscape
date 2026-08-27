@@ -178,11 +178,14 @@ async function refreshCity() {
   paintCityState()
   paintTallies()
   for (const building of grew) itGrew(building)
-  // Telling somebody to click a building when there are none is the sort of
-  // small dishonesty that makes a first run feel unfinished.
-  el('cityHint').textContent = buildings.length
-    ? 'Click a building to go inside it.'
-    : 'Nothing built yet. Break ground on the empty lot to start your first company.'
+
+  // Nothing built yet gets a different strip rather than a thinner version of
+  // this one. Four zeros say nothing, and the concierge reads buildings one at
+  // a time — with none to read, asking it anything spends a turn to be told so.
+  const empty = buildings.length === 0
+  el('firstRun').classList.toggle('hidden', !empty)
+  el('stripInner').classList.toggle('hidden', empty)
+  el('cityHint').textContent = 'Click a building to go inside it.'
 }
 
 /**
@@ -325,14 +328,19 @@ async function refreshBuilding() {
   el('bTier').textContent = building.tier
   el('bCharter').textContent = building.charter === building.name ? '' : building.charter
 
+  // A vital is shown when it has something to say. A row of pills reading
+  // "0 in hand · 0 waiting on you · 0 tokens this month · 0 in the archives" is
+  // four facts a new building already implies, and it crowds out the one that
+  // is actually true of it. Headcount is always there because a building always
+  // has one, and it is the number the whole product is built on.
   const waiting = building.approvals.length
   const inHand = building.open.filter((t) => t.state === 'queued' || t.state === 'working').length
   el('bVitals').innerHTML = [
     vital(plural(building.headcount, 'floor'), 'on staff'),
     inHand ? vital(String(inHand), 'in hand', 'lit') : '',
-    waiting ? vital(String(waiting), waiting === 1 ? 'waiting on you' : 'waiting on you', 'warn') : '',
-    vital(tokens(building.spentThisMonth), 'tokens this month'),
-    vital(String(building.archives.total), 'in the archives'),
+    waiting ? vital(String(waiting), 'waiting on you', 'warn') : '',
+    building.spentThisMonth ? vital(tokens(building.spentThisMonth), 'tokens this month') : '',
+    building.archives.total ? vital(String(building.archives.total), 'in the archives') : '',
   ].join('')
 
   el('goalGo').disabled = building.working
@@ -639,9 +647,15 @@ function toggleRound(open) {
 }
 
 function paintNextForm(building) {
-  el('nextForm').innerHTML = building.nextTierAt
-    ? `Another ${plural(building.nextTierAt - building.headcount, 'hire')} and it changes form.`
-    : 'It has taken every form there is.'
+  if (!building.nextTierAt) {
+    el('nextForm').textContent = 'It has taken every form there is.'
+    return
+  }
+  // `plural` was right for the count and wrong for the sentence: "Another 1
+  // hire and it changes form" is a number where a person would use a word.
+  const away = building.nextTierAt - building.headcount
+  el('nextForm').textContent =
+    away === 1 ? 'One more hire and it changes form.' : `Another ${away} hires and it changes form.`
 }
 
 async function paintSchedules() {
@@ -1144,6 +1158,7 @@ document.addEventListener('keydown', (event) => {
 })
 
 el('openKeys').onclick = () => el('keysDialog').showModal()
+el('firstGround').onclick = breakGround
 
 function selectTab(name) {
   view.tab = name

@@ -35,7 +35,24 @@
     </div>
 
     <div class="strip">
-      <div class="strip-inner">
+      <!-- Nothing built yet. Four zeros and a box for questioning a skyline
+           that does not exist are worse than saying what a building is, which
+           is the only thing anybody can do from here anyway. -->
+      <div class="strip-inner first-run hidden" id="firstRun">
+        <div>
+          <p class="eyebrow">An empty skyline</p>
+          <p class="first-run-what">Every project is its own building — its own staff, its own
+            memory, its own money, its own workspace, and it shares none of them with its
+            neighbours. Take somebody on and it grows a storey. A side project that has quietly
+            reached eleven floors is telling you something a list of project names never would.</p>
+        </div>
+        <div class="first-run-do">
+          <button class="solid" id="firstGround" type="button">Break ground</button>
+          <p class="ask-note">Or press <kbd>n</kbd>, or click the empty lot out on the street.</p>
+        </div>
+      </div>
+
+      <div class="strip-inner" id="stripInner">
         <div>
           <div class="tallies" id="tallies"></div>
           <p class="city-hint" id="cityHint">Click a building to go inside it.</p>

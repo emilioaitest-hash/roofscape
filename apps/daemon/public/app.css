@@ -302,6 +302,21 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 /* Which building left it, since on the street you have not been told. */
 .docket-where { color: var(--ink-2); font-weight: 600; }
 
+/**
+ * The strip on a skyline with nothing in it.
+ *
+ * A row of four zeros over a box for questioning buildings that do not exist
+ * is the shape of a dashboard rather than the shape of a beginning. This says
+ * what a building is — the one thing worth knowing before you make one — and
+ * offers the only action there is.
+ */
+.first-run { align-items: center; }
+.first-run-what { font-size: var(--t-small); color: var(--ink-3); max-width: 62ch; margin-top: var(--s2); }
+.first-run-do { text-align: right; }
+.first-run-do .ask-note { margin-top: var(--s2); }
+.first-run-do kbd { vertical-align: baseline; }
+@media (max-width: 860px) { .first-run-do { text-align: left; } }
+
 .ask-row { display: flex; gap: var(--s2); margin-top: var(--s2); }
 .ask-row input { flex: 1; min-width: 0; }
 .ask-note { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
