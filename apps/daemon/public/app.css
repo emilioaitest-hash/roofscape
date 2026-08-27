@@ -215,8 +215,11 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 /* ── the skyline ────────────────────────────────────────────────────────── */
 
+/* The floor is what the skyline keeps when something opens underneath it. Below
+   about this, the buildings are too short to tell apart and it stops being a
+   picture of anything. */
 .city-frame {
-  position: relative; flex: 1; min-height: 320px;
+  position: relative; flex: 1; min-height: 400px;
   display: flex; flex-direction: column;
   background: var(--sunk); border-bottom: 1px solid var(--line);
 }
@@ -255,12 +258,49 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 }
 @media (max-width: 860px) { .strip-inner { grid-template-columns: 1fr; gap: var(--s5); } }
 
-.tallies { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); }
-.tallies div { display: flex; flex-direction: column; gap: 2px; }
+.tallies { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); align-items: start; }
+.tallies div, .tallies button { display: flex; flex-direction: column; gap: 2px; }
 .tallies dd { margin: 0; font-size: var(--t-display); font-weight: 600; line-height: 1.05; letter-spacing: -.02em; }
 /* Amber is work in hand; terracotta is waiting on you. Never the other way. */
 .tallies .accent dd { color: var(--lamp); }
 .tallies .warn dd { color: var(--flag); }
+
+/**
+ * The only tally you can press.
+ *
+ * It is also the only one that is about you rather than about work, and those
+ * two facts are the same fact: a count of your own unanswered post is a chore,
+ * and a chore you cannot start from where you are told about it is worse than
+ * one you were not told about. It opens the round.
+ */
+.tallies-round {
+  background: none; border: 0; padding: 0; text-align: left;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--fast);
+}
+.tallies-round:hover { border-bottom-color: #d4703a66; }
+.tallies-open {
+  font-size: var(--t-plate); text-transform: uppercase; letter-spacing: .11em;
+  font-weight: 600; color: var(--flag);
+  opacity: .75; transition: opacity var(--fast);
+}
+.tallies-round:hover .tallies-open { opacity: 1; }
+.tallies-round[aria-expanded="true"] .tallies-open { opacity: 1; }
+
+/* ── the round ──────────────────────────────────────────────────────────── */
+
+/**
+ * Every lobby's desk at once. The dockets are the same ones, drawn the same
+ * way, decided down the same route — this is a second door onto them, not a
+ * second copy of them.
+ */
+.round {
+  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5);
+  animation: rise var(--base) both;
+}
+.round .pane-title { margin-bottom: var(--s3); }
+/* Which building left it, since on the street you have not been told. */
+.docket-where { color: var(--ink-2); font-weight: 600; }
 
 .ask-row { display: flex; gap: var(--s2); margin-top: var(--s2); }
 .ask-row input { flex: 1; min-width: 0; }

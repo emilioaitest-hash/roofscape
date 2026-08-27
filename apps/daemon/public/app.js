@@ -287,11 +287,27 @@ function paintTallies() {
   const waiting = skyline.reduce((n, b) => n + b.pendingApprovals, 0)
   const tally = (label, value, kind = '') =>
     `<div class="${kind}"><dt>${label}</dt><dd>${value}</dd></div>`
+
+  // The one tally that is about you is also the only one you can do anything
+  // about, so it is the only one that is a control. A number that counts your
+  // own unanswered post and cannot be pressed is a number that has told you
+  // about a chore and then hidden it in four different lobbies.
+  const round = waiting
+    ? `<button type="button" class="warn tallies-round" data-round aria-expanded="false">
+         <dt>Waiting on you</dt><dd>${waiting}</dd>
+         <span class="tallies-open">Answer them</span>
+       </button>`
+    : tally('Waiting on you', waiting)
+
   el('tallies').innerHTML =
     tally('Buildings', skyline.length) +
     tally('On staff', staff) +
     tally('In hand', inHand, inHand ? 'accent' : '') +
-    tally('Waiting on you', waiting, waiting ? 'warn' : '')
+    round
+
+  el('tallies').querySelector('[data-round]')?.addEventListener('click', () => toggleRound())
+  // Nothing left to answer closes it rather than leaving an empty desk open.
+  if (!waiting) el('round').classList.add('hidden')
 }
 
 // ── one building ───────────────────────────────────────────────────────────
@@ -523,33 +539,48 @@ const who = (building, floorId) =>
  * the colour that means *you*, and the two answers side by side rather than a
  * row you might click through by accident.
  */
-function paintApprovals(building) {
-  // What granting it actually does, said in the fewest ordinary words.
-  const consequence = {
-    hire: 'Somebody joins, and the building grows a storey.',
-    publish: 'This leaves the building.',
-    send: 'This goes to somebody outside.',
-    deploy: 'This reaches the world.',
-    spend: 'This costs money.',
-    merge: 'This lands on main.',
-  }
+/** What granting it actually does, said in the fewest ordinary words. */
+const CONSEQUENCE = {
+  hire: 'Somebody joins, and the building grows a storey.',
+  publish: 'This leaves the building.',
+  send: 'This goes to somebody outside.',
+  deploy: 'This reaches the world.',
+  spend: 'This costs money.',
+  merge: 'This lands on main.',
+}
 
+/**
+ * One docket. `asked` is the line above it, which differs by where you read it:
+ * at the desk you already know the building, and on the round you do not.
+ */
+const docket = (approval, asked) => `<div class="docket">
+  <div class="docket-head">
+    <span class="kind k-${esc(approval.kind)}">${esc(approval.kind)}</span>
+    <span class="docket-when">${asked}</span>
+  </div>
+  <p class="docket-intent">${esc(approval.intent)}</p>
+  <p class="docket-if">${esc(CONSEQUENCE[approval.kind] ?? 'This reaches outside the building.')}</p>
+  <div class="docket-answer">
+    <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
+    <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
+  </div>
+</div>`
+
+/** Both answers on every docket in a container, wired to the same decision. */
+function wireDockets(node, after) {
+  for (const button of node.querySelectorAll('[data-yes]')) {
+    button.onclick = () => decide(button.getAttribute('data-yes'), true, after)
+  }
+  for (const button of node.querySelectorAll('[data-no]')) {
+    button.onclick = () => decide(button.getAttribute('data-no'), false, after)
+  }
+}
+
+function paintApprovals(building) {
   el('approvals').innerHTML = building.approvals.length
     ? building.approvals
-        .map(
-          (approval) => `<div class="docket">
-            <div class="docket-head">
-              <span class="kind k-${esc(approval.kind)}">${esc(approval.kind)}</span>
-              <span class="docket-when">${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}</span>
-            </div>
-            <p class="docket-intent">${esc(approval.intent)}</p>
-            <p class="docket-if">${esc(consequence[approval.kind] ?? 'This reaches outside the building.')}</p>
-            <div class="docket-answer">
-              <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
-              <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
-            </div>
-          </div>`,
-        )
+        .map((approval) =>
+          docket(approval, `${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}`))
         .join('')
     : `<div class="desk-clear">
          <p>The desk is clear.</p>
@@ -557,12 +588,54 @@ function paintApprovals(building) {
             deploying, spending, merging to main, hiring — stops here first.</p>
        </div>`
 
-  for (const node of el('approvals').querySelectorAll('[data-yes]')) {
-    node.onclick = () => decide(node.getAttribute('data-yes'), true)
-  }
-  for (const node of el('approvals').querySelectorAll('[data-no]')) {
-    node.onclick = () => decide(node.getAttribute('data-no'), false)
-  }
+  wireDockets(el('approvals'), refreshBuilding)
+}
+
+/**
+ * The round: everything waiting on you, in every building, from the street.
+ *
+ * Each building's desk is in its own lobby, which is right — a building shares
+ * nothing with its neighbours, and that includes its post. But the person the
+ * dockets are addressed to has all of them, and the skyline was already
+ * counting them in terracotta while giving nobody anywhere to answer. You had
+ * to guess which buildings and walk into each.
+ *
+ * The count on the street is the way in now. This is the same docket as the one
+ * in the lobby, decided down the same route — the daemon finds the building the
+ * approval belongs to, so nothing here has to know.
+ */
+async function paintRound() {
+  const box = el('round')
+  if (box.classList.contains('hidden')) return
+  try {
+    const { pending } = await api('/api/approvals')
+    if (pending.length === 0) {
+      box.innerHTML = `<div class="desk-clear">
+          <p>Nothing is waiting on you.</p>
+          <p class="dim">Anything that would reach outside a building stops in its lobby until
+             you say so. This is where all of them stop at once.</p>
+        </div>`
+      return
+    }
+    box.innerHTML =
+      `<h3 class="pane-title">Waiting on you${
+        pending.length > 1 ? ` <span class="pill warn">${pending.length}</span>` : ''
+      }</h3>` +
+      pending
+        .map((approval) =>
+          docket(approval, `<b class="docket-where">${esc(approval.buildingName)}</b> · asked ${ago(approval.createdAt)}`))
+        .join('')
+    wireDockets(box, refreshCity)
+  } catch (error) { oops(error) }
+}
+
+/** Open or shut the round, and remember which it is. */
+function toggleRound(open) {
+  const box = el('round')
+  const want = open ?? box.classList.contains('hidden')
+  box.classList.toggle('hidden', !want)
+  el('tallies').querySelector('[data-round]')?.setAttribute('aria-expanded', String(want))
+  if (want) { box.innerHTML = '<p class="empty">Reading every lobby…</p>'; paintRound() }
 }
 
 function paintNextForm(building) {
@@ -890,12 +963,20 @@ setInterval(tickWorking, 1000)
 
 // ── things you can do ──────────────────────────────────────────────────────
 
-async function decide(id, granted) {
+/**
+ * Answer a docket. `after` is what to redraw, because the same decision is
+ * offered from two places: the building's own desk, and the round on the
+ * street. The daemon finds the building the approval belongs to either way.
+ */
+async function decide(id, granted, after = refreshBuilding) {
   try {
     const result = await post(`/api/approvals/${encodeURIComponent(id)}`, { granted })
     toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Approved.' : 'Refused.', granted ? 'good' : '')
-    await refreshBuilding()
+    // A hire is a new storey, so the drawing is now wrong rather than just out
+    // of date. Cleared before the redraw, or the redraw reuses the old shape.
     drawnShape = ''
+    await after()
+    if (!el('round').classList.contains('hidden')) await paintRound()
   } catch (error) { oops(error) }
 }
 
@@ -1266,15 +1347,37 @@ stream.onmessage = (message) => {
   else if (!event.building || event.building === view.building) refreshBuilding().catch(() => {})
 }
 
-// A resized window is a differently-shaped hole, and the drawing was cut to fit
-// the old one. Debounced: a drag fires this a hundred times.
+/**
+ * A differently-shaped hole needs the drawing cut again.
+ *
+ * The window was the only thing watched, and it is not the only thing that
+ * changes the shape of that hole: the frame takes what is left after the strip
+ * below it, so opening the concierge's answer or the round shortens the city
+ * without the window moving at all. The drawing stayed the ratio it was cut to
+ * and shrank to a postage stamp in the middle of a wide black band.
+ *
+ * Watching the frame itself covers the window too, so there is one rule rather
+ * than a list of things that happen to resize it. Debounced: a drag fires this
+ * a hundred times, and each one is a round trip.
+ */
 let resizeTimer
-window.addEventListener('resize', () => {
+let refitBox = ''
+const refit = () => {
+  // The observer fires on our own redraw as well as on a real change, and a
+  // drawing wide enough to want a scrollbar changes the height of the box it
+  // is measured against. Comparing the box we would ask for against the one we
+  // last asked for stops that becoming a loop between two sizes.
+  const box = cityBox()
+  const asking = `${box.width}×${box.height}`
+  if (asking === refitBox) return
+  refitBox = asking
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => {
     if (view.screen === 'city') refreshCity().catch(() => {})
   }, 220)
-})
+}
+window.addEventListener('resize', refit)
+new ResizeObserver(refit).observe(el('cityScroll'))
 
 // A slow poll behind the stream, because a dropped connection should not leave
 // the numbers frozen until somebody clicks something.
