@@ -67,8 +67,15 @@ export function Downloads({ version, available }: { version: string | null; avai
       </div>
       <p className="fineprint">
         {version ? `Version ${version}. ` : ''}
-        Free and open source. Not yet signed, so your machine will ask whether you trust it.
+        Free and open source.
       </p>
+      {primary.startsWith('mac') ? (
+        <p className="fineprint">
+          <strong>First time on macOS:</strong> right-click the app and choose <em>Open</em>, then
+          <em> Open</em> again. macOS will say the developer cannot be verified, because the app
+          carries its own signature rather than one Apple has certified. Once per version.
+        </p>
+      ) : null}
     </>
   )
 }

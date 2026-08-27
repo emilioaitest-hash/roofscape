@@ -39,12 +39,21 @@ because a home screen should tell you something true from across the room.
 
 ## Getting started
 
+Download it from **[roofscape.vercel.app](https://roofscape.vercel.app)**. The app
+carries the service inside it, so there is nothing to install first — no Node, no
+build step. macOS will ask whether the developer can be verified the first time,
+because the app is signed with its own certificate rather than one Apple has
+certified: right-click it, choose Open, and choose Open again.
+
+To run it from source instead, or to get the `roofscape` command in a terminal:
+
 ```sh
 npm install
 npm run build
 npm link          # puts `roofscape` on your PATH
 
 roofscape doctor
+npm run desktop   # the app, from this checkout
 ```
 
 (Without `npm link`, every command below works as
