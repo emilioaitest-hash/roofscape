@@ -8,6 +8,9 @@ import {
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
   type Floor, type Task, type MessageId,
 } from '@app/core'
+import { existsSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { Router, HttpError, badRequest, notFound, readJson, type Ctx } from './router.js'
 import type { EventStream } from './events.js'
 
@@ -286,14 +289,29 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
     if (!input.name) throw badRequest('A building needs a name.')
     if (!input.workspace) throw badRequest('A building needs a workspace directory.')
 
+    // The CLI has always resolved and checked this; coming in through the
+    // dashboard did not, so a typo produced a building that looked fine and
+    // failed the first time anybody gave it work. A browser has no shell to
+    // expand `~` either, so that is done here rather than left as a literal
+    // directory called "~".
+    const workspace = resolve(
+      input.workspace.trim().replace(/^~(?=$|[/\\])/, homedir()),
+    )
+    if (!existsSync(workspace)) {
+      throw badRequest(`No such directory: ${workspace}. Make it first, or point somewhere that exists.`)
+    }
+    if (!statSync(workspace).isDirectory()) {
+      throw badRequest(`${workspace} is a file. A building needs a directory to work in.`)
+    }
+
     const sky = skyline()
     try {
       if (sky.byName(input.name)) throw new HttpError(409, `There is already a building called "${input.name}".`)
       const building = sky.breakGround({
         name: input.name,
         charter: input.charter ?? input.name,
-        workspace: input.workspace,
-        repos: isRepo(input.workspace) ? [input.workspace] : [],
+        workspace,
+        repos: isRepo(workspace) ? [workspace] : [],
       })
 
       const store = BuildingStore.open(building.id)
