@@ -1,48 +1,28 @@
+import { latestRelease, PLATFORMS, type Platform } from '../../release'
+
 /**
- * Send somebody to the right file in the newest release.
+ * Hand over the file itself.
  *
- * The page never names a version or a filename. It links here, and here asks
- * GitHub what the latest release actually is — so a download link cannot go
- * stale, and cutting a release is the only step in shipping one.
+ * One click on the page starts one download. This redirects to the built
+ * artifact directly — not to a releases page, not to anything a person has to
+ * read and choose from. If the file is not there, that is this site's problem
+ * to explain, so the answer is a page here rather than a trip to GitHub.
+ *
+ * The redirect is to GitHub's file host rather than a copy streamed through
+ * here on purpose: these are ~130MB, and a serverless function that streams one
+ * to a slow connection hits its own time limit and truncates the download. A
+ * redirect cannot half-finish.
  */
-
-const REPO = 'emilioaitest-hash/roofscape'
-const RELEASES = `https://github.com/${REPO}/releases/latest`
-
-/** electron-builder's names, matched by the shape it gives them. */
-const WANTED: Record<string, (name: string) => boolean> = {
-  'mac-arm64': (n) => n.endsWith('.dmg') && n.includes('arm64'),
-  'mac-x64': (n) => n.endsWith('.dmg') && !n.includes('arm64'),
-  win: (n) => n.endsWith('.exe'),
-  linux: (n) => n.endsWith('.AppImage'),
-}
-
-interface Asset {
-  name: string
-  browser_download_url: string
-}
-
 export async function GET(request: Request): Promise<Response> {
-  const platform = new URL(request.url).searchParams.get('platform') ?? ''
-  const wanted = WANTED[platform]
-  if (!wanted) return Response.redirect(RELEASES, 302)
+  const url = new URL(request.url)
+  const platform = url.searchParams.get('platform') ?? ''
 
-  // A private repository answers 404 here, and so does a repository with no
-  // release yet. Both mean "there is nothing to hand over", and the honest
-  // answer to that is the releases page rather than a broken file.
-  const token = process.env.GITHUB_TOKEN
-  const response = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-    headers: {
-      accept: 'application/vnd.github+json',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    // Long enough that a busy day does not exhaust the unauthenticated rate
-    // limit, short enough that a new release is offered within the hour.
-    next: { revalidate: 600 },
-  })
-  if (!response.ok) return Response.redirect(RELEASES, 302)
+  const known = (PLATFORMS as readonly string[]).includes(platform)
+  if (!known) return Response.redirect(new URL('/?unavailable=unknown', url.origin), 302)
 
-  const release = (await response.json()) as { assets?: Asset[] }
-  const asset = release.assets?.find((candidate) => wanted(candidate.name))
-  return Response.redirect(asset?.browser_download_url ?? RELEASES, 302)
+  const release = await latestRelease()
+  const file = release?.builds[platform as Platform]
+  if (!file) return Response.redirect(new URL(`/?unavailable=${platform}`, url.origin), 302)
+
+  return Response.redirect(file, 302)
 }

@@ -15,7 +15,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The draft is made once, here, before any builder runs.
+  #
+  # It used to be made by whichever platform got there first, and a draft has no
+  # git tag behind it — so GitHub happily accepts several drafts with the same
+  # tag name and the three builders each made their own. The macOS disk image
+  # and the Windows installer landed in different releases, and somebody on a
+  # Mac was offered a .exe.
+  draft:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        shell: bash
+        run: |
+          BASE=$(node -p "require('./apps/desktop/package.json').version.split('.').slice(0,2).join('.')")
+          VERSION="$BASE.${{ github.run_number }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Open the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.pick.outputs.tag }}"
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --draft --title "$TAG" --notes "Built from ${{ github.sha }}."
+
   build:
+    needs: draft
     strategy:
       fail-fast: false
       matrix:
@@ -27,17 +57,10 @@ jobs:
         with:
           node-version: '24'
 
-      # The patch number is the run number, so every merge to main is a version
-      # the updater can see as newer. Major and minor stay a deliberate edit to
-      # apps/desktop/package.json.
-      - name: Set the version
+      - name: Stamp the version
         shell: bash
-        run: |
-          BASE=$(node -p "require('./apps/desktop/package.json').version.split('.').slice(0,2).join('.')")
-          echo "VERSION=$BASE.${{ github.run_number }}" >> "$GITHUB_ENV"
-
-      - name: Stamp it
-        shell: bash
+        env:
+          VERSION: ${{ needs.draft.outputs.version }}
         run: |
           node -e "
             const fs = require('fs');
@@ -50,6 +73,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run build
 
+      # Uploads into the draft that already exists, rather than making one.
       - name: Build and publish the app
         shell: bash
         env:
@@ -60,18 +84,15 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run dist -w @app/desktop -- --publish always
 
-  # electron-builder uploads into a draft, and a draft is invisible to the
-  # updater. Undrafting once — after every platform has uploaded — is what stops
-  # an update going out with only some of its downloads attached.
+  # A draft is invisible to the updater and to the download page. Undrafting
+  # once, after every platform has uploaded, is what stops an update going out
+  # with only some of its downloads attached.
   publish:
-    needs: build
+    needs: [draft, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Release the draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BASE=$(node -p "require('./apps/desktop/package.json').version.split('.').slice(0,2).join('.')")
-          TAG="v$BASE.${{ github.run_number }}"
-          gh release edit "$TAG" --draft=false --latest
+        run: gh release edit "${{ needs.draft.outputs.tag }}" --draft=false --latest

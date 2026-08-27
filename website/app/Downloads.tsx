@@ -1,24 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { LABELS, PLATFORMS, type Platform } from './release'
 
 /**
  * The download row.
  *
- * Which platform somebody is on is only knowable in the browser, so the guess
- * happens there — but every choice is a plain link, and all four are rendered
- * either way. Somebody with scripting off still gets every download; they just
- * pick their own.
+ * Every button here is one that works. Which platforms exist is decided on the
+ * server from the actual release, so a build that failed is simply not offered
+ * — nobody is sent to a file that is not there, and nobody is sent to GitHub to
+ * go looking for it.
  */
-
-const ALL = [
-  { id: 'mac-arm64', label: 'macOS (Apple silicon)' },
-  { id: 'mac-x64', label: 'macOS (Intel)' },
-  { id: 'win', label: 'Windows' },
-  { id: 'linux', label: 'Linux' },
-] as const
-
-type Platform = (typeof ALL)[number]['id']
 
 function guess(): Platform {
   if (typeof navigator === 'undefined') return 'mac-arm64'
@@ -30,29 +22,51 @@ function guess(): Platform {
   return 'mac-arm64'
 }
 
-export function Downloads() {
+export function Downloads({ version, available }: { version: string | null; available: Platform[] }) {
   // Rendered the same on the server and on the first client pass, then
   // corrected — otherwise the markup the server sent and the markup React
   // expects disagree, and React throws the whole tree away.
   const [platform, setPlatform] = useState<Platform>('mac-arm64')
-  useEffect(() => setPlatform(guess()), [])
+  const [missing, setMissing] = useState<string | null>(null)
 
-  const primary = ALL.find((entry) => entry.id === platform)!
-  const rest = ALL.filter((entry) => entry.id !== platform)
+  useEffect(() => {
+    setPlatform(guess())
+    const asked = new URLSearchParams(window.location.search).get('unavailable')
+    if (asked) setMissing(asked)
+  }, [])
+
+  if (available.length === 0) {
+    return (
+      <p className="fineprint">
+        The first builds are on their way. This page will offer them as soon as they finish —
+        there is nothing to go and find elsewhere.
+      </p>
+    )
+  }
+
+  const ordered = PLATFORMS.filter((entry) => available.includes(entry))
+  const primary = ordered.includes(platform) ? platform : ordered[0]!
+  const rest = ordered.filter((entry) => entry !== primary)
 
   return (
     <>
+      {missing ? (
+        <p className="fineprint">
+          There is no {LABELS[missing as Platform] ?? 'that'} build in the current release yet.
+        </p>
+      ) : null}
       <div className="downloads">
-        <a className="primary" href={`/api/download?platform=${primary.id}`}>
-          Download for {primary.label}
+        <a className="primary" href={`/api/download?platform=${primary}`}>
+          Download for {LABELS[primary]}
         </a>
         {rest.map((entry) => (
-          <a key={entry.id} className="secondary" href={`/api/download?platform=${entry.id}`}>
-            {entry.label}
+          <a key={entry} className="secondary" href={`/api/download?platform=${entry}`}>
+            {LABELS[entry]}
           </a>
         ))}
       </div>
       <p className="fineprint">
+        {version ? `Version ${version}. ` : ''}
         Free and open source. Not yet signed, so your machine will ask whether you trust it.
       </p>
     </>
