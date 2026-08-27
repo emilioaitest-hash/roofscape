@@ -20,7 +20,7 @@ function scratch() {
 
   const sky = SkylineStore.open()
   const college = sky.breakGround({ name: 'College App', charter: 'The app for the college.', workspace: home })
-  const rowing = sky.breakGround({ name: 'Rowing Fans', charter: 'A site about rowing.', workspace: home })
+  const help = sky.breakGround({ name: 'Help Center', charter: 'The support site.', workspace: home })
 
   const a = BuildingStore.open(college.id)
   a.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
@@ -28,12 +28,12 @@ function scratch() {
   a.remember({ scope: 'building', layer: 'semantic', text: 'The college app deploys to Fly, not Vercel.' })
   a.close()
 
-  const b = BuildingStore.open(rowing.id)
+  const b = BuildingStore.open(help.id)
   b.hire({ role: 'manager', name: 'Ida', charter: 'x', posting: POSTING })
   b.close()
 
   return {
-    sky, college, rowing,
+    sky, college, help,
     cleanup: () => {
       sky.close()
       if (had === undefined) delete process.env.ROOFSCAPE_HOME
@@ -105,7 +105,7 @@ test('it answers a question by looking, and says what it found', async () => {
           ? { type: 'tool-call' as const, toolCallId: 'c1', toolName: 'list_buildings', input: '{}' }
           : {
               type: 'tool-call' as const, toolCallId: 'c2', toolName: 'answer',
-              input: JSON.stringify({ text: 'Two buildings: College App with two staff, Rowing Fans with one.' }),
+              input: JSON.stringify({ text: 'Two buildings: College App with two staff, Help Center with one.' }),
             }
         return {
           content: [move],
@@ -123,7 +123,7 @@ test('it answers a question by looking, and says what it found', async () => {
     const result = await ask({
       question: 'What have I got?',
       credentials: s.sky,
-      owner: { name: 'Emilio', profile: '' },
+      owner: { name: 'Sam', profile: '' },
       startGoal: noop,
       resolveModel: () => model,
     })

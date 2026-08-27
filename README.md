@@ -18,7 +18,7 @@ glance where your effort actually sits.
   │▫ ▯ ▫│     │ ∩ ▯ ∩ │
   ╘═════╛     ╘═══════╛
 ───────────  ───────────
- Demo Site   Rowing Fans
+ Demo Site   Help Center
 4 on staff   5 on staff
 ```
 
@@ -123,7 +123,7 @@ have. Which engine ran a turn changes what it cost, never what the agent could d
 ```sh
 roofscape ask "what is everyone working on?"
 roofscape ask "which building should handle the login bug?"
-roofscape ask "fix the results table on the rowing site"
+roofscape ask "fix the pricing table on the marketing site"
 ```
 
 Buildings deliberately share nothing, so nobody inside one can see the skyline.

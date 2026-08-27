@@ -22,7 +22,7 @@ const openBuilding = (dir: string, id = 'test') =>
 
 test('a building id is a legible folder name', () => {
   assert.equal(slugify('College App'), 'college-app')
-  assert.equal(slugify('  Émilio’s Rowing Site!! '), 'emilio-s-rowing-site')
+  assert.equal(slugify('  Café’s Help Center!! '), 'cafe-s-help-center')
   assert.notEqual(slugify('///'), '')
 })
 
@@ -30,10 +30,10 @@ test('breaking ground twice on the same name does not collide', () => {
   const { dir, cleanup } = scratch()
   try {
     const sky = openSkyline(dir)
-    const a = sky.breakGround({ name: 'Rowing', charter: 'x', workspace: '/tmp/a' })
-    const b = sky.breakGround({ name: 'Rowing!', charter: 'y', workspace: '/tmp/b' })
-    assert.equal(a.id, 'rowing')
-    assert.equal(b.id, 'rowing-2')
+    const a = sky.breakGround({ name: 'Storefront', charter: 'x', workspace: '/tmp/a' })
+    const b = sky.breakGround({ name: 'Storefront!', charter: 'y', workspace: '/tmp/b' })
+    assert.equal(a.id, 'storefront')
+    assert.equal(b.id, 'storefront-2')
     assert.equal(sky.list().length, 2)
     sky.close()
   } finally { cleanup() }
@@ -193,7 +193,7 @@ test('the archives find a fact by keyword and count the recall', () => {
   try {
     const b = openBuilding(dir)
     const kept = b.remember({ scope: 'building', layer: 'semantic', text: 'The deploy target is Fly, not Vercel.' })
-    b.remember({ scope: 'building', layer: 'episodic', text: 'Rewrote the rowing results table.' })
+    b.remember({ scope: 'building', layer: 'episodic', text: 'Rewrote the pricing table.' })
 
     const hits = b.recallByKeyword('deploy target')
     assert.equal(hits.length, 1)
