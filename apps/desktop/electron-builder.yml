@@ -1,14 +1,15 @@
 appId: ai.roofscape.desktop
 productName: Roofscape
-# Without this the binary is named after the npm package, and "@app/desktop"
-# becomes "@appdesktop" — which AppImage refuses, because an @ cannot be used
-# safely in a file path. It failed the Linux build and took the release with it.
-executableName: roofscape
 copyright: Copyright © 2026 Emilio F.
 
 directories:
   output: release
   buildResources: build
+
+# Runs after the bundle is assembled and before it is put into a dmg or zip, so
+# what people download is what was signed. See the hook for why an unsigned
+# macOS build reports itself as damaged rather than merely untrusted.
+afterPack: build/adhoc-sign.cjs
 
 # Only the bundles and the page they serve. There is no node_modules tree in the
 # app, because build.mjs bundled everything the daemon needs into one file.
@@ -51,6 +52,13 @@ nsis:
 
 linux:
   category: Development
+  # Only Linux. Left at the top level it also renames the macOS bundle, and the
+  # app shows up in Finder as "roofscape" rather than "Roofscape".
+  #
+  # Without it the binary is named after the npm package, and "@app/desktop"
+  # becomes "@appdesktop" — which AppImage refuses, because an @ cannot be used
+  # safely in a file path. It failed the Linux build and took the release with it.
+  executableName: roofscape
   target:
     - target: AppImage
       arch: [x64]
