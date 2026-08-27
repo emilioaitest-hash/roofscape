@@ -237,6 +237,45 @@ test('a task left mid-flight by a crash goes back in the queue', async () => {
   } finally { h.cleanup() }
 })
 
+test('a curator is staff and is not a storey, and nothing says otherwise', async () => {
+  /*
+   * `headcount()` deliberately leaves the curator out: it works in the archives,
+   * below ground, and a building should not appear to grow because it started
+   * tidying up. Every nameplate then called that number "on staff" — so a
+   * six-floor building with a curator in it had seven people and a sign saying
+   * six, and the concierge, given both figures by two different tools, said so
+   * and could not tell which was right.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Tidy', workspace: h.workspace })
+    const before = (await h.call('GET', '/api/buildings/tidy')) as {
+      headcount: number
+      staff: Array<{ role: string }>
+    }
+    assert.equal(before.headcount, before.staff.length, 'no curator yet, so the two agree')
+
+    await h.call('POST', '/api/buildings/tidy/hire', { role: 'curator' })
+    const after = (await h.call('GET', '/api/buildings/tidy')) as {
+      headcount: number
+      staff: Array<{ role: string }>
+    }
+    assert.equal(after.staff.length, before.staff.length + 1, 'the curator was taken on')
+    assert.equal(after.headcount, before.headcount, 'and the building did not grow a storey for it')
+
+    // The drawn nameplate carries the floor count, so it must not be worded as
+    // a number of people — that is the sentence that was wrong.
+    const city = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number; note: string }>
+      svg: string
+    }
+    const drawn = city.buildings.find((b) => b.id === 'tidy')!
+    assert.equal(drawn.headcount, after.headcount)
+    assert.match(drawn.note, /^\d+ floors?$/, `the nameplate reads "${drawn.note}"`)
+    assert.ok(!city.svg.includes('on staff'), 'the drawing still calls its floor count a headcount')
+  } finally { h.cleanup() }
+})
+
 test('a building can be taken off the skyline and put back on it', async () => {
   /*
    * The store could mothball a building from the first commit and nothing ever

@@ -112,3 +112,20 @@ export function nextTierAt(headcount: number): number | null {
 }
 
 export const allTiers = (): readonly Tier[] => TIERS
+
+/**
+ * How tall a building is, said the way both renderers say it.
+ *
+ * Every nameplate used to read "N on staff", which was the floor count wearing
+ * the word for people — and those are not the same number. The curator works in
+ * the archives, below ground, so it is staff and is not a storey: a building
+ * should not appear to grow because it started tidying up. A six-floor building
+ * with a curator in it therefore had seven people and a sign saying six.
+ *
+ * Floors are the honest word here, and the better one besides: it is the number
+ * you can count on the drawing in front of you.
+ */
+export const floorsSaid = (floors: number): string => {
+  const n = Math.max(0, Math.floor(Number.isFinite(floors) ? floors : 0))
+  return n === 1 ? '1 floor' : `${n} floors`
+}

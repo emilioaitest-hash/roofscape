@@ -1,4 +1,4 @@
-import { BUILDING_WIDTH, tierOf, type Tier } from './tiers.js'
+import { BUILDING_WIDTH, tierOf, floorsSaid, type Tier } from './tiers.js'
 
 export interface BuildingView {
   name: string
@@ -89,7 +89,7 @@ export function renderSkyline(views: readonly BuildingView[], opts: RenderOption
   rows.push(views.map((v) => centre(label(v.name, opts), BUILDING_WIDTH)).join(gap).trimEnd())
   rows.push(
     views
-      .map((v) => centre(dim(v.note ?? `${v.headcount} on staff`, opts), BUILDING_WIDTH))
+      .map((v) => centre(dim(v.note ?? floorsSaid(v.headcount), opts), BUILDING_WIDTH))
       .join(gap)
       .trimEnd(),
   )

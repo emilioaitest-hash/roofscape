@@ -350,8 +350,13 @@ async function refreshBuilding() {
   // has one, and it is the number the whole product is built on.
   const waiting = building.approvals.length
   const inHand = building.open.filter((t) => t.state === 'queued' || t.state === 'working').length
+  // "6 floors on staff" was a contradiction in three words once a curator was
+  // in the building: six is how tall it is, and the seventh person works below
+  // ground. The label says which number this is.
+  const below = building.staff.filter((floor) => floor.role === 'curator').length
   el('bVitals').innerHTML = [
-    vital(plural(building.headcount, 'floor'), 'on staff'),
+    vital(plural(building.headcount, 'floor'), below ? 'above ground' : 'on staff'),
+    below ? vital(String(below), 'below ground') : '',
     inHand ? vital(String(inHand), 'in hand', 'lit') : '',
     waiting ? vital(String(waiting), 'waiting on you', 'warn') : '',
     building.spentThisMonth ? vital(tokens(building.spentThisMonth), 'tokens this month') : '',

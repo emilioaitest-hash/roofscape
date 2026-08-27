@@ -105,10 +105,27 @@ on this machine says nothing about the one people download. Fetch the published
 file and check that.
 
 **A second service needs a second port, not just a second data directory.** The
-single-instance lock is per data directory — `daemon.pid` lives inside
+daemon's own lock is per data directory — `daemon.pid` lives inside
 `dataRoot()` — so a fresh `ROOFSCAPE_HOME` walks straight past it and collides on
 the port instead. The failure is an unhandled `EADDRINUSE`, not the message
 written for two services meeting. Set `ROOFSCAPE_PORT` as well.
+
+**And the app's lock was not per data directory at all.** Electron keys
+`userData` off the app's *name*, and `requestSingleInstanceLock()` is keyed off
+`userData` — so with the installed app open, `npm run desktop` built the whole
+bundle, printed "Done", exited 0, and opened nothing. Every symptom of a build
+that worked and no window to show for it, which is the same silent nothing the
+`app.setName` note above describes and a different cause. `ROOFSCAPE_HOME` did
+not help, because it only ever moved the *daemon's* directory.
+
+Electron's own state lives under `ROOFSCAPE_HOME/electron` now, so one variable
+means one whole installation and the lock is per installation. Losing the lock
+also says so, and says what to run:
+
+    ROOFSCAPE_HOME=~/.roofscape-dev ROOFSCAPE_PORT=7788 npm run desktop
+
+Quitting on a lost lock is `app.exit(0)`, not `app.quit()` — the latter is a
+request, and the rest of `main.ts` goes on running while it is considered.
 
 **The macOS app does not inherit your shell.** An app launched from Finder gets
 launchd's environment, so `ROOFSCAPE_CLAUDE_BIN=none` exported in a terminal does

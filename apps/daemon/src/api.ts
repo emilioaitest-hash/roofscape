@@ -2,7 +2,7 @@ import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   parseEvery, parseAtTime, describeSchedule, ask,
-  citySvg, portraitSvg, designFor,
+  citySvg, portraitSvg, designFor, floorsSaid,
   readBridgeConfig, writeBridgeConfig, describeToken, listGuilds, listChannels,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
@@ -66,7 +66,7 @@ function skylineViews(sky: SkylineStore) {
         busy: working.has(building.id),
         open: inHand,
         pendingApprovals: pending,
-        note: inHand > 0 ? `${inHand} in hand` : `${headcount} on staff`,
+        note: inHand > 0 ? `${inHand} in hand` : floorsSaid(headcount),
       }
     } finally {
       store.close()
@@ -165,7 +165,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
             name: building.name,
             headcount,
             working: store.busyFloors(),
-            note: open > 0 ? `${open} in hand` : `${store.headcount()} on staff`,
+            note: open > 0 ? `${open} in hand` : floorsSaid(store.headcount()),
           }
         } finally {
           store.close()

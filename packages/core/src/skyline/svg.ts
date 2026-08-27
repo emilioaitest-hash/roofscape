@@ -19,6 +19,7 @@
  */
 import type { BuildingDesign, Ornament } from './design.js'
 import { designFor, Chooser, seedOf, type DesignInput } from './design.js'
+import { floorsSaid } from './tiers.js'
 
 /** What the building is doing, which is the only thing that animates. */
 export interface BuildingState {
@@ -1049,7 +1050,7 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
     const centre = x + (slot * zoom) / 2
     // Scaled about its own feet, so the whole row still stands on one street.
     parts.push(
-      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${esc(design.name)} — ${esc(design.tier.name)}, ${design.headcount} on staff" transform="translate(${round(centre)} ${round(groundY)}) scale(${round(zoom)})">`,
+      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${esc(design.name)} — ${esc(design.tier.name)}, ${floorsSaid(design.headcount)}" transform="translate(${round(centre)} ${round(groundY)}) scale(${round(zoom)})">`,
     )
     parts.push(buildingSvg(design, state))
     if (options.labels !== false) parts.push(nameplate(design, state, slot + gap * 0.8, note))
@@ -1233,7 +1234,7 @@ function backdrop(width: number, groundY: number): string {
  * for anyone who wants the word.
  */
 function nameplate(design: BuildingDesign, state: BuildingState, slot: number, note?: string): string {
-  const status = note ?? `${design.headcount} on staff`
+  const status = note ?? floorsSaid(design.headcount)
   const busy = state.busy === true
   // No text measurement available here, so estimate from the type size. Erring
   // toward truncation is right: two labels touching looks broken, and one
@@ -1241,7 +1242,7 @@ function nameplate(design: BuildingDesign, state: BuildingState, slot: number, n
   const name = clip(design.name, Math.floor(slot / 8.1))
   const statusText = clip(status, Math.floor(slot / 6))
   return `<g class="rs-plate">
-  <title>${esc(design.name)} — ${esc(design.tier.name)}, ${design.headcount} on staff</title>
+  <title>${esc(design.name)} — ${esc(design.tier.name)}, ${floorsSaid(design.headcount)}</title>
   <text class="rs-name" x="0" y="34" text-anchor="middle">${esc(name)}</text>
   <text class="rs-note" x="0" y="53" text-anchor="middle">${esc(statusText)}</text>
   ${busy ? '<circle class="rs-busy-dot" cx="0" cy="66" r="3.2" fill="#e8c15a"/>' : ''}
