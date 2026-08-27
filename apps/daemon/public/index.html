@@ -61,6 +61,17 @@
         <h1 id="bName">—</h1>
         <p class="charter" id="bCharter"></p>
         <div class="vitals" id="bVitals"></div>
+
+        <!-- Only while something is actually running. A permanent status strip
+             saying "idle" is a strip nobody reads when it says anything else. -->
+        <div class="working hidden" id="working">
+          <span class="working-lamp" aria-hidden="true"></span>
+          <div class="working-what">
+            <div class="working-line" id="workingLine">Working…</div>
+            <div class="working-since" id="workingSince"></div>
+          </div>
+        </div>
+
         <form class="goal" id="goalForm">
           <input type="text" id="goalText" autocomplete="off"
                  placeholder="Put a goal to it — “add a farewell function to greet.js”">

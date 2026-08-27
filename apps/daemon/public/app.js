@@ -299,6 +299,7 @@ async function refreshBuilding() {
   el('goalGo').disabled = building.working
   el('goalGo').textContent = building.working ? 'Working…' : 'Send'
   el('goalText').disabled = building.working
+  showWorking(building.working)
 
   // A badge counts what its tab actually contains, or it is a small lie you
   // notice the moment you click it. `inHand` is the narrower figure — queued
@@ -769,6 +770,43 @@ el('bridgeForm').onsubmit = async (event) => {
   } catch (error) { oops(error) }
 }
 
+/**
+ * That something is happening, said where you are looking.
+ *
+ * A goal takes minutes and the only sign of it used to be a greyed-out button
+ * and a feed at the bottom of another tab. This is the one thing on the screen
+ * that is genuinely live, so it gets the lamp — the same amber as a lit window,
+ * because it means the same thing.
+ */
+/**
+ * When the goal we are watching started — or null, if we did not see it start.
+ *
+ * The daemon does not report when the current goal began, so opening the page
+ * midway through one would have counted from the moment you arrived and called
+ * it "so far". A blank is honest; a confident wrong number is not.
+ */
+let workingSince = null
+
+function showWorking(on) {
+  el('working').classList.toggle('hidden', !on)
+  if (!on) {
+    workingSince = null
+    el('workingLine').textContent = 'Working…'
+  }
+  tickWorking()
+}
+
+function tickWorking() {
+  if (workingSince === null) {
+    el('workingSince').textContent = ''
+    return
+  }
+  const seconds = Math.round((Date.now() - workingSince) / 1000)
+  el('workingSince').textContent =
+    seconds < 60 ? `${seconds}s so far` : `${Math.floor(seconds / 60)}m ${seconds % 60}s so far`
+}
+setInterval(tickWorking, 1000)
+
 // ── things you can do ──────────────────────────────────────────────────────
 
 async function decide(id, granted) {
@@ -1057,6 +1095,17 @@ stream.onmessage = (message) => {
   if (event.kind === 'goal-finished') toast('Finished.', 'good')
   if (event.kind === 'goal-failed') toast(event.detail ?? 'That goal failed.', 'bad')
   if (event.kind === 'asked') toast('Something needs your say-so.')
+
+  // What the building is doing right now, in its own words.
+  if (view.screen === 'building' && event.building === view.building) {
+    if (event.kind === 'progress' || event.kind === 'step') {
+      el('workingLine').textContent = clip(event.detail ?? 'Working…', 90)
+    }
+    if (event.kind === 'tool') el('workingLine').textContent = `Using ${clip(event.detail ?? '', 40)}`
+    // Seeing it start is the only way we can honestly count from it.
+    if (event.kind === 'goal-started') { workingSince = Date.now(); showWorking(true) }
+    if (event.kind === 'goal-finished' || event.kind === 'goal-failed') showWorking(false)
+  }
 
   if (event.kind === 'posted' && view.screen === 'building') paintMail().catch(() => {})
   if (event.kind === 'bridge' || event.kind === 'bridge-changed') paintBridge().catch(() => {})

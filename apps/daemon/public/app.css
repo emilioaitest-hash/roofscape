@@ -718,3 +718,34 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 /* A paused order is present but not running, so it is drawn that way. */
 .order.paused .order-goal { color: var(--ink-4); }
 .order-right { display: flex; align-items: center; gap: var(--s1); flex: none; }
+
+/* ── something is happening ─────────────────────────────────────────────── */
+
+/**
+ * The only genuinely live thing on the screen, so it gets the lamp.
+ *
+ * Shown only while a goal is running. A permanent strip that says "idle" most
+ * of the time is a strip nobody reads on the day it says something else.
+ */
+.working {
+  display: flex; align-items: center; gap: var(--s3);
+  margin-top: var(--s3); padding: var(--s3) var(--s4);
+  border: 1px solid var(--lamp-dim); border-radius: var(--r-surface);
+  background: linear-gradient(90deg, #e8c15a12, transparent 70%);
+  max-width: 640px;
+  animation: rise var(--base) both;
+}
+
+/* A lamp with the light spilling off it, the same as a working floor. */
+.working-lamp {
+  width: 9px; height: 9px; flex: none; border-radius: var(--r-pill);
+  background: var(--lamp); box-shadow: 0 0 10px #e8c15aaa;
+  animation: throb 2.2s ease-in-out infinite;
+}
+
+.working-what { min-width: 0; }
+.working-line {
+  font-size: var(--t-small); color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.working-since { font-size: var(--t-micro); color: var(--ink-4); font-variant-numeric: tabular-nums; }
