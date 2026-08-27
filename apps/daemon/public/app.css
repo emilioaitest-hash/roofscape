@@ -545,3 +545,23 @@ label.check { display: flex; gap: 9px; align-items: flex-start; font-size: 13px;
 label.check input { margin-top: 3px; accent-color: var(--lit); }
 label.check .dim { display: block; font-size: 12px; }
 .dialog-buttons #dUnwire { margin-right: auto; }
+
+/* ── where the models come from ─────────────────────────────────────────── */
+
+dialog#settingsDialog { width: min(560px, calc(100vw - 32px)); }
+.provider-list { max-height: 52vh; overflow-y: auto; margin: 4px -4px 0; padding: 0 4px; }
+.provider {
+  display: grid; grid-template-columns: 9px 1fr auto; gap: 12px; align-items: start;
+  padding: 11px 2px; border-bottom: 1px solid var(--line);
+}
+.provider:last-child { border-bottom: 0; }
+.provider .lamp { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); margin-top: 6px; }
+.provider.ok .lamp { background: var(--good); box-shadow: 0 0 8px #7fb08a99; }
+.provider-name { font-weight: 600; font-size: 14px; }
+.provider-why { font-size: 12.5px; color: var(--dim); margin-top: 2px; }
+.provider-fix {
+  font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-top: 4px;
+  background: var(--sink); border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 4px 8px; display: inline-block; overflow-wrap: anywhere;
+}
+.provider-models { font-family: var(--mono); font-size: 11px; color: var(--faint); text-align: right; max-width: 190px; }

@@ -139,7 +139,11 @@ async function refreshCity() {
   }
   paintCityState()
   paintTallies()
-  el('cityHint').classList.toggle('hidden', buildings.length === 0)
+  // Telling somebody to click a building when there are none is the sort of
+  // small dishonesty that makes a first run feel unfinished.
+  el('cityHint').textContent = buildings.length
+    ? 'Click a building to go inside it.'
+    : 'Nothing built yet. Break ground on the empty lot to start your first company.'
 }
 
 function wireCity() {
@@ -483,6 +487,48 @@ el('mailForm').onsubmit = async (event) => {
   } catch (error) { oops(error) }
 }
 
+// ── where the models come from ─────────────────────────────────────────────
+
+/**
+ * Every provider and whether it can actually answer.
+ *
+ * The daemon probes rather than guesses — "needs no key" and "is running" are
+ * different claims — so this shows what is genuinely reachable right now, and
+ * the exact thing to type for the ones that are not.
+ */
+async function paintProviders() {
+  el('providerList').innerHTML = '<p class="empty">Asking each of them…</p>'
+  try {
+    const { providers, claudeCode } = await api('/api/providers')
+    el('providerList').innerHTML =
+      (claudeCode
+        ? `<p class="dim pane-sub">Claude Code is installed, so Anthropic can be reached on your
+             subscription rather than metered billing.</p>`
+        : '') +
+      providers
+        .map(
+          (p) => `<div class="provider ${p.status.ok ? 'ok' : ''}">
+            <span class="lamp"></span>
+            <div>
+              <div class="provider-name">${esc(p.label)}</div>
+              <div class="provider-why">${esc(p.status.ok ? (p.note ?? 'Reachable.') : (p.status.reason ?? 'Not set up.'))}</div>
+              ${p.status.ok || !p.status.remedy ? '' : `<div class="provider-fix">${esc(p.status.remedy)}</div>`}
+            </div>
+            <div class="provider-models">${(p.suggested ?? []).slice(0, 3).map(esc).join('<br>')}</div>
+          </div>`,
+        )
+        .join('')
+  } catch (error) {
+    el('providerList').innerHTML = `<p class="empty">${esc(error.message)}</p>`
+  }
+}
+
+el('openSettings').onclick = () => {
+  el('settingsDialog').showModal()
+  paintProviders().catch(oops)
+}
+el('settingsRefresh').onclick = () => paintProviders().catch(oops)
+
 // ── the Discord bridge ─────────────────────────────────────────────────────
 
 let bridge = null
@@ -609,19 +655,76 @@ async function changeSchedule(id, body) {
   } catch (error) { oops(error) }
 }
 
+/** Which floor the posting dialog is about, and what it can be moved to. */
+let moving = { floorId: null, providers: [] }
+
 async function repost(floorId) {
+  const floor = current?.staff.find((f) => f.id === floorId)
+  moving = { floorId, providers: [] }
+  el('postingWho').textContent = floor ? `Move ${floor.name} to another model` : 'Move somebody'
+  el('pProvider').innerHTML = '<option>Looking…</option>'
+  el('pModel').value = ''
+  el('pNote').textContent = ''
+  el('postingDialog').showModal()
+
   try {
-    const { providers } = await api('/api/providers')
-    const reachable = providers.filter((p) => p.status.ok)
-    const provider = prompt(`Which provider?\n\nReachable: ${reachable.map((p) => p.name).join(', ') || 'none set up'}`)
-    if (!provider) return
-    const spec = providers.find((p) => p.name === provider)
-    const model = prompt(`Which model on ${provider}?`, spec?.suggested?.[0] ?? '')
-    if (!model) return
-    await post(`/api/buildings/${encodeURIComponent(view.building)}/floors/${encodeURIComponent(floorId)}/posting`, {
-      provider, model, engine: provider === 'anthropic' ? 'claude-agent-sdk' : 'direct',
-    })
-    toast('Moved.')
+    const { providers, claudeCode } = await api('/api/providers')
+    moving.providers = providers
+    // Reachable first, and the rest still listed — somebody may be about to set
+    // one up, and hiding it makes the app look like it has fewer options.
+    const sorted = [...providers].sort((a, b) => Number(b.status.ok) - Number(a.status.ok))
+    el('pProvider').innerHTML = sorted
+      .map((p) => `<option value="${esc(p.name)}"${p.status.ok ? '' : ' data-cold="1"'}>${esc(p.label)}${p.status.ok ? '' : ' — not set up'}</option>`)
+      .join('')
+    if (floor) {
+      const currentProvider = sorted.find((p) => p.name === floor.posting.provider)
+      if (currentProvider) el('pProvider').value = currentProvider.name
+      el('pModel').value = floor.posting.model ?? ''
+    }
+    el('pNote').dataset.claudeCode = String(Boolean(claudeCode))
+    paintModels()
+  } catch (error) {
+    el('pProvider').innerHTML = ''
+    el('pNote').textContent = error.message
+  }
+}
+
+/** Suggestions for the chosen provider, and whether it can answer at all. */
+function paintModels() {
+  const spec = moving.providers.find((p) => p.name === el('pProvider').value)
+  el('pModels').innerHTML = (spec?.suggested ?? [])
+    .map((m) => `<option value="${esc(m)}"></option>`)
+    .join('')
+  if (!el('pModel').value && spec?.suggested?.[0]) el('pModel').value = spec.suggested[0]
+
+  const viaClaudeCode = spec?.name === 'anthropic' && el('pNote').dataset.claudeCode === 'true'
+  el('pNote').textContent = !spec
+    ? ''
+    : !spec.status.ok
+      ? `${spec.label} is not reachable yet — ${spec.note ?? 'no credential set up'}.`
+      : viaClaudeCode
+        ? 'Runs through your Claude Code install, so it draws on that subscription rather than metered billing.'
+        : spec.note ?? ''
+}
+
+el('pProvider').onchange = () => { el('pModel').value = ''; paintModels() }
+el('pCancel').onclick = () => el('postingDialog').close()
+
+el('postingForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const provider = el('pProvider').value
+  const model = el('pModel').value.trim()
+  if (!provider || !model || !moving.floorId) return
+  const spec = moving.providers.find((p) => p.name === provider)
+  try {
+    await post(
+      `/api/buildings/${encodeURIComponent(view.building)}/floors/${encodeURIComponent(moving.floorId)}/posting`,
+      // The daemon refuses claude-agent-sdk when Claude Code is not installed,
+      // so asking for it is safe: the worst case is an ordinary direct call.
+      { provider, model, engine: provider === 'anthropic' ? 'claude-agent-sdk' : 'direct' },
+    )
+    el('postingDialog').close()
+    toast(`Moved to ${spec?.label ?? provider}.`, 'good')
     await refreshBuilding()
   } catch (error) { oops(error) }
 }
@@ -634,6 +737,13 @@ function breakGround() {
 // ── wiring ─────────────────────────────────────────────────────────────────
 
 el('goHome').onclick = goHome
+
+// Escape steps back outside. Not while a dialog is open — that is the dialog's.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return
+  if (document.querySelector('dialog[open]')) return
+  if (view.screen === 'building') goHome()
+})
 
 function selectTab(name) {
   view.tab = name
@@ -665,7 +775,8 @@ el('groundForm').onsubmit = async (event) => {
     })
     el('groundDialog').close()
     el('groundForm').reset()
-    toast(`${building.name} — ground broken.`, 'good')
+    if (building.warning) toast(building.warning, 'bad')
+    else toast(`${building.name} — ground broken.`, 'good')
     drawnShape = ''
     await refreshCity()
     openBuilding(building.id)

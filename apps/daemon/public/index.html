@@ -17,6 +17,7 @@
   <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
   <div class="topbar-right">
     <button class="ghost update hidden" id="update" type="button"></button>
+    <button class="ghost" id="openSettings" type="button">Models</button>
     <span class="live" id="live" title="Connection to the daemon"><i></i><span>connecting</span></span>
   </div>
 </header>
@@ -172,6 +173,45 @@
     <div class="dialog-buttons">
       <button type="button" class="ghost" id="groundCancel">Never mind</button>
       <button type="submit" class="solid">Break ground</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Every provider and whether it can actually answer. Roofscape supplies no
+     model; this is the whole of what it does supply. -->
+<dialog id="settingsDialog">
+  <form method="dialog" id="settingsForm">
+    <h2>Where the models come from</h2>
+    <p class="dim">Roofscape holds no subscription on your behalf. It uses credentials you already
+      own, and any floor can be moved between them.</p>
+    <div id="providerList" class="provider-list"></div>
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="settingsRefresh">Look again</button>
+      <button type="submit" class="solid">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Moving somebody to another model. Was two browser prompts, which look
+     like a page from 1998 and cannot show which providers are reachable. -->
+<dialog id="postingDialog">
+  <form method="dialog" id="postingForm">
+    <h2 id="postingWho">Move somebody</h2>
+    <p class="dim">Roofscape supplies no model. It uses the credentials you already own,
+      and a floor can be moved between them at any time.</p>
+
+    <label>Provider
+      <select id="pProvider"></select></label>
+
+    <label>Model
+      <input type="text" id="pModel" autocomplete="off" list="pModels" placeholder="claude-opus-5">
+      <datalist id="pModels"></datalist>
+      <span class="field-note dim" id="pNote"></span>
+    </label>
+
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="pCancel">Never mind</button>
+      <button type="submit" class="solid">Move them</button>
     </div>
   </form>
 </dialog>

@@ -294,6 +294,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       })
 
       const store = BuildingStore.open(building.id)
+      let hired = 0
       try {
         // FOUNDING_ROLES, not a list written out again here. This endpoint had
         // its own copy and kept hiring a manager and a hiring manager long after
@@ -305,6 +306,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
           const posting = entry ? defaultPosting(role, available) : null
           if (entry && posting) {
             store.hire({ role, name: entry.suggestedName, charter: entry.charter, posting, tools: TOOLS_FOR_ROLE[role] ?? [] })
+            hired += 1
           }
         }
       } finally {
@@ -312,7 +314,18 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       }
 
       events.emit({ kind: 'ground-broken', building: building.id, detail: building.name })
-      return building
+      // A building founded with nobody in it is a dead end, and the reason is
+      // never in the building — it is that no provider could be reached, so
+      // there was nothing to post a manager to. Saying so here is the
+      // difference between a confusing empty room and one obvious next step.
+      return hired > 0
+        ? building
+        : {
+            ...building,
+            warning:
+              'Nobody could be taken on: no model provider is set up yet, so there is nothing to post a manager to. ' +
+              'Install Claude Code, set an API key, or start Ollama, then hire from inside the building.',
+          }
     } finally {
       sky.close()
     }

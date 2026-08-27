@@ -910,13 +910,28 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
    * scale a row of thirty needs is a speck in the middle of a large dark
    * rectangle. Scaling toward a comfortable row width means a new skyline reads
    * as a place from the first building, and a crowded one still fits.
+   *
+   * Measured on the buildings alone. The empty lot is a control rather than a
+   * building, and letting it drive this magnified the plus sign on an empty
+   * skyline until it was the size of a door.
    */
-  const zoom = Math.min(1.75, Math.max(1, 860 / Math.max(1, rowWidth)))
+  const zoomBasis = designs.length > 0 ? bodyWidth + gap * Math.max(0, designs.length - 1) : 860
+  const zoom = Math.min(1.75, Math.max(1, 860 / Math.max(1, zoomBasis)))
   const scaled = rowWidth * zoom
   const natural = margin * 2 + scaled
 
-  const tallest =
-    designs.reduce((max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)), 120) * zoom
+  /**
+   * A floor under the sky, so a low skyline is still a skyline.
+   *
+   * The page scales this drawing to the height of its frame, so a canvas only
+   * as tall as its tallest building gets magnified to fill the screen — and a
+   * city of two shacks came out looking like two barns. Giving the short cases
+   * more sky costs nothing and keeps everything at a believable size.
+   */
+  const tallest = Math.max(
+    options.backdrop === false ? 120 : 320,
+    designs.reduce((max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)), 120) * zoom,
+  )
   const belowGround = options.labels === false ? 40 : 118
   // A city wants sky above it; a portrait wants a margin. The backdrop being
   // off is what distinguishes the two, and it is the portrait that turns it off.

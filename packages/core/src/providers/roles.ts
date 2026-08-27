@@ -26,21 +26,21 @@ export const APPETITE_BY_ROLE: Record<FloorRole, Appetite> = {
 /** Best first. A provider absent from the installation is skipped. */
 const PREFERENCE: Record<Appetite, ReadonlyArray<[provider: string, model: string]>> = {
   judgement: [
-    ['anthropic', 'claude-opus-4-5'],
+    ['anthropic', 'claude-opus-5'],
     ['openai', 'gpt-5'],
     ['google', 'gemini-2.5-pro'],
     ['openrouter', 'anthropic/claude-sonnet-4.5'],
     ['ollama', 'qwen3:8b'],
   ],
   code: [
-    ['anthropic', 'claude-sonnet-4-5'],
+    ['anthropic', 'claude-sonnet-5'],
     ['openai', 'gpt-5'],
     ['deepseek', 'deepseek-chat'],
     ['openrouter', 'anthropic/claude-sonnet-4.5'],
     ['ollama', 'qwen2.5-coder:3b'],
   ],
   general: [
-    ['anthropic', 'claude-sonnet-4-5'],
+    ['anthropic', 'claude-sonnet-5'],
     ['openai', 'gpt-5-mini'],
     ['google', 'gemini-2.5-flash'],
     ['groq', 'llama-3.3-70b-versatile'],
