@@ -3,464 +3,288 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Roofscape</title>
-<style>
-  :root {
-    --bg: #faf9f7; --panel: #ffffff; --ink: #1b1a18; --dim: #6f6a63;
-    --line: #e3ded6; --accent: #7a5c3e; --lit: #b8860b; --good: #3f6b4d; --warn: #a2551f;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14130f; --panel: #1c1b17; --ink: #eae6df; --dim: #948d82;
-      --line: #2e2c26; --accent: #c9a227; --lit: #e8c15a; --good: #7fb08a; --warn: #d68b4f;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
-  }
-  header {
-    padding: 18px 24px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
-  }
-  h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
-  .tagline { color: var(--dim); font-size: 13px; }
-  main { max-width: 1080px; margin: 0 auto; padding: 22px; display: grid; gap: 18px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
-  .panel h2 {
-    font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
-    color: var(--dim); margin: 0 0 12px; font-weight: 600;
-    display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  }
-  pre.skyline { font: 13px/1.15 ui-monospace, "SF Mono", Menlo, monospace; margin: 0; overflow-x: auto; white-space: pre; }
-  .buildings { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
-  .chip, .mini {
-    border: 1px solid var(--line); background: transparent; color: var(--ink);
-    border-radius: 999px; padding: 5px 13px; cursor: pointer; font: inherit; font-size: 13px;
-  }
-  .chip:hover, .mini:hover { border-color: var(--accent); }
-  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  .mini { font-size: 12px; padding: 3px 11px; color: var(--dim); }
-  .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); align-items: center; }
-  .row:last-child { border-bottom: 0; }
-  .dim { color: var(--dim); }
-  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
-  form.inline { display: flex; gap: 10px; flex-wrap: wrap; }
-  input[type=text], select {
-    padding: 9px 12px; border-radius: 8px; font: inherit;
-    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-  }
-  input[type=text] { flex: 1; min-width: 160px; }
-  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  button.go {
-    padding: 9px 18px; border-radius: 8px; border: 0; cursor: pointer;
-    background: var(--accent); color: var(--bg); font: inherit; font-weight: 600;
-  }
-  button.go:disabled { opacity: .45; cursor: default; }
-  #log { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; max-height: 240px; overflow-y: auto; margin-top: 12px; color: var(--dim); }
-  #log div { padding: 2px 0; }
-  #log .hi { color: var(--ink); } #log .lit { color: var(--lit); } #log .bad { color: var(--warn); }
-  .empty { color: var(--dim); font-style: italic; }
-  .pill { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; color: var(--dim); }
-  .approve { display: flex; gap: 6px; }
-  .approve button { font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--ink); }
-  .approve .yes:hover { border-color: var(--good); color: var(--good); }
-  .approve .no:hover { border-color: var(--warn); color: var(--warn); }
-  .hidden { display: none; }
-  .stack { display: grid; gap: 10px; }
-  .note { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-  .note:last-child { border-bottom: 0; }
-  .update { border-color: var(--lit); color: var(--lit); margin-left: 10px; }
-  .update:hover:not(:disabled) { background: var(--lit); border-color: var(--lit); color: var(--bg); }
-  .update:disabled { cursor: default; opacity: .75; }
-  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 9px 18px; border-radius: 999px; font-size: 13px; }
-</style>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<header>
-  <h1>Roofscape</h1>
-  <span class="tagline">Every project a building. Every hire a floor.</span>
-  <span class="tagline" id="conn" style="margin-left:auto"></span>
-  <button class="mini update hidden" id="update" type="button"></button>
+
+<header class="topbar">
+  <button class="brand" id="goHome" type="button">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Roofscape</span>
+  </button>
+  <nav class="crumbs" id="crumbs" aria-label="Where you are"></nav>
+  <div class="topbar-right">
+    <button class="ghost update hidden" id="update" type="button"></button>
+    <button class="ghost" id="openSettings" type="button">Models</button>
+    <span class="live" id="live" title="Connection to the daemon"><i></i><span>connecting</span></span>
+  </div>
 </header>
 
-<main>
-  <section class="panel">
-    <h2>The skyline <button class="mini" id="showGround">Break ground</button></h2>
-    <pre class="skyline" id="art">…</pre>
-    <div class="buildings" id="chips"></div>
-    <form class="inline hidden" id="groundForm" style="margin-top:14px">
-      <input type="text" id="gName" placeholder="Name, e.g. Help Center" autocomplete="off" required>
-      <input type="text" id="gPath" placeholder="Workspace, e.g. /Users/you/code/thing" autocomplete="off" required>
-      <input type="text" id="gCharter" placeholder="What is it for?" autocomplete="off">
-      <button class="go" type="submit">Break ground</button>
-    </form>
+<main id="main">
+
+  <!-- ───────────────────────────── the skyline ───────────────────────────── -->
+  <section class="screen" id="screenCity" data-screen="city">
+    <div class="city-frame">
+      <div class="city-scroll" id="cityScroll">
+        <div class="city-art" id="cityArt"><div class="loading">Drawing your skyline…</div></div>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div class="strip-inner">
+        <div>
+          <div class="tallies" id="tallies"></div>
+          <p class="city-hint" id="cityHint">Click a building to go inside it.</p>
+        </div>
+        <form class="ask" id="askForm">
+          <label class="ask-label" for="askText">Ask the concierge</label>
+          <div class="ask-row">
+            <input type="text" id="askText" autocomplete="off"
+                   placeholder="What is everyone working on?">
+            <button class="solid" type="submit" id="askGo">Ask</button>
+          </div>
+          <p class="ask-note">Sees every building. Changes nothing.</p>
+        </form>
+      </div>
+      <div class="answer hidden" id="answer"></div>
+    </div>
   </section>
 
-  <section class="panel">
-    <h2>Ask the concierge <span class="dim">— sees every building, changes nothing</span></h2>
-    <form class="inline" id="askForm">
-      <input type="text" id="askText" placeholder="What is everyone working on?" autocomplete="off">
-      <button class="go" type="submit" id="askGo">Ask</button>
-    </form>
-    <div id="answer" style="margin-top:12px; white-space:pre-wrap"></div>
+  <!-- ──────────────────────────── one building ───────────────────────────── -->
+  <section class="screen hidden" id="screenBuilding" data-screen="building">
+    <div class="building-head">
+      <div class="portrait" id="portrait"></div>
+      <div class="building-meta">
+        <p class="eyebrow" id="bTier">—</p>
+        <h1 id="bName">—</h1>
+        <p class="charter" id="bCharter"></p>
+        <div class="vitals" id="bVitals"></div>
+
+        <!-- Only while something is actually running. A permanent status strip
+             saying "idle" is a strip nobody reads when it says anything else. -->
+        <div class="working hidden" id="working">
+          <span class="working-lamp" aria-hidden="true"></span>
+          <div class="working-what">
+            <div class="working-line" id="workingLine">Working…</div>
+            <div class="working-since" id="workingSince"></div>
+          </div>
+        </div>
+
+        <form class="goal" id="goalForm">
+          <input type="text" id="goalText" autocomplete="off"
+                 placeholder="Put a goal to it — “add a farewell function to greet.js”">
+          <button class="solid" type="submit" id="goalGo">Send</button>
+        </form>
+      </div>
+    </div>
+
+    <nav class="tabs" id="tabs" role="tablist">
+      <button role="tab" class="tab on" data-tab="floors">The building</button>
+      <button role="tab" class="tab" data-tab="work">Work<span class="badge hidden" id="badgeWork"></span></button>
+      <button role="tab" class="tab" data-tab="desk">Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
+      <button role="tab" class="tab" data-tab="mail">Mailroom<span class="badge hidden" id="badgeMail"></span></button>
+      <button role="tab" class="tab" data-tab="orders">Standing orders</button>
+      <button role="tab" class="tab" data-tab="archives">Archives</button>
+    </nav>
+
+    <div class="panes">
+      <div class="pane" data-pane="floors">
+        <div class="cutaway" id="cutaway"></div>
+        <aside class="hire-box">
+          <h3>Take somebody on</h3>
+          <p class="dim">Every hire is a floor. The building grows.</p>
+          <form id="hireForm">
+            <select id="hRole"></select>
+            <input type="text" id="hName" autocomplete="off" placeholder="Name (optional)">
+            <button class="solid" type="submit">Hire</button>
+          </form>
+          <div class="next-form dim" id="nextForm"></div>
+        </aside>
+      </div>
+
+      <div class="pane hidden" data-pane="work">
+        <div class="work-cols">
+          <div>
+            <h3 class="pane-title">In hand</h3>
+            <div id="workOpen"></div>
+          </div>
+          <div>
+            <h3 class="pane-title">Finished</h3>
+            <div id="workDone"></div>
+          </div>
+        </div>
+        <div class="feed-box">
+          <h3 class="pane-title">As it happens</h3>
+          <div id="log" class="feed"></div>
+        </div>
+      </div>
+
+      <div class="pane hidden" data-pane="desk">
+        <h3 class="pane-title">The approval desk</h3>
+        <p class="dim pane-sub">Anything that reaches the world outside the building stops here.</p>
+        <div id="approvals"></div>
+      </div>
+
+      <div class="pane hidden" data-pane="mail">
+        <div class="mail-head">
+          <div>
+            <h3 class="pane-title">The mailroom</h3>
+            <p class="dim pane-sub">Typed, durable, one inbox per floor — and you are in it.
+              Every line here is a record, not a chat log.</p>
+          </div>
+          <div class="mail-bridge" id="mailBridge"></div>
+        </div>
+        <div class="thread" id="thread"></div>
+        <form class="composer" id="mailForm">
+          <select id="mailTo" aria-label="Who to write to"></select>
+          <input type="text" id="mailBody" autocomplete="off" placeholder="Write to somebody in the building…">
+          <button class="solid" type="submit">Send</button>
+        </form>
+      </div>
+
+      <div class="pane hidden" data-pane="orders">
+        <h3 class="pane-title">Standing orders <button class="ghost" id="showSchedule" type="button">Add one</button></h3>
+        <form class="row-form hidden" id="scheduleForm">
+          <input type="text" id="sGoal" placeholder="Check the build still passes" autocomplete="off" required>
+          <input type="text" id="sEvery" placeholder="daily" value="daily" autocomplete="off">
+          <input type="text" id="sAt" placeholder="09:00" autocomplete="off">
+          <button class="solid" type="submit">Set it</button>
+        </form>
+        <div id="schedules"></div>
+      </div>
+
+      <div class="pane hidden" data-pane="archives">
+        <h3 class="pane-title">The archives
+          <button class="ghost" id="curateGo" type="button">Send the curator down</button>
+        </h3>
+        <form class="row-form" id="searchForm">
+          <input type="text" id="searchText" placeholder="Search what it remembers" autocomplete="off">
+          <button class="ghost" type="submit">Look</button>
+        </form>
+        <div id="archives"></div>
+      </div>
+    </div>
   </section>
 
-  <section class="panel">
-    <h2>Put a goal to it <span class="dim" id="goalWho"></span></h2>
-    <form class="inline" id="goalForm">
-      <input type="text" id="goalText" placeholder="Add a farewell function to greet.js" autocomplete="off">
-      <button class="go" type="submit" id="goalGo">Send</button>
-    </form>
-    <div id="log"></div>
-  </section>
-
-  <div class="cols">
-    <section class="panel">
-      <h2>Staff <button class="mini" id="showHire">Hire</button></h2>
-      <form class="inline hidden stack" id="hireForm" style="margin-bottom:12px">
-        <select id="hRole"></select>
-        <input type="text" id="hName" placeholder="Name (optional)" autocomplete="off">
-        <button class="go" type="submit">Take them on</button>
-      </form>
-      <div id="staff"></div>
-    </section>
-    <section class="panel">
-      <h2>Work</h2>
-      <div id="work"></div>
-    </section>
-  </div>
-
-  <div class="cols">
-    <section class="panel">
-      <h2>Waiting for you</h2>
-      <div id="approvals"></div>
-    </section>
-    <section class="panel">
-      <h2>Standing orders <button class="mini" id="showSchedule">Add one</button></h2>
-      <form class="inline hidden" id="scheduleForm" style="margin-bottom:12px">
-        <input type="text" id="sGoal" placeholder="Check the build still passes" autocomplete="off" required>
-        <input type="text" id="sEvery" placeholder="daily" value="daily" style="max-width:110px" autocomplete="off">
-        <input type="text" id="sAt" placeholder="09:00" style="max-width:90px" autocomplete="off">
-        <button class="go" type="submit">Set it</button>
-      </form>
-      <div id="schedules"></div>
-    </section>
-    <section class="panel">
-      <h2>Archives <button class="mini" id="curateGo">Send the curator down</button></h2>
-      <form class="inline" id="searchForm" style="margin-bottom:10px">
-        <input type="text" id="searchText" placeholder="Search what it remembers" autocomplete="off">
-        <button class="mini" type="submit">Look</button>
-      </form>
-      <div id="archives"></div>
-    </section>
-  </div>
 </main>
 
-<script type="module">
-const params = new URLSearchParams(location.search)
-const token = params.get('token') ?? sessionStorage.getItem('roofscape-token') ?? ''
-if (params.get('token')) {
-  sessionStorage.setItem('roofscape-token', params.get('token'))
-  history.replaceState(null, '', location.pathname)
-}
+<!-- Break ground, as a dialog rather than a form nobody notices. -->
+<dialog id="groundDialog">
+  <form method="dialog" id="groundForm">
+    <h2>Break ground</h2>
+    <p class="dim">One building is one company. Its own staff, its own memory, its own money, its
+      own workspace — and it shares none of them with its neighbours.</p>
 
-const api = async (path, options = {}) => {
-  const response = await fetch(path, {
-    ...options,
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(options.headers ?? {}) },
-  })
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.error ?? response.statusText)
-  return body
-}
+    <label>What is it called?
+      <input type="text" id="gName" autocomplete="off" required placeholder="Help Center">
+      <span class="field-note dim">Goes on the sign over the door.</span></label>
 
-const el = (id) => document.getElementById(id)
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
-const row = (left, right = '') => `<div class="row"><span>${left}</span><span class="dim">${right}</span></div>`
-let current = null
+    <label>Where does it work?
+      <input type="text" id="gPath" autocomplete="off" required placeholder="~/code/help-center">
+      <span class="field-note dim">A directory that already exists. Everyone you hire reads and
+        writes here and nowhere else — paths outside it are refused.</span></label>
 
-function toast(text) {
-  const node = document.createElement('div')
-  node.className = 'toast'
-  node.textContent = text
-  document.body.append(node)
-  setTimeout(() => node.remove(), 3200)
-}
+    <label>What is it for?
+      <input type="text" id="gCharter" autocomplete="off"
+             placeholder="Answer support mail without me reading it">
+      <span class="field-note dim">Its charter. Every floor carries this, so say the thing you
+        would tell somebody on their first morning.</span></label>
 
-function say(text, kind = '') {
-  const div = document.createElement('div')
-  div.className = kind
-  div.textContent = text
-  el('log').prepend(div)
-}
+    <p class="ground-then">It opens as a shack with a manager and a coder in it. Hire, and it
+      grows a storey.</p>
 
-const oops = (error) => { say(`— ${error.message}`, 'bad'); toast(error.message) }
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="groundCancel">Never mind</button>
+      <button type="submit" class="solid">Break ground</button>
+    </div>
+  </form>
+</dialog>
 
-async function refreshSkyline() {
-  const [{ art }, { buildings }] = await Promise.all([api('/api/skyline/art'), api('/api/skyline')])
-  el('art').textContent = art
-  if ((!current || !buildings.some((b) => b.id === current)) && buildings.length) current = buildings[0].id
-  el('chips').innerHTML = buildings.length
-    ? buildings.map((b) => `<button class="chip" data-id="${esc(b.id)}" aria-pressed="${b.id === current}">
-        ${esc(b.name)} <span class="dim">${b.headcount}</span>${b.working ? ' ●' : ''}${b.pendingApprovals ? ' ⚑' : ''}</button>`).join('')
-    : '<span class="empty">Nothing built yet. Break ground above.</span>'
-  for (const chip of el('chips').children) {
-    if (chip.dataset?.id) chip.onclick = () => { current = chip.dataset.id; refreshAll() }
-  }
-}
+<!-- Every provider and whether it can actually answer. Roofscape supplies no
+     model; this is the whole of what it does supply. -->
+<dialog id="settingsDialog">
+  <form method="dialog" id="settingsForm">
+    <h2>Where the models come from</h2>
+    <p class="dim">Roofscape holds no subscription on your behalf. It uses credentials you already
+      own, and any floor can be moved between them.</p>
+    <div id="providerList" class="provider-list"></div>
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="settingsRefresh">Look again</button>
+      <button type="submit" class="solid">Done</button>
+    </div>
+  </form>
+</dialog>
 
-async function refreshBuilding() {
-  if (!current) return
-  const b = await api(`/api/buildings/${current}`)
-  el('goalWho').textContent = `${b.name} — ${b.tier}`
+<!-- Moving somebody to another model. Was two browser prompts, which look
+     like a page from 1998 and cannot show which providers are reachable. -->
+<dialog id="postingDialog">
+  <form method="dialog" id="postingForm">
+    <h2 id="postingWho">Move somebody</h2>
+    <p class="dim">Roofscape supplies no model. It uses the credentials you already own,
+      and a floor can be moved between them at any time.</p>
 
-  el('staff').innerHTML = b.staff.length
-    ? b.staff.map((f) => `<div class="row">
-        <span><strong>${esc(f.name)}</strong> <span class="pill">${esc(f.role)}</span></span>
-        <span class="dim mono" style="cursor:pointer" data-floor="${esc(f.id)}"
-              title="Click to move them to another model">${esc(f.describes)}</span></div>`).join('')
-    : '<span class="empty">Nobody yet. Hire someone.</span>'
-  el('staff').querySelectorAll('[data-floor]').forEach((node) => { node.onclick = () => movePrompt(node.dataset.floor) })
+    <label>Provider
+      <select id="pProvider"></select></label>
 
-  const open = b.tasks.filter((t) => ['queued', 'working', 'awaiting-review'].includes(t.state))
-  const done = b.tasks.filter((t) => t.state === 'done').slice(-5).reverse()
-  el('work').innerHTML =
-    (open.length ? open.map((t) => row(esc(t.goal.slice(0, 58)), esc(t.state))).join('') : '<span class="empty">Nothing on.</span>') +
-    (done.length ? '<div class="dim" style="margin-top:14px;font-size:12px">FINISHED</div>' + done.map((t) => {
-      const branch = (t.result?.artifacts ?? []).find((a) => a.startsWith('branch:'))
-      return row(esc(t.goal.slice(0, 52)), branch ? `<span class="mono">${esc(branch.slice(7))}</span>` : '')
-    }).join('') : '')
+    <label>Model
+      <input type="text" id="pModel" autocomplete="off" list="pModels" placeholder="claude-opus-5">
+      <datalist id="pModels"></datalist>
+      <span class="field-note dim" id="pNote"></span>
+    </label>
 
-  el('approvals').innerHTML = b.approvals.length
-    ? b.approvals.map((a) => `<div class="row"><span>${esc(a.intent)}</span>
-        <span class="approve"><button class="yes" data-yes="${esc(a.id)}">Allow</button><button class="no" data-no="${esc(a.id)}">Refuse</button></span></div>`).join('')
-    : '<span class="empty">Nothing waiting on you.</span>'
-  el('approvals').querySelectorAll('[data-yes]').forEach((n) => { n.onclick = () => decide(n.dataset.yes, true) })
-  el('approvals').querySelectorAll('[data-no]').forEach((n) => { n.onclick = () => decide(n.dataset.no, false) })
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="pCancel">Never mind</button>
+      <button type="submit" class="solid">Move them</button>
+    </div>
+  </form>
+</dialog>
 
-  if (!el('searchText').value.trim()) await showArchives()
-  await showSchedules()
-  el('goalGo').disabled = b.working
-  el('goalGo').textContent = b.working ? 'Working…' : 'Send'
-}
+<!-- Discord, as a door onto the mailroom rather than a second inbox. -->
+<dialog id="bridgeDialog">
+  <form method="dialog" id="bridgeForm">
+    <h2>Carry the post to Discord</h2>
+    <p class="dim">A channel becomes a window onto this building's mailroom. What is said there
+      lands in the manager's inbox; what the building says comes back out. Start a line with
+      <code>!goal</code> to set it working from your phone.</p>
 
-async function showSchedules() {
-  const { schedules } = await api('/api/schedules')
-  const mine = schedules.filter((s) => s.building === current)
-  el('schedules').innerHTML = mine.length
-    ? mine.map((s) => `<div class="row">
-        <span>${s.enabled ? '' : '<span class="pill">paused</span> '}${esc(s.goal.slice(0, 48))}
-          <span class="dim">— ${esc(s.reads)}</span></span>
-        <span class="approve">
-          <button data-toggle="${esc(s.id)}">${s.enabled ? 'Pause' : 'Start'}</button>
-          <button class="no" data-drop="${esc(s.id)}">Drop</button></span></div>`).join('')
-    : '<span class="empty">Nothing recurring.</span>'
-  el('schedules').querySelectorAll('[data-toggle]').forEach((n) => {
-    n.onclick = () => changeSchedule(n.dataset.toggle, { enabled: n.textContent === 'Start' })
-  })
-  el('schedules').querySelectorAll('[data-drop]').forEach((n) => {
-    n.onclick = () => changeSchedule(n.dataset.drop, { remove: true })
-  })
-}
+    <label>Bot token
+      <input type="password" id="dToken" autocomplete="off" placeholder="Paste it, or type env:MY_VAR">
+      <span class="field-note dim" id="dTokenNote"></span>
+    </label>
 
-async function changeSchedule(id, body) {
-  try {
-    await api(`/api/schedules/${id}`, { method: 'POST', body: JSON.stringify(body) })
-    toast(body.remove ? 'Dropped.' : body.enabled ? 'Started.' : 'Paused.')
-    showSchedules()
-  } catch (error) { oops(error) }
-}
+    <div class="two-up">
+      <label>Server
+        <select id="dGuild"></select></label>
+      <label>Channel
+        <select id="dChannel"></select></label>
+    </div>
+    <p class="field-note dim" id="dPlacesNote">Save a token first, then this fills itself in.</p>
 
-async function showArchives(query) {
-  const path = `/api/buildings/${current}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
-  const { stats, notes } = await api(path)
-  el('archives').innerHTML =
-    `<div class="dim" style="font-size:12px;margin-bottom:8px">${stats.total} notes · ${stats.pinned} pinned · ${stats.expired} expired</div>` +
-    (notes.length
-      ? notes.slice(0, 12).map((n) => `<div class="note"><span class="pill">${esc(n.layer)}</span> ${esc(n.text.slice(0, 190))}</div>`).join('')
-      : '<span class="empty">Nothing found.</span>')
-}
+    <label>Who may type <code>!goal</code>
+      <input type="text" id="dAuthors" autocomplete="off" placeholder="Discord user ids, comma separated">
+      <span class="field-note dim">Starting a goal spends your token budget and gives a coder a shell in
+        your workspace, so being in the channel is not enough. Empty means nobody — type
+        <code>!goal</code> once and the bot will tell you your own id.</span>
+    </label>
 
-async function decide(id, granted) {
-  try {
-    const result = await api(`/api/approvals/${id}`, { method: 'POST', body: JSON.stringify({ granted }) })
-    toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Approved.' : 'Refused.')
-    refreshAll()
-  } catch (error) { oops(error) }
-}
+    <label class="check">
+      <input type="checkbox" id="dMirrorAll">
+      <span>Mirror the whole mailroom, not only what involves you.
+        <span class="dim">Off is quieter: most internal post is machinery.</span></span>
+    </label>
 
-async function movePrompt(floorId) {
-  const { providers } = await api('/api/providers')
-  const reachable = providers.filter((p) => p.status.ok)
-  const provider = prompt(`Which provider?\n\nReachable: ${reachable.map((p) => p.name).join(', ') || 'none'}`)
-  if (!provider) return
-  const spec = providers.find((p) => p.name === provider)
-  const model = prompt(`Which model on ${provider}?`, spec?.suggested?.[0] ?? '')
-  if (!model) return
-  try {
-    await api(`/api/buildings/${current}/floors/${floorId}/posting`, {
-      method: 'POST',
-      body: JSON.stringify({ provider, model, engine: provider === 'anthropic' ? 'claude-agent-sdk' : 'direct' }),
-    })
-    toast('Moved.')
-    refreshAll()
-  } catch (error) { oops(error) }
-}
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="dUnwire">Disconnect</button>
+      <button type="button" class="ghost" id="dCancel">Never mind</button>
+      <button type="submit" class="solid">Save</button>
+    </div>
+  </form>
+</dialog>
 
-const refreshAll = () => Promise.all([refreshSkyline(), refreshBuilding()]).catch(oops)
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
-el('showGround').onclick = () => el('groundForm').classList.toggle('hidden')
-el('showHire').onclick = () => el('hireForm').classList.toggle('hidden')
-el('showSchedule').onclick = () => el('scheduleForm').classList.toggle('hidden')
-
-el('scheduleForm').onsubmit = async (event) => {
-  event.preventDefault()
-  try {
-    const order = await api(`/api/buildings/${current}/schedules`, {
-      method: 'POST',
-      body: JSON.stringify({
-        goal: el('sGoal').value.trim(),
-        every: el('sEvery').value.trim() || 'daily',
-        at: el('sAt').value.trim() || undefined,
-      }),
-    })
-    el('sGoal').value = ''
-    el('scheduleForm').classList.add('hidden')
-    toast('Standing order set.')
-    showSchedules()
-  } catch (error) { oops(error) }
-}
-
-el('groundForm').onsubmit = async (event) => {
-  event.preventDefault()
-  try {
-    const building = await api('/api/buildings', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: el('gName').value.trim(),
-        workspace: el('gPath').value.trim(),
-        charter: el('gCharter').value.trim() || undefined,
-      }),
-    })
-    current = building.id
-    el('groundForm').reset()
-    el('groundForm').classList.add('hidden')
-    toast(`${building.name} — ground broken.`)
-    refreshAll()
-  } catch (error) { oops(error) }
-}
-
-el('hireForm').onsubmit = async (event) => {
-  event.preventDefault()
-  try {
-    const floor = await api(`/api/buildings/${current}/hire`, {
-      method: 'POST',
-      body: JSON.stringify({ role: el('hRole').value, name: el('hName').value.trim() || undefined }),
-    })
-    el('hName').value = ''
-    toast(`${floor.name} joins as ${floor.role}.`)
-    refreshAll()
-  } catch (error) { oops(error) }
-}
-
-el('askForm').onsubmit = async (event) => {
-  event.preventDefault()
-  const question = el('askText').value.trim()
-  if (!question) return
-  el('askGo').disabled = true
-  el('askGo').textContent = 'Looking…'
-  el('answer').textContent = ''
-  try {
-    const result = await api('/api/ask', { method: 'POST', body: JSON.stringify({ question }) })
-    el('answer').textContent = result.answer
-    el('askText').value = ''
-    refreshAll()
-  } catch (error) {
-    oops(error)
-    el('answer').textContent = ''
-  } finally {
-    el('askGo').disabled = false
-    el('askGo').textContent = 'Ask'
-  }
-}
-
-el('goalForm').onsubmit = async (event) => {
-  event.preventDefault()
-  const goal = el('goalText').value.trim()
-  if (!goal || !current) return
-  el('log').innerHTML = ''
-  el('goalText').value = ''
-  try { await api(`/api/buildings/${current}/goal`, { method: 'POST', body: JSON.stringify({ goal }) }) }
-  catch (error) { oops(error) }
-}
-
-el('searchForm').onsubmit = (event) => {
-  event.preventDefault()
-  showArchives(el('searchText').value.trim() || undefined).catch(oops)
-}
-
-el('curateGo').onclick = async () => {
-  el('curateGo').disabled = true
-  el('curateGo').textContent = 'Reading…'
-  try {
-    const result = await api(`/api/buildings/${current}/curate`, { method: 'POST' })
-    toast(`${result.before} notes → ${result.after}.`)
-    say(`curator: ${result.summary}`, 'hi')
-  } catch (error) { oops(error) }
-  finally {
-    el('curateGo').disabled = false
-    el('curateGo').textContent = 'Send the curator down'
-    refreshAll()
-  }
-}
-
-api('/api/roles').then(({ roles }) => {
-  el('hRole').innerHTML = roles.map((r) => `<option value="${esc(r.role)}">${esc(r.role)} — ${esc(r.summary)}</option>`).join('')
-}).catch(oops)
-
-const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
-stream.onopen = () => { el('conn').textContent = 'live' }
-stream.onerror = () => { el('conn').textContent = 'reconnecting…' }
-stream.onmessage = (message) => {
-  const event = JSON.parse(message.data)
-  const loud = ['goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated'].includes(event.kind)
-  say(event.kind === 'tool' ? `  · ${event.detail}` : `${event.kind}: ${event.detail ?? ''}`,
-      event.kind === 'goal-failed' ? 'bad' : event.kind === 'tool' ? '' : loud ? 'hi' : 'lit')
-  if (event.kind !== 'tool') refreshAll()
-}
-
-refreshAll()
-setInterval(refreshAll, 20000)
-
-/**
- * Updates, when this page is inside the desktop app.
- *
- * In a browser there is no `window.roofscape`, so none of this runs and the
- * button stays hidden — the same page, serving both, without a second copy of
- * the dashboard to keep in step.
- */
-const desktop = window.roofscape
-if (desktop) {
-  const button = el('update')
-  const show = (text, enabled) => {
-    button.textContent = text
-    button.disabled = !enabled
-    button.classList.remove('hidden')
-  }
-  desktop.onUpdate((state) => {
-    if (state.phase === 'ready') show(`Restart to update to ${state.version}`, true)
-    else if (state.phase === 'downloading') show(`Downloading update… ${state.percent ?? 0}%`, false)
-    else if (state.phase === 'available') show('Update found…', false)
-    else button.classList.add('hidden')
-  })
-  // Downloading happens on its own; the restart is the only part that is ours
-  // to choose, because nothing should be replaced under somebody mid-goal.
-  button.onclick = () => { if (!button.disabled) desktop.restartToUpdate() }
-}
-</script>
+<script type="module" src="/app.js"></script>
 </body>
 </html>

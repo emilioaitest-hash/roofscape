@@ -9,7 +9,7 @@ import {
   type ApprovalId, type BuildingId, type FloorId, type MemoryId, type MessageId, type TaskId,
 } from '../domain/ids.js'
 import type { Floor, FloorRole, Posting } from '../domain/building.js'
-import type { Approval, ApprovalPayload, Message, MessageKind, Task, TaskLimits, TaskResult, TaskState } from '../domain/work.js'
+import type { Correspondent, Approval, ApprovalPayload, Message, MessageKind, Task, TaskLimits, TaskResult, TaskState } from '../domain/work.js'
 import type { MemoryLayer, MemoryRecord, MemoryScope } from '../domain/memory.js'
 
 export interface HireInput {
@@ -175,6 +175,32 @@ export class BuildingStore {
     return allAs<TaskRow>(this.db.prepare(sql), ...params).map((r) => hydrateTask(r, this.buildingId))
   }
 
+  /**
+   * Work that has not settled. Every screen that shows what a building is doing
+   * wants exactly this, and none of them wants the four thousand tasks it did
+   * last spring — which is what `tasks()` with no filter hands back.
+   */
+  openTasks(): Task[] {
+    return allAs<TaskRow>(
+      this.db.prepare(
+        `select * from tasks
+         where state in ('queued', 'working', 'awaiting-review', 'awaiting-approval', 'escalated')
+         order by created_at`,
+      ),
+    ).map((r) => hydrateTask(r, this.buildingId))
+  }
+
+  /** The last few things it finished, newest first. */
+  recentTasks(limit = 12): Task[] {
+    return allAs<TaskRow>(
+      this.db.prepare(
+        `select * from tasks where settled_at is not null
+         order by settled_at desc limit ?`,
+      ),
+      limit,
+    ).map((r) => hydrateTask(r, this.buildingId))
+  }
+
   /** How many floors have work in hand — which is what lights their windows. */
   busyFloors(): number {
     return getAs<{ n: number }>(
@@ -199,7 +225,7 @@ export class BuildingStore {
 
   // ---- the post ----------------------------------------------------------
 
-  post(input: { kind: MessageKind; from: FloorId; to: FloorId; body: string; inReplyTo?: MessageId | null }): Message {
+  post(input: { kind: MessageKind; from: Correspondent; to: Correspondent; body: string; inReplyTo?: MessageId | null }): Message {
     const message: Message = {
       id: asMessageId(newId('msg')),
       building: this.buildingId,
@@ -228,8 +254,121 @@ export class BuildingStore {
     ).map((r) => hydrateMessage(r, this.buildingId))
   }
 
+  /** The owner's unread post. They are not a floor, so their inbox is the nulls. */
+  ownerInbox(): Message[] {
+    return allAs<MessageRow>(
+      this.db.prepare('select * from messages where recipient is null and read_at is null order by created_at'),
+    ).map((r) => hydrateMessage(r, this.buildingId))
+  }
+
+  /**
+   * The whole correspondence, oldest last.
+   *
+   * `inbox` answers "what have I not read"; this answers "what has been said",
+   * which is the question a screen asks and the one nothing could answer. Newest
+   * first out of the database so the limit takes the recent end, then reversed,
+   * because a conversation reads downward.
+   */
+  conversation(options: { limit?: number; withFloor?: Correspondent; since?: string } = {}): Message[] {
+    const where: string[] = []
+    const params: unknown[] = []
+    // Two traps, both about the owner being null. A truthiness check dropped
+    // their filter entirely and quietly widened "what did they and I say" to
+    // "everything anybody said" — and `sender = ?` bound to null matches
+    // nothing at all in SQL, so the honest form is `is null`.
+    if (options.withFloor === null) {
+      where.push('(sender is null or recipient is null)')
+    } else if (options.withFloor !== undefined) {
+      where.push('(sender = ? or recipient = ?)')
+      params.push(options.withFloor, options.withFloor)
+    }
+    if (options.since) {
+      where.push('created_at > ?')
+      params.push(options.since)
+    }
+    const sql = `select * from messages ${where.length ? `where ${where.join(' and ')}` : ''}
+                 order by created_at desc limit ?`
+    params.push(options.limit ?? 60)
+    return allAs<MessageRow>(this.db.prepare(sql), ...params)
+      .map((r) => hydrateMessage(r, this.buildingId))
+      .reverse()
+  }
+
+  /**
+   * Post written after a point, in the order it was written — for anything
+   * relaying the mailroom somewhere else.
+   *
+   * `conversation({since})` is the wrong tool for that and was being used for
+   * it: it takes the *newest* rows in the window, so a building writing more
+   * than the limit between two polls had its oldest messages skipped, and the
+   * relay's cursor then advanced past them for good.
+   *
+   * The cursor is the rowid, not the timestamp. `now()` has millisecond
+   * resolution and a building writes faster than that, so a timestamp both
+   * loses messages that share one and cannot order the ones it keeps — a reply
+   * would arrive before the question it answered. The rowid is assigned in
+   * insertion order and nothing here is ever deleted.
+   */
+  messagesSince(afterSeq: number, limit = 50): { messages: Message[]; seq: number } {
+    const rows = allAs<MessageRow & { seq: number }>(
+      this.db.prepare('select *, rowid as seq from messages where rowid > ? order by rowid limit ?'),
+      afterSeq,
+      limit,
+    )
+    return {
+      messages: rows.map((r) => hydrateMessage(r, this.buildingId)),
+      seq: rows.length > 0 ? rows[rows.length - 1]!.seq : afterSeq,
+    }
+  }
+
+  /** Where the post has got to, for a relay that should not replay history. */
+  latestSeq(): number {
+    return getAs<{ seq: number | null }>(
+      this.db.prepare('select max(rowid) as seq from messages'),
+    )?.seq ?? 0
+  }
+
+  /** One message and everything written in reply to it, however deep. */
+  thread(rootId: MessageId): Message[] {
+    return allAs<MessageRow>(
+      this.db.prepare(
+        `with recursive branch(id) as (
+           select id from messages where id = ?
+           union
+           select m.id from messages m join branch b on m.in_reply_to = b.id
+         )
+         select messages.* from messages join branch on messages.id = branch.id
+         order by messages.created_at`,
+      ),
+      rootId,
+    ).map((r) => hydrateMessage(r, this.buildingId))
+  }
+
+  /** How much unread post each floor is holding, and the owner alongside them. */
+  unreadCounts(): { byFloor: Record<string, number>; owner: number } {
+    const rows = allAs<{ recipient: string | null; n: number }>(
+      this.db.prepare('select recipient, count(*) as n from messages where read_at is null group by recipient'),
+    )
+    const byFloor: Record<string, number> = {}
+    let owner = 0
+    for (const row of rows) {
+      if (row.recipient === null) owner = row.n
+      else byFloor[row.recipient] = row.n
+    }
+    return { byFloor, owner }
+  }
+
   markRead(id: MessageId): void {
     this.db.prepare('update messages set read_at = ? where id = ?').run(now(), id)
+  }
+
+  /** Everything addressed to one correspondent, marked read in one go. */
+  markAllRead(who: Correspondent): number {
+    const at = now()
+    const result = who === null
+      ? this.db.prepare('update messages set read_at = ? where recipient is null and read_at is null').run(at)
+      : this.db.prepare('update messages set read_at = ? where recipient = ? and read_at is null').run(at, who)
+    return Number(result.changes ?? 0)
   }
 
   // ---- the approval desk -------------------------------------------------
@@ -518,7 +657,7 @@ export class BuildingStore {
 
 interface FloorRow { id: string; level: number; role: string; name: string; charter: string; posting: string; tools: string; hired_at: string; vacated_at: string | null }
 interface TaskRow { id: string; assigned_by: string; assigned_to: string; goal: string; acceptance: string; limits: string; state: string; result: string | null; created_at: string; settled_at: string | null }
-interface MessageRow { id: string; kind: string; sender: string; recipient: string; in_reply_to: string | null; body: string; read_at: string | null; created_at: string }
+interface MessageRow { id: string; kind: string; sender: string | null; recipient: string | null; in_reply_to: string | null; body: string; read_at: string | null; created_at: string }
 interface ApprovalRow { id: string; kind: string; requested_by: string; intent: string; payload: string | null; state: string; decided_at: string | null; created_at: string }
 interface MemoryRow { id: string; scope: string; layer: string; floor_id: string | null; text: string; source: string; pinned: number; confidence: number; use_count: number; last_used_at: string | null; expires_at: string | null; created_at: string }
 
@@ -536,7 +675,10 @@ const hydrateTask = (r: TaskRow, building: BuildingId): Task => ({
 })
 
 const hydrateMessage = (r: MessageRow, building: BuildingId): Message => ({
-  id: asMessageId(r.id), building, kind: r.kind as MessageKind, from: asFloorId(r.sender), to: asFloorId(r.recipient),
+  id: asMessageId(r.id), building, kind: r.kind as MessageKind,
+  // Null stays null: it is the owner, not a floor whose id happens to be empty.
+  from: r.sender === null ? null : asFloorId(r.sender),
+  to: r.recipient === null ? null : asFloorId(r.recipient),
   inReplyTo: r.in_reply_to ? asMessageId(r.in_reply_to) : null, body: r.body, readAt: r.read_at, createdAt: r.created_at,
 })
 

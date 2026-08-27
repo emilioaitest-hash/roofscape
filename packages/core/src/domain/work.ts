@@ -53,13 +53,30 @@ export type MessageKind =
   | 'status'
   | 'artifact'
   | 'escalation'
+  /** Neither a question nor a report. Somebody had something to say. */
+  | 'note'
+
+/**
+ * One end of a message.
+ *
+ * Null is the owner. They are not a floor and must not be given one — a floor
+ * is a hire, it counts toward the headcount, and it changes the shape of the
+ * building. Null says the true thing instead: the correspondent who does not
+ * work here.
+ */
+export type Correspondent = FloorId | null
+
+/** Reads better than a bare null at a call site. */
+export const OWNER: Correspondent = null
+
+export const isOwner = (who: Correspondent): boolean => who === null
 
 export interface Message {
   id: MessageId
   building: BuildingId
   kind: MessageKind
-  from: FloorId
-  to: FloorId
+  from: Correspondent
+  to: Correspondent
   /** Threads a reply to what it answers. */
   inReplyTo: MessageId | null
   body: string

@@ -35,6 +35,24 @@ rather than a rename across the tree.
 `website/` is deliberately outside the npm workspaces. It has React and Next in
 it, which the daemon and the CLI have no business resolving.
 
+## The data directory
+
+Everything an installation knows lives in `~/.roofscape`: the skyline database,
+one folder per building, the daemon's token and its lock. None of it is in this
+repository and none of it is in the packaged app — `dataRoot()` finds it at
+runtime, which is why a build you downloaded and a build you made from source
+show the same buildings on the same machine. When someone reports that the app
+shipped their data, this is what they have found, and the answer is in
+`packages/core/src/store/paths.ts` rather than anywhere in the tree.
+
+`ROOFSCAPE_HOME` overrides it. That is how the tests get their own, and how you
+look at a first run without losing what you have.
+
+Quit the app before deleting any of it. The app stops the daemon it started,
+which releases the lock and closes the databases; deleting the directory under a
+live daemon leaves it writing into files that are no longer there. Then
+`rm -rf ~/.roofscape`, which is rebuilt empty on the next start.
+
 ## Things that have already gone wrong
 
 **The desktop app has no interface of its own.** It loads the dashboard the
@@ -47,11 +65,36 @@ calls `createRequire(import.meta.url)` — undefined once esbuild emits CommonJS
 The app will not boot. Import the specific modules instead; the main bundle is
 8kb because of it.
 
+**Name the Electron app before anything asks what it is called.** Unpackaged,
+Electron takes the name from `package.json` — `@app/desktop` — and
+`getPath('userData')` then has a slash in it, so the single-instance lock cannot
+be taken. `requestSingleInstanceLock()` returns false, the app quits before it
+opens a window, silently and with exit code 0. `npm run desktop` did nothing at
+all and said nothing about it. `app.setName(BRAND.name)` runs before the lock
+check now. electron-builder sets `productName` for a packaged build, so this
+only ever bit the person developing it.
+
 **`apps/desktop/build/` is source, not output.** It holds electron-builder's
 `buildResources`, including the signing hook. The root `build/` ignore rule
 swallowed it once: every release build failed on a module it could not find,
 while building here kept working because the file was on disk. There is an
 explicit un-ignore for it now.
+
+**The dashboard is three files now, and the daemon serves them from a list.**
+`index.html`, `app.css`, `app.js` in `apps/daemon/public/`. The list is in
+`main.ts` and is deliberately an allowlist rather than a directory walk: that
+route answers *before* the token is checked, and `daemon.token` lives one
+directory up from the files it serves.
+
+**Rebuild and restart together.** The daemon loads its bundle once, so a rebuild
+alone leaves it serving the old API to a freshly built page. The symptom is a
+screen that looks right and behaves as though half your changes vanished, which
+costs a good twenty minutes before anybody thinks to look at the process.
+
+**A CSS class built from data needs a namespace.** Message kinds were rendered
+as `class="kind answer"`, and `.answer` was already the concierge's answer panel
+— whose `margin: 0 auto` centred the pill in the middle of every row. They are
+`k-answer` and so on now. Anything interpolated from a value gets a prefix.
 
 **Verify packaging from a clean checkout.** The bug above passed every local
 test and failed every CI run, and the difference was a file git had never been
@@ -60,6 +103,17 @@ given. Building here and building from what is committed are different tests.
 **Verify the shipped artifact, not the local build.** A signature that is valid
 on this machine says nothing about the one people download. Fetch the published
 file and check that.
+
+**A second service needs a second port, not just a second data directory.** The
+single-instance lock is per data directory — `daemon.pid` lives inside
+`dataRoot()` — so a fresh `ROOFSCAPE_HOME` walks straight past it and collides on
+the port instead. The failure is an unhandled `EADDRINUSE`, not the message
+written for two services meeting. Set `ROOFSCAPE_PORT` as well.
+
+**The macOS app does not inherit your shell.** An app launched from Finder gets
+launchd's environment, so `ROOFSCAPE_CLAUDE_BIN=none` exported in a terminal does
+nothing to the installed app. `launchctl setenv` reaches it, and does not survive
+a reboot. Run the app from a terminal and the variable behaves as written.
 
 ## Releases and the app
 
@@ -81,6 +135,13 @@ normally.
 
 `executableName` belongs under `linux` only. At the top level it also renames the
 macOS bundle.
+
+**Discord's MESSAGE CONTENT is a switch in their developer portal.** Without it
+the bot connects, reports itself live, and receives every message with the
+content blank. There is no error and nothing in the product can detect it — a
+quiet channel and a misconfigured one look identical from here. It is the first
+thing to check when the bridge is connected and nothing arrives, and it is
+written down in `docs/DISCORD.md` for the same reason.
 
 ## The website
 

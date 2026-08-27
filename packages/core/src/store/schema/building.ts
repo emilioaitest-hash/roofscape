@@ -146,4 +146,42 @@ export const BUILDING_MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: 5,
+    name: 'the owner is in the post',
+    sql: `
+      -- Both ends of a message referenced floors and were not null, so the
+      -- person who owns the building could not be at either end of one. They
+      -- are not a floor and should not be given one — a floor is a hire, it is
+      -- counted in the headcount and it changes the shape of the building.
+      --
+      -- Null is the owner. That is true rather than convenient: they are the
+      -- correspondent who does not work here.
+      --
+      -- SQLite cannot drop a NOT NULL, so the table is rebuilt. Everything
+      -- already in it is floor-to-floor and copies across unchanged.
+      create table messages_new (
+        id            text primary key,
+        kind          text not null,
+        sender        text references floors (id),
+        recipient     text references floors (id),
+        in_reply_to   text references messages_new (id),
+        body          text not null,
+        read_at       text,
+        created_at    text not null
+      );
+
+      insert into messages_new (id, kind, sender, recipient, in_reply_to, body, read_at, created_at)
+        select id, kind, sender, recipient, in_reply_to, body, read_at, created_at from messages;
+
+      drop table messages;
+      alter table messages_new rename to messages;
+
+      -- An inbox is the unread post for one floor, so that is the index.
+      create index messages_inbox on messages (recipient, read_at);
+      -- And the mailroom is the whole correspondence in order, which is not the
+      -- same query and was doing a table scan.
+      create index messages_when on messages (created_at);
+    `,
+  },
 ]

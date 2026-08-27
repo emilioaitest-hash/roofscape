@@ -78,8 +78,12 @@ await build({
  * The daemon serves the dashboard from `../public` relative to its own file, so
  * the page has to sit beside dist/ for the bundled copy exactly as it sits
  * beside apps/daemon/dist for the installed one. One page, two homes, no fork.
+ *
+ * The whole directory, not the one file: the dashboard is a page, a stylesheet
+ * and a script, and copying only the page ships an app that boots to unstyled
+ * markup with no way to click anything.
  */
-await mkdir(join(HERE, 'public'), { recursive: true })
-await cp(join(REPO, 'apps', 'daemon', 'public', 'index.html'), join(HERE, 'public', 'index.html'))
+await rm(join(HERE, 'public'), { recursive: true, force: true })
+await cp(join(REPO, 'apps', 'daemon', 'public'), join(HERE, 'public'), { recursive: true })
 
 process.stdout.write('\nDesktop app built into apps/desktop/dist.\n')

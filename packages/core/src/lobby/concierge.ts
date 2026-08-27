@@ -60,7 +60,7 @@ export async function ask(request: AskRequest): Promise<AskResult> {
   const available = await discoverProviders(request.credentials)
   const posting =
     defaultPosting('manager', available) ??
-    ({ provider: 'anthropic', model: 'claude-opus-4-5', engine: 'direct' } as Posting)
+    ({ provider: 'anthropic', model: 'claude-opus-5', engine: 'direct' } as Posting)
 
   const definitions = lobbyTools({ startGoal: request.startGoal })
   const tools: ToolSet = {}

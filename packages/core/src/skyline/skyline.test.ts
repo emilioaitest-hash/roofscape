@@ -38,7 +38,9 @@ test('form follows headcount at the documented thresholds', () => {
     [8, 'skyscraper'],
     [11, 'skyscraper'],
     [12, 'landmark'],
-    [40, 'landmark'],
+    [17, 'landmark'],
+    [18, 'arcology'],
+    [40, 'arcology'],
   ]
   for (const [headcount, name] of expected) {
     assert.equal(tierOf(headcount).name, name, `${headcount} staff should be a ${name}`)
@@ -54,7 +56,8 @@ test('the next change of form is announced, until there is none', () => {
   assert.equal(nextTierAt(1), 2)
   assert.equal(nextTierAt(4), 5)
   assert.equal(nextTierAt(11), 12)
-  assert.equal(nextTierAt(12), null)
+  assert.equal(nextTierAt(12), 18)
+  assert.equal(nextTierAt(18), null)
 })
 
 test('buildings of different forms still share one street line', () => {

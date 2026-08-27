@@ -5,7 +5,8 @@ import { cap, type AgentContext } from './context.js'
 import { isProbablySecret, whyItIsBeingAsked } from './sensitive.js'
 import { execute } from './exec.js'
 import type { MemoryLayer, MemoryScope } from '../domain/memory.js'
-import type { FloorId, MemoryId as MemoryIdType } from '../domain/ids.js'
+import type { FloorId, MessageId, MemoryId as MemoryIdType } from '../domain/ids.js'
+import type { Floor } from '../domain/building.js'
 
 /**
  * The tools, defined once.
@@ -234,7 +235,71 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
           to: recipient.id,
           body: input.question as string,
         })
-        return { asked: message.id, of: recipient.name, note: 'They will answer in their own time; do not wait on it.' }
+        return {
+          asked: message.id,
+          of: recipient.name,
+          note: 'It is in their inbox. They will see it the next time they are set to work; do not wait on it.',
+        }
+      }),
+  },
+  {
+    name: 'check_mail',
+    description:
+      'Read the post addressed to you. Oldest first, and only what you ask for — what you read is marked read, and anything left over stays in the inbox for next time.',
+    shape: {
+      // Bounded on purpose. An inbox is unbounded and a turn's context is not:
+      // a floor that has been away for a week should not spend its whole budget
+      // reading its own post before it starts.
+      limit: z.number().int().min(1).max(25).default(10),
+    },
+    run: (context, input) =>
+      guard(() => {
+        const waiting = context.store.inbox(context.floor)
+        const take = (input.limit as number) ?? 10
+        const unread = waiting.slice(0, take)
+        const staff = new Map(context.store.staff({ includeVacated: true }).map((f) => [f.id as string, f.name]))
+        for (const message of unread) context.store.markRead(message.id)
+        const left = waiting.length - unread.length
+        return {
+          post: unread.map((message) => ({
+            id: message.id,
+            from: message.from === null ? 'the owner' : (staff.get(message.from) ?? 'somebody who has left'),
+            fromId: message.from,
+            kind: message.kind,
+            body: message.body,
+            at: message.createdAt,
+          })),
+          ...(left > 0 ? { stillWaiting: left } : {}),
+          ...(waiting.length === 0 ? { note: 'Nothing new.' } : {}),
+        }
+      }),
+  },
+  {
+    name: 'reply',
+    description:
+      'Answer a message you were sent, or tell the owner something. Keep it to what the other person actually needs — this is post, not conversation, and every round of it is paid for.',
+    shape: {
+      to: z.string().describe('A floor id, or "owner" for the person who owns the building.'),
+      body: z.string().max(2000),
+      in_reply_to: z.string().optional().describe('The id of the message you are answering, if you are answering one.'),
+      kind: z.enum(['answer', 'status', 'note', 'escalation']).default('answer'),
+    },
+    run: (context, input) =>
+      guard(() => {
+        const target = String(input.to)
+        // The owner is not a floor, so they are addressed by name and stored as
+        // null. See the Correspondent type.
+        const toOwner = target === 'owner' || target === 'the owner'
+        const recipient = toOwner ? null : context.store.floor(target as FloorId)
+        if (!toOwner && !recipient) return { error: `No floor ${target} in this building, and "owner" was not asked for.` }
+        const message = context.store.post({
+          kind: input.kind as 'answer',
+          from: context.floor,
+          to: toOwner ? null : (recipient as Floor).id,
+          body: input.body as string,
+          ...(input.in_reply_to ? { inReplyTo: input.in_reply_to as MessageId } : {}),
+        })
+        return { sent: message.id, to: toOwner ? 'the owner' : (recipient as Floor).name }
       }),
   },
   {
@@ -354,20 +419,22 @@ export const TOOL_NAMES = TOOL_DEFINITIONS.map((d) => d.name)
 
 /** A sensible tool row per role. A judge that can write is not a judge. */
 export const TOOLS_FOR_ROLE: Record<string, readonly string[]> = {
-  manager: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'assign_task', 'ask_colleague', 'ask_owner', 'finish'],
+  manager: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'assign_task', 'ask_colleague', 'check_mail', 'reply', 'ask_owner', 'finish'],
   // The manager may ask for a hire too, but the case is the hiring manager's to
   // make; this is here so a building with no hiring floor is not stuck.
-  hiring: ['read_file', 'list_dir', 'recall', 'remember', 'propose_hire', 'ask_owner', 'finish'],
+  hiring: ['read_file', 'list_dir', 'recall', 'remember', 'propose_hire', 'check_mail', 'reply', 'ask_owner', 'finish'],
   // A reviewer holds nothing that writes — not even a shell, because a shell
-  // can write a file. See docs/decisions/0010.
-  reviewer: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'finish'],
-  coder: ['read_file', 'write_file', 'edit_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'ask_colleague', 'finish'],
+  // can write a file. See docs/decisions/0010. Post is not writing: it changes
+  // nothing outside the mailroom, and a reviewer that cannot say why it
+  // rejected something is a reviewer nobody can argue with.
+  reviewer: ['read_file', 'list_dir', 'search', 'recall', 'remember', 'check_mail', 'reply', 'finish'],
+  coder: ['read_file', 'write_file', 'edit_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'ask_colleague', 'check_mail', 'reply', 'finish'],
   curator: ['list_memory', 'recall', 'remember', 'forget', 'pin', 'expire', 'finish'],
-  researcher: ['read_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'finish'],
-  writer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'finish'],
-  designer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'finish'],
-  marketer: ['read_file', 'write_file', 'list_dir', 'recall', 'remember', 'ask_owner', 'finish'],
-  ops: ['read_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'ask_owner', 'finish'],
+  researcher: ['read_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'check_mail', 'reply', 'finish'],
+  writer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'check_mail', 'reply', 'finish'],
+  designer: ['read_file', 'write_file', 'edit_file', 'list_dir', 'recall', 'remember', 'check_mail', 'reply', 'finish'],
+  marketer: ['read_file', 'write_file', 'list_dir', 'recall', 'remember', 'check_mail', 'reply', 'ask_owner', 'finish'],
+  ops: ['read_file', 'list_dir', 'search', 'shell', 'recall', 'remember', 'check_mail', 'reply', 'ask_owner', 'finish'],
 }
 
 /** Tools that can change something. Used to assert a judge holds none of them. */

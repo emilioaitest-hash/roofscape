@@ -72,7 +72,7 @@ names never would.
 | **Top floor** | The **manager**. Owns the backlog, decomposes goals, assigns work, reviews what returns, escalates to you. It rides up as the building grows — always the top. |
 | **Lobby** | Ground floor. Where *you* walk in: the building's charter, its status, the approval desk, and the **hiring manager**'s office. The **concierge** stands in it — the only one who can see the whole skyline, because buildings share nothing with each other. It reads anything and changes nothing. |
 | **Archives** | Below ground. All of this building's memory, and the curator who works down there at night. See §4. |
-| **Mailroom** | The message bus. Typed, durable, one inbox per floor. |
+| **Mailroom** | The message bus. Typed, durable, one inbox per floor — and you have one. Optionally mirrored to Discord. |
 | **Payroll** | Tokens and cost, metered per task, per floor, per building. Funds budgets now and billing later. |
 
 **A building is the unit of everything.** Backup, export, deletion, handing a
@@ -101,8 +101,25 @@ Delegation is a **tool call that writes a record**:
                                  ◀── result ── artifact + summary + cost
 
 Message types: `task`, `question`, `answer`, `review_request`, `status`,
-`artifact`, `escalation`. All persisted, so a building's history is queryable
-rather than a transcript nobody reads.
+`artifact`, `escalation`, `note`. All persisted, so a building's history is
+queryable rather than a transcript nobody reads.
+
+**The post is delivered.** A turn is told how many messages are waiting — one
+line, and only when there are some — and fetches them with `check_mail`, which
+is bounded and marks what it hands over as read. It answers with `reply`.
+Nothing is pushed into a prompt, so an inbox cannot quietly become the thing a
+turn spends its budget on.
+
+**You are in the mailroom too.** The owner is a correspondent, not a floor: they
+are `null` at either end of a message, because a floor is a hire and would add a
+storey to the building. Write to anyone; anything addressed to you shows up in
+the building's mailroom, and an `escalation` is how a floor asks for a person
+rather than for an approval.
+
+**And it reaches you where you are.** One building's mailroom can be mirrored to
+one Discord channel — outbound connection, so no port is opened and no tunnel is
+needed. What is typed there becomes an ordinary record in the building's own
+post. See `docs/DISCORD.md` and decision 0014.
 
 **Guardrails from the first commit.** Every task carries a token budget, a
 timeout, and a delegation depth. Exceed any and it escalates to a human rather

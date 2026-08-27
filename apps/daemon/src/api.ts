@@ -2,14 +2,77 @@ import {
   SkylineStore, BuildingStore, pursueGoal, curate, tierOf, nextTierAt, renderSkyline,
   rosterFor, ROSTER, FOUNDING_ROLES, allTiers, defaultPosting, discoverProviders, describePosting, probeProvider,
   parseEvery, parseAtTime, describeSchedule, ask,
+  citySvg, portraitSvg, designFor,
+  readBridgeConfig, writeBridgeConfig, describeToken, listGuilds, listChannels,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
+  type Floor, type Task, type MessageId,
 } from '@app/core'
+import { existsSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { Router, HttpError, badRequest, notFound, readJson, type Ctx } from './router.js'
 import type { EventStream } from './events.js'
 
 /** One goal at a time per building. Two managers assigning at once is chaos. */
 const working = new Set<string>()
+
+/**
+ * What one floor is doing, worked out from the work it holds.
+ *
+ * There is no status column, deliberately: a stored status is a second source of
+ * truth that goes stale the moment a process dies holding it. The tasks table
+ * already knows, and it survives a crash.
+ */
+export type FloorState = 'working' | 'next' | 'review' | 'blocked' | 'idle'
+
+const RANK: Record<FloorState, number> = { working: 0, blocked: 1, review: 2, next: 3, idle: 4 }
+
+function floorStates(staff: readonly Floor[], open: readonly Task[]): Map<string, { state: FloorState; task: Task | null }> {
+  const out = new Map<string, { state: FloorState; task: Task | null }>()
+  for (const floor of staff) out.set(floor.id, { state: 'idle', task: null })
+
+  for (const task of open) {
+    const held = out.get(task.assignedTo)
+    if (!held) continue
+    const state: FloorState =
+      task.state === 'working' ? 'working'
+      : task.state === 'escalated' ? 'blocked'
+      : task.state === 'awaiting-review' || task.state === 'awaiting-approval' ? 'review'
+      : 'next'
+    // A floor holding several things is described by the most pressing of them.
+    if (RANK[state] < RANK[held.state]) out.set(task.assignedTo, { state, task })
+  }
+  return out
+}
+
+/** The buildings, with everything the skyline needs to draw itself. */
+function skylineViews(sky: SkylineStore) {
+  return sky.list().map((building) => {
+    const store = BuildingStore.open(building.id)
+    try {
+      const headcount = store.headcount()
+      const open = store.openTasks()
+      const pending = store.pendingApprovals().length
+      const inHand = open.filter((t) => t.state === 'queued' || t.state === 'working').length
+      return {
+        id: building.id as string,
+        name: building.name,
+        headcount,
+        tier: tierOf(Math.max(1, headcount)).name,
+        nextTierAt: nextTierAt(Math.max(1, headcount)),
+        working: store.busyFloors(),
+        waiting: pending,
+        busy: working.has(building.id),
+        open: inHand,
+        pendingApprovals: pending,
+        note: inHand > 0 ? `${inHand} in hand` : `${headcount} on staff`,
+      }
+    } finally {
+      store.close()
+    }
+  })
+}
 
 export const isWorking = (buildingId: string): boolean => working.has(buildingId)
 
@@ -63,7 +126,13 @@ export function startGoal(
     })
 }
 
-export function buildApi(events: EventStream): Router {
+/** What the daemon's Discord bridge exposes to the API, and nothing more. */
+export interface BridgeHandle {
+  reload(): void
+  readonly status: { state: string; detail?: string; as?: string; since?: string }
+}
+
+export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   const router = new Router()
 
   const skyline = () => SkylineStore.open()
@@ -112,26 +181,46 @@ export function buildApi(events: EventStream): Router {
     const sky = skyline()
     try {
       return {
-        buildings: sky.list().map((building) => {
-          const store = BuildingStore.open(building.id)
-          try {
-            const headcount = store.headcount()
-            const tier = tierOf(Math.max(1, headcount))
-            return {
-              id: building.id,
-              name: building.name,
-              headcount,
-              tier: tier.name,
-              nextTierAt: nextTierAt(Math.max(1, headcount)),
-              busy: store.busyFloors(),
-              open: store.tasks({ state: 'queued' }).length + store.tasks({ state: 'working' }).length,
-              pendingApprovals: store.pendingApprovals().length,
-              working: working.has(building.id),
-            }
-          } finally {
-            store.close()
-          }
-        }),
+        buildings: skylineViews(sky).map((view) => ({
+          ...view,
+          // This endpoint predates the drawn city and named things the other
+          // way round: `busy` was the count of floors with work, `working` the
+          // flag for a goal in flight. The drawn city wants the opposite sense
+          // of both, so the two names are swapped back here rather than
+          // changing what an existing caller gets. The dashboard does not read
+          // this one — it asks /api/skyline/city, which is already in the new
+          // shape — and neither does the CLI, which opens the stores directly.
+          busy: view.working,
+          working: view.busy,
+        })),
+        owner: sky.owner(),
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * The skyline, drawn.
+   *
+   * Rendered here rather than in the browser so that the page cannot invent a
+   * building the rest of the product has never heard of. The page's job is to
+   * put this string on the screen and notice which one was clicked.
+   */
+  router.get('/api/skyline/city', (ctx) => {
+    const sky = skyline()
+    try {
+      const views = skylineViews(sky)
+      // The page says how much room it has; a drawing that does not fill it
+      // reads as one that failed to load. Clamped so a nonsense query string
+      // cannot ask for a canvas nothing can render.
+      const asked = (name: string, max: number) => {
+        const value = Number(ctx.query.get(name))
+        return Number.isFinite(value) && value > 0 ? { [name]: Math.min(Math.round(value), max) } : {}
+      }
+      return {
+        svg: citySvg(views, { ...asked('width', 6000), ...asked('height', 3000) }),
+        buildings: views,
         owner: sky.owner(),
       }
     } finally {
@@ -145,17 +234,46 @@ export function buildApi(events: EventStream): Router {
       const building = buildingOr404(sky, ctx.params.id!)
       const store = BuildingStore.open(building.id)
       try {
+        const headcount = store.headcount()
+        const staff = store.staff()
+        const open = store.openTasks()
+        const recent = store.recentTasks(12)
+        const states = floorStates(staff, open)
+        const design = designFor({ id: building.id, name: building.name, headcount })
+
         return {
           ...building,
-          tier: tierOf(Math.max(1, store.headcount())).name,
-          staff: store.staff().map((floor) => ({
-            id: floor.id, name: floor.name, role: floor.role, level: floor.level,
-            posting: floor.posting, describes: describePosting(floor.posting),
-          })),
+          tier: tierOf(Math.max(1, headcount)).name,
+          nextTierAt: nextTierAt(Math.max(1, headcount)),
+          headcount,
+          look: { palette: design.palette.name, crown: design.crown, accent: design.accent },
+          portrait: portraitSvg({
+            id: building.id,
+            name: building.name,
+            headcount,
+            working: store.busyFloors(),
+            waiting: store.pendingApprovals().length,
+            busy: working.has(building.id),
+          }),
+          staff: staff.map((floor) => {
+            const held = states.get(floor.id)
+            return {
+              id: floor.id, name: floor.name, role: floor.role, level: floor.level,
+              posting: floor.posting, describes: describePosting(floor.posting),
+              hiredAt: floor.hiredAt,
+              state: held?.state ?? 'idle',
+              on: held?.task ? { id: held.task.id, goal: held.task.goal, state: held.task.state } : null,
+            }
+          }),
+          open,
+          recent,
+          // The old field, still the last forty in creation order, because the
+          // CLI reads it and a screen is not a reason to break a terminal.
           tasks: store.tasks().slice(-40),
           approvals: store.pendingApprovals(),
           archives: store.archiveStats(),
           spent: store.spentSince('1970-01-01T00:00:00.000Z'),
+          spentThisMonth: store.spentThisMonth(),
           working: working.has(building.id),
         }
       } finally {
@@ -171,17 +289,33 @@ export function buildApi(events: EventStream): Router {
     if (!input.name) throw badRequest('A building needs a name.')
     if (!input.workspace) throw badRequest('A building needs a workspace directory.')
 
+    // The CLI has always resolved and checked this; coming in through the
+    // dashboard did not, so a typo produced a building that looked fine and
+    // failed the first time anybody gave it work. A browser has no shell to
+    // expand `~` either, so that is done here rather than left as a literal
+    // directory called "~".
+    const workspace = resolve(
+      input.workspace.trim().replace(/^~(?=$|[/\\])/, homedir()),
+    )
+    if (!existsSync(workspace)) {
+      throw badRequest(`No such directory: ${workspace}. Make it first, or point somewhere that exists.`)
+    }
+    if (!statSync(workspace).isDirectory()) {
+      throw badRequest(`${workspace} is a file. A building needs a directory to work in.`)
+    }
+
     const sky = skyline()
     try {
       if (sky.byName(input.name)) throw new HttpError(409, `There is already a building called "${input.name}".`)
       const building = sky.breakGround({
         name: input.name,
         charter: input.charter ?? input.name,
-        workspace: input.workspace,
-        repos: isRepo(input.workspace) ? [input.workspace] : [],
+        workspace,
+        repos: isRepo(workspace) ? [workspace] : [],
       })
 
       const store = BuildingStore.open(building.id)
+      let hired = 0
       try {
         // FOUNDING_ROLES, not a list written out again here. This endpoint had
         // its own copy and kept hiring a manager and a hiring manager long after
@@ -193,6 +327,7 @@ export function buildApi(events: EventStream): Router {
           const posting = entry ? defaultPosting(role, available) : null
           if (entry && posting) {
             store.hire({ role, name: entry.suggestedName, charter: entry.charter, posting, tools: TOOLS_FOR_ROLE[role] ?? [] })
+            hired += 1
           }
         }
       } finally {
@@ -200,7 +335,18 @@ export function buildApi(events: EventStream): Router {
       }
 
       events.emit({ kind: 'ground-broken', building: building.id, detail: building.name })
-      return building
+      // A building founded with nobody in it is a dead end, and the reason is
+      // never in the building — it is that no provider could be reached, so
+      // there was nothing to post a manager to. Saying so here is the
+      // difference between a confusing empty room and one obvious next step.
+      return hired > 0
+        ? building
+        : {
+            ...building,
+            warning:
+              'Nobody could be taken on: no model provider is set up yet, so there is nothing to post a manager to. ' +
+              'Install Claude Code, set an API key, or start Ollama, then hire from inside the building.',
+          }
     } finally {
       sky.close()
     }
@@ -368,6 +514,204 @@ export function buildApi(events: EventStream): Router {
       if (input.remove === true) sky.unschedule(found.id)
       else if (input.enabled !== undefined) sky.setScheduleEnabled(found.id, input.enabled)
       return { ok: true }
+    } finally {
+      sky.close()
+    }
+  })
+
+  // ---- the mailroom -------------------------------------------------------
+
+  /**
+   * The correspondence, with the names filled in.
+   *
+   * Ids are what the database holds and names are what a person reads, so the
+   * translation happens here rather than in the page — the page does not have
+   * the staff list of a building it is not looking at.
+   */
+  router.get('/api/buildings/:id/mail', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        const staff = new Map(store.staff({ includeVacated: true }).map((f) => [f.id as string, f]))
+        const named = (who: string | null) => {
+          if (who === null) return { id: null, name: sky.owner().name || 'You', role: 'owner' }
+          const floor = staff.get(who)
+          return floor
+            ? { id: floor.id, name: floor.name, role: floor.role }
+            : { id: who, name: 'somebody who has left', role: 'former staff' }
+        }
+        const limit = Math.min(200, Math.max(1, Number(ctx.query.get('limit')) || 60))
+        return {
+          messages: store.conversation({ limit }).map((message) => ({
+            id: message.id,
+            kind: message.kind,
+            from: named(message.from),
+            to: named(message.to),
+            body: message.body,
+            inReplyTo: message.inReplyTo,
+            readAt: message.readAt,
+            createdAt: message.createdAt,
+            /** The owner is null at either end; the page colours those differently. */
+            mine: message.from === null,
+          })),
+          unread: store.unreadCounts(),
+          staff: store.staff().map((f) => ({ id: f.id, name: f.name, role: f.role })),
+        }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The owner writes to a floor. This is the half of the bus that was missing. */
+  router.post('/api/buildings/:id/mail', async (ctx) => {
+    const input = await ctx.body<{ to?: string; body?: string; kind?: string; inReplyTo?: string }>()
+    if (!input.body?.trim()) throw badRequest('An empty message is not worth sending.')
+
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        // Addressed to a floor by id, or to whoever runs the place.
+        const to = input.to && input.to !== 'manager'
+          ? store.floor(input.to as FloorId)
+          : store.floorByRole('manager')
+        if (!to) throw notFound(`floor "${input.to ?? 'manager'}"`)
+        if (to.vacatedAt) throw badRequest(`${to.name} no longer works here.`)
+
+        const message = store.post({
+          kind: (input.kind as 'note') ?? 'note',
+          from: null,
+          to: to.id,
+          body: input.body.trim().slice(0, 4000),
+          ...(input.inReplyTo ? { inReplyTo: input.inReplyTo as MessageId } : {}),
+        })
+        events.emit({
+          kind: 'posted', building: building.id, floor: to.id,
+          detail: `to ${to.name}: ${input.body.trim().slice(0, 120)}`,
+          data: { from: 'owner' },
+        })
+        return { ...message, toName: to.name }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The owner has read their post. */
+  router.post('/api/buildings/:id/mail/read', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      const store = BuildingStore.open(building.id)
+      try {
+        return { marked: store.markAllRead(null) }
+      } finally {
+        store.close()
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  // ---- the Discord bridge -------------------------------------------------
+
+  /**
+   * How the bridge is set up, and how it is getting on.
+   *
+   * The token never comes back out — only enough of it to recognise which one
+   * is stored. A screen that can show you a bot token is a screenshot away from
+   * giving it to somebody else.
+   */
+  router.get('/api/bridge', () => {
+    const sky = skyline()
+    try {
+      const config = readBridgeConfig(sky)
+      const names = new Map(sky.list().map((b) => [b.id as string, b.name]))
+      return {
+        connected: config.token !== null,
+        token: describeToken(config),
+        tokenKind: config.tokenKind,
+        guild: config.guild,
+        mirrorAll: config.mirrorAll,
+        enabled: config.enabled,
+        allowedAuthors: config.allowedAuthors,
+        wired: Object.entries(config.channels).map(([building, channel]) => ({
+          building, channel, buildingName: names.get(building) ?? building,
+        })),
+        status: bridge?.status ?? { state: 'off', detail: 'This daemon has no bridge.' },
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  router.post('/api/bridge', async (ctx) => {
+    const input = await ctx.body<{
+      token?: string | null; tokenKind?: 'literal' | 'env' | 'none'
+      guild?: string | null; mirrorAll?: boolean; enabled?: boolean
+      allowedAuthors?: string[]
+      wire?: { building: string; channel: string | null }
+    }>()
+
+    const sky = skyline()
+    try {
+      const current = readBridgeConfig(sky)
+      const patch: Parameters<typeof writeBridgeConfig>[1] = {}
+      if (input.token !== undefined) patch.token = input.token
+      if (input.tokenKind !== undefined) patch.tokenKind = input.tokenKind
+      if (input.guild !== undefined) patch.guild = input.guild
+      if (input.mirrorAll !== undefined) patch.mirrorAll = input.mirrorAll
+      if (input.enabled !== undefined) patch.enabled = input.enabled
+      if (input.allowedAuthors !== undefined) {
+        // Discord snowflakes are digits. Anything else is a typo or a username
+        // somebody pasted by mistake, and silently keeping it would leave a
+        // list that looks populated and authorises nobody.
+        patch.allowedAuthors = input.allowedAuthors
+          .map((id) => String(id).trim())
+          .filter((id) => /^\d{5,}$/.test(id))
+      }
+
+      if (input.wire) {
+        const building = buildingOr404(sky, input.wire.building)
+        const channels = { ...current.channels }
+        // A null channel unwires it, rather than leaving a mapping to nowhere.
+        if (input.wire.channel) channels[building.id] = input.wire.channel
+        else delete channels[building.id]
+        patch.channels = channels
+      }
+
+      const config = writeBridgeConfig(sky, patch)
+      bridge?.reload()
+      events.emit({ kind: 'bridge-changed', detail: config.enabled ? 'settings saved' : 'switched off' })
+      return { ok: true, connected: config.token !== null, token: describeToken(config) }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /** The servers and channels the bot can see, so nobody has to copy an id. */
+  router.get('/api/bridge/places', async () => {
+    const sky = skyline()
+    try {
+      const config = readBridgeConfig(sky)
+      if (!config.token) throw badRequest('Set a bot token first.')
+      const guilds = await listGuilds(config.token)
+      const guild = config.guild ?? guilds[0]?.id ?? null
+      return {
+        guilds,
+        guild,
+        channels: guild ? await listChannels(config.token, guild) : [],
+      }
+    } catch (error) {
+      throw new HttpError(422, (error as Error).message)
     } finally {
       sky.close()
     }
