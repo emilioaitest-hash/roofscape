@@ -602,6 +602,12 @@ dialog code {
 .dialog-buttons { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s4); }
 .dialog-buttons #dUnwire { margin-right: auto; }
 
+/* What happens after you press the button, said before you press it. */
+.ground-then {
+  font-size: var(--t-small); color: var(--ink-3);
+  border-top: 1px solid var(--line); padding-top: var(--s3); margin-top: var(--s1);
+}
+
 dialog#bridgeDialog { width: min(520px, calc(100vw - var(--s6))); }
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 @media (max-width: 460px) { .two-up { grid-template-columns: 1fr; } }

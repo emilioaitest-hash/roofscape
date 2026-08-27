@@ -174,13 +174,27 @@
 <dialog id="groundDialog">
   <form method="dialog" id="groundForm">
     <h2>Break ground</h2>
-    <p class="dim">A building is one company: its own staff, its own memory, its own money.</p>
+    <p class="dim">One building is one company. Its own staff, its own memory, its own money, its
+      own workspace — and it shares none of them with its neighbours.</p>
+
     <label>What is it called?
-      <input type="text" id="gName" autocomplete="off" required placeholder="Help Center"></label>
+      <input type="text" id="gName" autocomplete="off" required placeholder="Help Center">
+      <span class="field-note dim">Goes on the sign over the door.</span></label>
+
     <label>Where does it work?
-      <input type="text" id="gPath" autocomplete="off" required placeholder="/Users/you/code/thing"></label>
+      <input type="text" id="gPath" autocomplete="off" required placeholder="~/code/help-center">
+      <span class="field-note dim">A directory that already exists. Everyone you hire reads and
+        writes here and nowhere else — paths outside it are refused.</span></label>
+
     <label>What is it for?
-      <input type="text" id="gCharter" autocomplete="off" placeholder="Answer support mail without me reading it"></label>
+      <input type="text" id="gCharter" autocomplete="off"
+             placeholder="Answer support mail without me reading it">
+      <span class="field-note dim">Its charter. Every floor carries this, so say the thing you
+        would tell somebody on their first morning.</span></label>
+
+    <p class="ground-then">It opens as a shack with a manager and a coder in it. Hire, and it
+      grows a storey.</p>
+
     <div class="dialog-buttons">
       <button type="button" class="ghost" id="groundCancel">Never mind</button>
       <button type="submit" class="solid">Break ground</button>
