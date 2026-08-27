@@ -20,7 +20,9 @@ export async function GET(request: Request): Promise<Response> {
   const known = (PLATFORMS as readonly string[]).includes(platform)
   if (!known) return Response.redirect(new URL('/?unavailable=unknown', url.origin), 302)
 
-  const release = await latestRelease()
+  // Never cached: see latestRelease. A cached answer here hands over an
+  // out-of-date binary, which is worse than a slightly out-of-date page.
+  const release = await latestRelease(true)
   const file = release?.builds[platform as Platform]
   if (!file) return Response.redirect(new URL(`/?unavailable=${platform}`, url.origin), 302)
 

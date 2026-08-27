@@ -38,16 +38,25 @@ interface Asset {
   browser_download_url: string
 }
 
-export async function latestRelease(): Promise<Release | null> {
+/**
+ * `fresh` is for the download route, and it is not an optimisation to remove.
+ *
+ * Publishing a release and deploying this site are triggered by the same push,
+ * but the site finishes first — so a cached lookup captures the *previous*
+ * release and then serves it for as long as the cache lasts. That is not a
+ * stale version number, it is handing somebody the old binary after the new one
+ * exists. The page may be a few minutes behind; the file may never be.
+ */
+export async function latestRelease(fresh = false): Promise<Release | null> {
   const token = process.env.GITHUB_TOKEN
   const response = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
     headers: {
       accept: 'application/vnd.github+json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
-    // Long enough that a busy day does not exhaust the unauthenticated rate
-    // limit, short enough that a new release is offered within the hour.
-    next: { revalidate: 600 },
+    // Page views are many and can tolerate being a little behind. Downloads are
+    // few and cannot, so they are never served from cache.
+    ...(fresh ? { cache: 'no-store' as const } : { next: { revalidate: 300 } }),
   })
   // 404 is the ordinary answer when nothing has been published yet.
   if (!response.ok) return null
