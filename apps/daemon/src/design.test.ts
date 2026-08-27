@@ -60,10 +60,11 @@ test('colour comes from the light and ink tokens, not from a hex nobody named', 
 
   assert.deepEqual(
     [...new Set(offenders)].sort(),
-    // Two grounds the metaphor needs and the four-depth scale does not carry:
-    // the hatched roof over the cutaway, and the archives, which are below
-    // ground and so are darker than anything on the page.
-    ['#131118', '#1f1c29', '#24212e', '#2a1206', '#2b2838', '#211f2c'].sort(),
+    // What is left is the hatched roof over the cutaway and the two marks that
+    // carry their own ink — none of which is a ground, so none of which the
+    // four-depth scale should be asked to name. Below ground used to be here
+    // too, as a bare hex in three places; it is `--under` now.
+    ['#1f1c29', '#24212e', '#2a1206', '#2b2838', '#211f2c'].sort(),
     'a colour that is not in the system',
   )
 })
@@ -99,6 +100,41 @@ test('a person who asked for less motion gets less motion', () => {
   // The parallax is a transform set from script, so clearing the transition is
   // not enough — the transform itself has to go.
   assert.match(block, /transform:\s*none\s*!important/)
+})
+
+test('the number printed on a tab is the key that reaches it', () => {
+  /*
+   * Three places have to agree: the digit set on the tab like a lift button,
+   * that tab's position in the bar, and the order of `TABS` in the script,
+   * which is what a keystroke is looked up in. Any two of them can drift apart
+   * silently — the tab still works when clicked, so nothing looks broken, and
+   * the only symptom is that pressing 4 opens the wrong room.
+   */
+  const html = readFileSync(join(HERE, '..', 'public', 'index.html'), 'utf8')
+  const script = readFileSync(join(HERE, '..', 'public', 'app.js'), 'utf8')
+
+  // Searched from the opening tag, not from the top of the file: the crumbs in
+  // the header are a <nav> too, and they close before this one opens.
+  const from = html.indexOf('<nav class="tabs"')
+  const bar = html.slice(from, html.indexOf('</nav>', from))
+  const tabs = [...bar.matchAll(/data-tab="([a-z]+)"><b>(\d)<\/b>/g)].map((m) => ({
+    tab: m[1]!,
+    plate: Number(m[2]),
+  }))
+  assert.ok(tabs.length >= 6, `only ${tabs.length} tabs carry a number`)
+
+  for (const [index, { tab, plate }] of tabs.entries()) {
+    assert.equal(plate, index + 1, `"${tab}" is ${index + 1}th in the bar but wears a ${plate}`)
+  }
+
+  const listed = script.match(/const TABS = \[([^\]]+)\]/)
+  assert.ok(listed, 'the script no longer has a TABS list for a keystroke to look up')
+  const order = [...listed[1]!.matchAll(/'([a-z]+)'/g)].map((m) => m[1])
+  assert.deepEqual(
+    order,
+    tabs.map((t) => t.tab),
+    'pressing a number would open a different tab from the one wearing it',
+  )
 })
 
 test('the page and its script agree about what exists', () => {

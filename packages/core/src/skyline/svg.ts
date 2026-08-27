@@ -958,11 +958,11 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   // A city wants sky above it; a portrait wants a margin. The backdrop being
   // off is what distinguishes the two, and it is the portrait that turns it off.
   const portrait = options.backdrop === false
-  const skyAbove = portrait
+  const baseSky = portrait
     ? Math.max(34, Math.round(tallest * 0.1))
     : Math.max(140, Math.round(tallest * 0.24))
-  const groundY = skyAbove + tallest
-  const height = groundY + belowGround
+  /** What the drawing comes to on its own, before it is asked to fit anything. */
+  const naturalHeight = baseSky + tallest + belowGround
 
   /**
    * Match the shape of the hole rather than the size of it.
@@ -990,8 +990,30 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   const MAX_WIDTH = 40_000
   const width = Math.min(
     MAX_WIDTH,
-    Math.max(options.minWidth ?? 760, natural, wantWidth, aspect > 0 ? Math.round(height * aspect) : 0),
+    Math.max(options.minWidth ?? 760, natural, wantWidth, aspect > 0 ? Math.round(naturalHeight * aspect) : 0),
   )
+
+  /**
+   * And the shortfall the other way is made up in sky.
+   *
+   * Widening was only half of fitting a hole. A frame taller than the drawing's
+   * own proportions could not be matched by adding pavement, so the ratios
+   * stayed apart, and an SVG whose `preserveAspectRatio` is the default centres
+   * that difference — a black bar above the sky and another below the street,
+   * on every screen wider than it was tall. Four shacks in a large frame is the
+   * common case, not the corner one.
+   *
+   * Sky is the right thing to spend it on. It costs one gradient stop, the
+   * buildings stay the size they were drawn, and a low skyline under a lot of
+   * evening is the picture this is trying to be anyway.
+   */
+  const MAX_HEIGHT = 3000
+  const extraSky =
+    aspect > 0 ? Math.max(0, Math.min(MAX_HEIGHT, Math.round(width / aspect)) - naturalHeight) : 0
+
+  const skyAbove = baseSky + extraSky
+  const groundY = skyAbove + tallest
+  const height = groundY + belowGround
   // Spare width becomes pavement on both sides rather than a hole on one.
   const spare = Math.max(0, (width - natural) / 2)
 

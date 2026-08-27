@@ -41,6 +41,13 @@
   --on-lamp: #241d07;
   /* The dark behind a dialog. Not a fifth depth — the absence of one. */
   --scrim: #06050a;
+  /**
+   * Below ground. Also not a fifth depth: the four are heights above a page,
+   * and this is the one place the app draws something that is under it — the
+   * archives, and the curator who works down there. Darker than `--sunk`
+   * because earth is darker than shadow.
+   */
+  --under: #131118;
 
   /* ── type ──────────────────────────────────────────────────────────────── */
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -337,6 +344,25 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .tab:hover { color: var(--ink); }
 .tab.on { color: var(--ink); border-bottom-color: var(--lamp); }
 
+/**
+ * The digit on a tab is the key that reaches it, set as the button you press in
+ * a lift. Quiet at rest — it is a hint, not a label — and lit on the tab you
+ * are standing on, the same way the floor you are on is lit in a real one.
+ */
+.tab b {
+  font-family: var(--mono); font-size: var(--t-plate); font-weight: 500;
+  color: var(--ink-4);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  width: 16px; height: 16px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color var(--fast), border-color var(--fast);
+}
+.tab:hover b { border-color: var(--line-strong); color: var(--ink-3); }
+.tab.on b { border-color: var(--lamp-dim); color: var(--lamp); }
+
+/* Square, so it reads as one of a pair with the button beside it. */
+.keys-open { width: 26px; padding: var(--s1) 0; text-align: center; }
+
 .badge {
   background: var(--flag); color: #2a1206; font-size: var(--t-plate); font-weight: 700;
   min-width: 18px; height: 18px; border-radius: var(--r-pill);
@@ -395,12 +421,37 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
   font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52ch;
 }
+/**
+ * What a floor runs on, said as quietly as it deserves.
+ *
+ * This was a full underlined sentence on every storey, repeating the building's
+ * provider once per floor until it outweighed the names. The provider is now
+ * stated once on the supply line above; this is usually just a model name, and
+ * it only offers itself as a control when the pointer is on the row.
+ */
 .floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4); }
 .floor-model button {
   background: none; border: 0; padding: 0; color: inherit; font: inherit;
-  text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px;
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px;
+  transition: color var(--fast), text-decoration-color var(--fast);
 }
-.floor-model button:hover { color: var(--ink-2); }
+.floor:hover .floor-model button { text-decoration-color: var(--line-strong); }
+.floor-model button:hover { color: var(--ink-2); text-decoration-color: var(--lamp-dim); }
+
+/**
+ * The supply: the grid the whole building is on, named once under the roof.
+ *
+ * A real building has one supply and a meter by the door. A floor that is
+ * somewhere else spells its provider out on its own row, which is the only
+ * place that fact is now worth the ink.
+ */
+.cut-supply {
+  display: flex; align-items: baseline; gap: var(--s2);
+  padding: var(--s2) var(--s4);
+  background: var(--sunk);
+  border-bottom: 1px solid var(--line);
+}
+.cut-supply-who { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-3); }
 
 .floor-right { display: flex; align-items: center; gap: var(--s2); }
 
@@ -440,9 +491,23 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .cut-band .cut-role { margin-bottom: 1px; }
 .cut-band-what { font-size: var(--t-small); color: var(--ink-3); }
 /* Below ground, so it is drawn as below ground. */
-.cut-band.below { background: #131118; }
+.cut-band.below { background: var(--under); }
 /* Street level: a kerb line where the building meets the pavement. */
 .cut-band.street { box-shadow: inset 0 2px 0 var(--line-strong); }
+
+/**
+ * The curator's floor is in the basement, because that is where the archives
+ * are and where the product has always said it works. It is not counted in the
+ * headcount for the same reason — a building should not appear to grow because
+ * it started tidying up — so it gets `B` on the lift plate rather than a
+ * number, and the earth-dark ground of everything below street level.
+ */
+.floor.below { background: var(--under); border-bottom: 0; }
+.floor.below:hover { background: color-mix(in srgb, var(--under) 92%, var(--ink)); }
+.floor.below .floor-no {
+  background: var(--scrim); color: var(--ink-4); border-color: var(--line);
+  letter-spacing: .04em;
+}
 
 .empty-floors { padding: var(--s6) var(--s5); text-align: center; color: var(--ink-4); font-size: var(--t-small); }
 
@@ -492,6 +557,41 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .note-row { padding: var(--s3) 0; border-bottom: 1px solid var(--line); display: flex; gap: var(--s2); align-items: baseline; }
 .note-row:last-child { border-bottom: 0; }
 .note-row p { font-size: var(--t-small); color: var(--ink-2); min-width: 0; }
+
+/**
+ * The riser: how work moves through a building, drawn as the shaft it moves in.
+ *
+ * A building that has never run anything showed two empty columns and a silent
+ * feed — three headings over six hundred pixels of nothing, which reads as a
+ * page that failed to load rather than as a building waiting for a goal. This
+ * answers the question those columns raise instead, and it is gone the moment
+ * there is a real task to put there.
+ *
+ * The stops that are *you* are terracotta, and they are the first and the last
+ * — which is not a flourish, it is the shape of the thing: you say what it is
+ * for, and nothing leaves without you.
+ */
+.riser { max-width: 680px; }
+.riser-stops {
+  list-style: none;
+  margin: 0 0 0 5px; padding: 0;
+  border-left: 1px solid var(--line-strong);
+}
+.riser-stops li {
+  position: relative;
+  padding: 0 0 var(--s5) var(--s5);
+  font-size: var(--t-small); color: var(--ink-3); line-height: 1.6;
+}
+.riser-stops li:last-child { padding-bottom: 0; }
+.riser-stops b { color: var(--ink); font-weight: 600; }
+
+/* A stop on the shaft, set like the floor indicator beside a lift. */
+.riser-stops li::before {
+  content: ""; position: absolute; left: -5px; top: 7px;
+  width: 9px; height: 9px; border-radius: var(--r-pill);
+  background: var(--sunk); border: 1px solid var(--line-strong);
+}
+.riser-stops li.yours::before { background: var(--flag); border-color: var(--flag); }
 
 .feed-box { border-top: 1px solid var(--line); padding-top: var(--s4); }
 .feed { font-family: var(--mono); font-size: var(--t-micro); max-height: 260px; overflow-y: auto; }
@@ -608,6 +708,33 @@ dialog code {
   border-top: 1px solid var(--line); padding-top: var(--s3); margin-top: var(--s1);
 }
 
+/* ── the keys ───────────────────────────────────────────────────────────── */
+
+/**
+ * Grouped by where you are standing, because that is what decides what a key
+ * does here. An alphabetical list of sixteen bindings would be the same facts
+ * and none of the shape.
+ */
+dialog#keysDialog { width: min(430px, calc(100vw - var(--s6))); }
+.keys-where { margin-bottom: var(--s4); }
+.keys-where:last-of-type { margin-bottom: 0; }
+.keys-where .cut-role { margin-bottom: var(--s2); }
+
+.keys {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s2) var(--s3);
+  margin: 0; align-items: baseline;
+}
+.keys dt { display: flex; align-items: center; gap: 3px; color: var(--ink-4); font-size: var(--t-micro); }
+.keys dd { margin: 0; font-size: var(--t-small); color: var(--ink-2); }
+
+/* A keycap: the thing under your finger, drawn with an edge you could catch. */
+kbd {
+  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink);
+  background: var(--raised); border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: var(--r-control);
+  padding: 2px var(--s1); min-width: 20px; display: inline-block; text-align: center;
+}
+
 dialog#bridgeDialog { width: min(520px, calc(100vw - var(--s6))); }
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 @media (max-width: 460px) { .two-up { grid-template-columns: 1fr; } }
@@ -699,7 +826,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 /* ── the archives, which are below ground ───────────────────────────────── */
 
 .archive-shelf {
-  background: #131118;
+  background: var(--under);
   border: 1px solid var(--line); border-radius: var(--r-surface);
   padding: var(--s1) var(--s4);
   margin-top: var(--s3);

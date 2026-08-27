@@ -18,6 +18,8 @@
   <div class="topbar-right">
     <button class="ghost update hidden" id="update" type="button"></button>
     <button class="ghost" id="openSettings" type="button">Models</button>
+    <button class="ghost keys-open" id="openKeys" type="button" title="Keys (?)"
+            aria-label="Which keys do what">?</button>
     <span class="live" id="live" title="Connection to the daemon"><i></i><span>connecting</span></span>
   </div>
 </header>
@@ -80,13 +82,16 @@
       </div>
     </div>
 
+    <!-- The digit on each tab is the key that reaches it. They are set as lift
+         buttons because that is what they are: the row of numbers you press to
+         get to a floor, in a product whose floors are the point. -->
     <nav class="tabs" id="tabs" role="tablist">
-      <button role="tab" class="tab on" data-tab="floors">The building</button>
-      <button role="tab" class="tab" data-tab="work">Work<span class="badge hidden" id="badgeWork"></span></button>
-      <button role="tab" class="tab" data-tab="desk">Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
-      <button role="tab" class="tab" data-tab="mail">Mailroom<span class="badge hidden" id="badgeMail"></span></button>
-      <button role="tab" class="tab" data-tab="orders">Standing orders</button>
-      <button role="tab" class="tab" data-tab="archives">Archives</button>
+      <button role="tab" class="tab on" data-tab="floors"><b>1</b>The building</button>
+      <button role="tab" class="tab" data-tab="work"><b>2</b>Work<span class="badge hidden" id="badgeWork"></span></button>
+      <button role="tab" class="tab" data-tab="desk"><b>3</b>Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
+      <button role="tab" class="tab" data-tab="mail"><b>4</b>Mailroom<span class="badge hidden" id="badgeMail"></span></button>
+      <button role="tab" class="tab" data-tab="orders"><b>5</b>Standing orders</button>
+      <button role="tab" class="tab" data-tab="archives"><b>6</b>Archives</button>
     </nav>
 
     <div class="panes">
@@ -105,7 +110,26 @@
       </div>
 
       <div class="pane hidden" data-pane="work">
-        <div class="work-cols">
+        <!-- Until a building has ever done anything, two empty columns and a
+             silent feed raise a question they do not answer: what happens when
+             I press Send? The riser answers it, and stands aside the moment
+             there is real work to show instead. -->
+        <div class="riser hidden" id="riser">
+          <h3 class="pane-title">How work moves through it</h3>
+          <ol class="riser-stops">
+            <li class="yours"><b>You put a goal to it.</b> One sentence, the way you would say it
+              to somebody on their first morning.</li>
+            <li><b>The top floor breaks it into tasks</b> — each carrying the terms it will be
+              judged on, agreed before anybody starts.</li>
+            <li><b>A floor takes one.</b> Its own worktree, its own budget, its own context.
+              Nobody here holds a conversation; work is a record.</li>
+            <li><b>The reviewer reads it against those terms</b> and says whether it holds. It
+              holds nothing that can write, so it cannot quietly fix what it is judging.</li>
+            <li class="yours"><b>Anything leaving the building stops at your desk</b> in the
+              lobby. It begins with you and it ends with you.</li>
+          </ol>
+        </div>
+        <div class="work-cols" id="workCols">
           <div>
             <h3 class="pane-title">In hand</h3>
             <div id="workOpen"></div>
@@ -115,7 +139,7 @@
             <div id="workDone"></div>
           </div>
         </div>
-        <div class="feed-box">
+        <div class="feed-box" id="feedBox">
           <h3 class="pane-title">As it happens</h3>
           <div id="log" class="feed"></div>
         </div>
@@ -279,6 +303,45 @@
       <button type="button" class="ghost" id="dUnwire">Disconnect</button>
       <button type="button" class="ghost" id="dCancel">Never mind</button>
       <button type="submit" class="solid">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The keys, as a plan of the place rather than an alphabetical table: where
+     you are decides what the same key does, so the two lists are kept apart. -->
+<dialog id="keysDialog">
+  <form method="dialog" id="keysForm">
+    <h2>Keys</h2>
+    <p class="dim">Anywhere text can be typed, these stand aside and let you type.</p>
+
+    <div class="keys-where">
+      <div class="cut-role">On the street</div>
+      <dl class="keys">
+        <dt><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Go into that building, left to right</dd>
+        <dt><kbd>/</kbd></dt><dd>Ask the concierge</dd>
+        <dt><kbd>n</kbd></dt><dd>Break ground on a new one</dd>
+      </dl>
+    </div>
+
+    <div class="keys-where">
+      <div class="cut-role">Inside a building</div>
+      <dl class="keys">
+        <dt><kbd>1</kbd>…<kbd>6</kbd></dt><dd>The tab with that number on it</dd>
+        <dt><kbd>/</kbd></dt><dd>Put a goal to it</dd>
+        <dt><kbd>g</kbd></dt><dd>Back out to the street</dd>
+      </dl>
+    </div>
+
+    <div class="keys-where">
+      <div class="cut-role">Anywhere</div>
+      <dl class="keys">
+        <dt><kbd>Esc</kbd></dt><dd>Close this, or step back outside</dd>
+        <dt><kbd>?</kbd></dt><dd>This</dd>
+      </dl>
+    </div>
+
+    <div class="dialog-buttons">
+      <button type="submit" class="solid">Got it</button>
     </div>
   </form>
 </dialog>

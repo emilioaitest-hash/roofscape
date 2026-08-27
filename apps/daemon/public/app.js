@@ -41,6 +41,29 @@ const esc = (s) =>
 const clip = (s, n) => (String(s ?? '').length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ''))
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many ?? `${one}s`}`
 
+/** The value that turns up most often, ignoring empty ones. Ties go to the first. */
+function commonest(values) {
+  const tally = new Map()
+  for (const value of values) if (value) tally.set(value, (tally.get(value) ?? 0) + 1)
+  let best = ''
+  let most = 0
+  for (const [value, count] of tally) if (count > most) { best = value; most = count }
+  return best
+}
+
+/**
+ * "Anthropic · claude-opus-5 (via Claude Code)" → "Anthropic (via Claude Code)".
+ *
+ * The provider's own label is only ever built in one place, on the server, and
+ * this takes the model back out of it rather than rebuilding it from parts — a
+ * second recipe for the same sentence is a second recipe to keep in step.
+ */
+function withoutModel(describes, model) {
+  const said = String(describes ?? '')
+  if (!model) return said
+  return said.replace(` · ${model}`, '').trim() || said
+}
+
 function toast(text, kind = '') {
   const node = document.createElement('div')
   node.className = `toast ${kind}`
@@ -337,7 +360,14 @@ function paintCutaway(building) {
   // forced to the front — it holds the top floor and rides up as the building
   // grows. Re-sorting by the stored level here put it in the basement, which is
   // the opposite of what the building means.
-  const staff = building.staff
+  //
+  // The curator is the exception, and it is the store's own rule: `headcount()`
+  // leaves it out, because a building should not appear to grow because it
+  // started tidying up. Drawing it as a numbered storey anyway made the cutaway
+  // one floor taller than the building outside the window, and put somebody the
+  // caption calls a night worker in the archives up on the fifth floor.
+  const staff = building.staff.filter((floor) => floor.role !== 'curator')
+  const nightShift = building.staff.filter((floor) => floor.role === 'curator')
   const top = staff[0]
 
   const said = {
@@ -348,30 +378,61 @@ function paintCutaway(building) {
     idle: 'on a break',
   }
 
-  const floors = staff.length
-    ? staff
-        .map(
-          (floor, index) => `
-      <div class="floor ${floor.state === 'working' ? 'is-working' : ''} ${floor === top ? 'top-floor' : ''}"
+  /**
+   * A building runs on one supply, the way a real one runs on one grid, and
+   * printing "Anthropic · claude-opus-5 (via Claude Code)" on all seven floors
+   * said that thirty-five-character fact seven times — loudly, in mono, under a
+   * link's underline — until it outweighed the names of the people on them.
+   *
+   * So the supply is named once, above the floors, and a floor carries only its
+   * model. A floor somewhere else is the fact worth having, and now it is the
+   * only one on the row that is spelt out.
+   */
+  // Two floors share a supply when they share both the provider and the engine
+  // that reaches it: Anthropic on a key and Anthropic through Claude Code are
+  // billed differently and fail differently, so they are not the same supply.
+  const supplyOf = (floor) => (floor.posting ? `${floor.posting.provider}|${floor.posting.engine}` : '')
+  const supply = commonest(building.staff.map(supplyOf))
+
+  const runsOn = (floor) =>
+    !floor.posting || supplyOf(floor) !== supply ? floor.describes : floor.posting.model
+
+  /** One storey. `plate` is what goes on the lift button beside it. */
+  const storey = (floor, plate, extra = '') => `
+      <div class="floor ${extra} ${floor.state === 'working' ? 'is-working' : ''}"
            data-floor="${esc(floor.id)}">
-        <div class="floor-no">${staff.length - index}</div>
+        <div class="floor-no">${esc(plate)}</div>
         <div class="floor-who">
           <div class="floor-name">${esc(floor.name)} <span class="cut-role">${esc(floor.role)}</span></div>
           ${floor.on
             ? `<div class="floor-on">${esc(clip(floor.on.goal, 78))}</div>`
             : `<div class="floor-model"><button type="button" data-repost="${esc(floor.id)}"
-                 title="Move them to another model">${esc(floor.describes)}</button></div>`}
+                 title="${esc(floor.describes)} — click to move them">${esc(runsOn(floor))}</button></div>`}
         </div>
         <div class="floor-right">
           <span class="state s-${esc(floor.state)}"><i></i>${esc(said[floor.state] ?? floor.state)}</span>
         </div>
-      </div>`,
-        )
-        .join('')
-    : `<div class="empty-floors">Nobody in it yet. Take somebody on and the building grows a storey.</div>`
+      </div>`
+
+  const floors = staff.length
+    ? staff.map((floor, index) => storey(floor, staff.length - index, floor === top ? 'top-floor' : '')).join('')
+    : `<div class="empty-floors">Nobody upstairs yet. Take somebody on and the building grows a storey.</div>`
+
+  // The label is already in the floor's own description — "Anthropic ·
+  // claude-opus-5 (via Claude Code)" — so the supply line is that string with
+  // the model taken out of the middle of it, rather than a second source of
+  // truth about what a provider is called.
+  const onSupply = building.staff.find((floor) => supplyOf(floor) === supply)
+  const supplyLabel = onSupply ? withoutModel(onSupply.describes, onSupply.posting?.model) : ''
 
   el('cutaway').innerHTML = `
     <div class="cut-roof"></div>
+    ${supplyLabel
+      ? `<div class="cut-supply">
+           <span class="cut-role">Runs on</span>
+           <span class="cut-supply-who">${esc(supplyLabel)}</span>
+         </div>`
+      : ''}
     ${floors}
     <div class="cut-band street">
       <div>
@@ -387,10 +448,11 @@ function paintCutaway(building) {
     <div class="cut-band below">
       <div>
         <div class="cut-role">Archives</div>
-        <div class="cut-band-what">Everything it remembers. The curator works nights.</div>
+        <div class="cut-band-what">Everything it remembers${nightShift.length ? '' : '. Nobody is looking after them yet'}.</div>
       </div>
       <span class="pill">${plural(building.archives.total, 'note')}</span>
-    </div>`
+    </div>
+    ${nightShift.map((floor) => storey(floor, 'B', 'below')).join('')}`
 
   for (const button of el('cutaway').querySelectorAll('[data-repost]')) {
     button.onclick = () => repost(button.getAttribute('data-repost'))
@@ -401,6 +463,14 @@ function paintWork(building) {
   const open = building.open
   const state = { queued: 'queued', working: 'working', 'awaiting-review': 'in review', 'awaiting-approval': 'needs you', escalated: 'blocked' }
   const kind = { working: 'lit', escalated: 'bad' }
+
+  // A building that has never done anything gets the riser instead of two
+  // empty columns over a silent feed. The moment there is one real task, the
+  // explanation has been replaced by the thing it was explaining.
+  const untouched = open.length === 0 && building.recent.length === 0
+  el('riser').classList.toggle('hidden', !untouched)
+  el('workCols').classList.toggle('hidden', untouched)
+  el('feedBox').classList.toggle('hidden', untouched)
 
   el('workOpen').innerHTML = open.length
     ? open
@@ -920,12 +990,79 @@ function breakGround() {
 
 el('goHome').onclick = goHome
 
-// Escape steps back outside. Not while a dialog is open — that is the dialog's.
+/**
+ * The keyboard.
+ *
+ * Where you are decides what a key does, because the two screens are two
+ * places: on the street a number is a building, inside one it is a floor's
+ * tab. That is the same rule the rest of the app follows, and it means the
+ * whole map is six keys rather than sixteen.
+ *
+ * Nothing here fires while a person is typing, and nothing here fires while a
+ * dialog is open — a dialog is a room with its own door, and Escape is how you
+ * leave it.
+ */
+const TABS = ['floors', 'work', 'desk', 'mail', 'orders', 'archives']
+
+/** True when the keystroke belongs to whatever is being typed into. */
+function typing(target) {
+  if (!target) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+/** Put the cursor where the main thing you write on this screen is written. */
+function focusTheBox() {
+  const box = view.screen === 'building' ? el('goalText') : el('askText')
+  if (box.disabled) return
+  box.focus()
+  box.select()
+}
+
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return
-  if (document.querySelector('dialog[open]')) return
-  if (view.screen === 'building') goHome()
+  const open = document.querySelector('dialog[open]')
+
+  // Escape steps back outside. Not while a dialog is open — that is the
+  // dialog's own, and the browser already handles it.
+  if (event.key === 'Escape') {
+    if (!open && view.screen === 'building') goHome()
+    return
+  }
+
+  // `?` is the one key that works from inside a dialog, because the moment you
+  // most want the map is the moment you are somewhere you did not mean to be.
+  if (event.key === '?' && !typing(event.target)) {
+    event.preventDefault()
+    open?.close()
+    el('keysDialog').showModal()
+    return
+  }
+
+  if (open || typing(event.target)) return
+  if (event.metaKey || event.ctrlKey || event.altKey) return
+
+  // `/` reaches for the box you write in, wherever you are. Prevented, or the
+  // slash arrives in the box you just focused.
+  if (event.key === '/') {
+    event.preventDefault()
+    focusTheBox()
+    return
+  }
+
+  if (view.screen === 'building') {
+    const tab = TABS[Number(event.key) - 1]
+    if (tab) { event.preventDefault(); selectTab(tab) }
+    else if (event.key === 'g') { event.preventDefault(); goHome() }
+    return
+  }
+
+  // On the street, left to right, the way they are standing.
+  if (event.key === 'n') { event.preventDefault(); breakGround(); return }
+  const nth = skyline[Number(event.key) - 1]
+  if (nth) { event.preventDefault(); openBuilding(nth.id) }
 })
+
+el('openKeys').onclick = () => el('keysDialog').showModal()
 
 function selectTab(name) {
   view.tab = name
