@@ -853,20 +853,42 @@ el('goalForm').onsubmit = async (event) => {
   } catch (error) { oops(error) }
 }
 
+/**
+ * What the concierge is doing while you wait.
+ *
+ * It reads buildings one at a time and can take a while. An input that greys
+ * out and says nothing for twenty seconds looks broken; naming each building as
+ * it is opened is both honest and the most interesting part — you can see it
+ * has no idea what is in there until it looks.
+ */
+let looking = []
+
 el('askForm').onsubmit = async (event) => {
   event.preventDefault()
   const question = el('askText').value.trim()
   if (!question) return
+
+  looking = []
   el('askGo').disabled = true
   el('askGo').textContent = 'Looking…'
-  el('answer').classList.add('hidden')
+  el('answer').classList.remove('hidden')
+  el('answer').innerHTML = `<p class="asked">${esc(question)}</p>
+    <p class="answering"><span class="spin"></span>Reading the skyline…</p>`
+
   try {
     const result = await post('/api/ask', { question })
-    el('answer').textContent = result.answer
-    el('answer').classList.remove('hidden')
+    el('answer').innerHTML =
+      `<p class="asked">${esc(question)}</p>
+       <div class="said">${esc(result.answer)}</div>` +
+      (result.toolsUsed?.length
+        ? `<p class="consulted">Looked at ${result.toolsUsed.map(esc).join(', ')} ·
+             ${tokens(result.tokensSpent ?? 0)} tokens</p>`
+        : '')
     el('askText').value = ''
   } catch (error) {
-    oops(error)
+    el('answer').innerHTML = `<p class="asked">${esc(question)}</p>
+      <div class="said bad">${esc(error.message)}</div>`
+    toast(error.message, 'bad')
   } finally {
     el('askGo').disabled = false
     el('askGo').textContent = 'Ask'
@@ -935,6 +957,14 @@ stream.onmessage = (message) => {
   if (event.kind === 'tool') say(`  · ${event.detail}`, 'tool')
   else say(`${event.kind}${event.detail ? `: ${event.detail}` : ''}`,
            event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit')
+
+  // The concierge says what it is opening as it goes.
+  if (event.kind === 'looking' && el('askGo').disabled) {
+    const step = String(event.detail ?? '').replace(/_/g, ' ')
+    if (step && looking.at(-1) !== step) looking.push(step)
+    const line = el('answer').querySelector('.answering')
+    if (line) line.innerHTML = `<span class="spin"></span>${esc(looking.slice(-3).join(' · '))}`
+  }
 
   if (event.kind === 'goal-finished') toast('Finished.', 'good')
   if (event.kind === 'goal-failed') toast(event.detail ?? 'That goal failed.', 'bad')
