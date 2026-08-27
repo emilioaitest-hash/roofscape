@@ -180,10 +180,13 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       return {
         buildings: skylineViews(sky).map((view) => ({
           ...view,
-          // The old shape called the busy-floor count `busy` and the
-          // running-goal flag `working`; the drawn city needs the opposite
-          // sense of both. Kept alongside the new names so the CLI, which asks
-          // this endpoint the old question, still gets the old answer.
+          // This endpoint predates the drawn city and named things the other
+          // way round: `busy` was the count of floors with work, `working` the
+          // flag for a goal in flight. The drawn city wants the opposite sense
+          // of both, so the two names are swapped back here rather than
+          // changing what an existing caller gets. The dashboard does not read
+          // this one — it asks /api/skyline/city, which is already in the new
+          // shape — and neither does the CLI, which opens the stores directly.
           busy: view.working,
           working: view.busy,
         })),

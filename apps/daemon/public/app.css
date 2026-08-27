@@ -351,13 +351,17 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 /* Status, said the way a person would say it. */
 .state { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--dim); white-space: nowrap; }
 .state i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
-.state.working { color: var(--lit); }
-.state.working i { background: var(--lit); box-shadow: 0 0 8px #e8c15aaa; animation: throb 2.2s ease-in-out infinite; }
-.state.blocked { color: var(--bad); }
-.state.blocked i { background: var(--bad); }
-.state.review  { color: var(--cool); }
-.state.review i { background: var(--cool); }
-.state.next i { background: var(--ink-mid); }
+/* Prefixed for the same reason the message kinds are: these names come from
+   data, and a bare `.working` or `.review` is one stylesheet edit away from
+   meaning something else entirely — which is exactly how `.kind.answer` ended
+   up inheriting the concierge panel's `margin: 0 auto`. */
+.state.s-working { color: var(--lit); }
+.state.s-working i { background: var(--lit); box-shadow: 0 0 8px #e8c15aaa; animation: throb 2.2s ease-in-out infinite; }
+.state.s-blocked { color: var(--bad); }
+.state.s-blocked i { background: var(--bad); }
+.state.s-review  { color: var(--cool); }
+.state.s-review i { background: var(--cool); }
+.state.s-next i { background: var(--ink-mid); }
 @keyframes throb { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
 /* A floor with somebody working on it is lit from inside. */

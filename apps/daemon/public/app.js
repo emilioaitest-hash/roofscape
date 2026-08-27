@@ -326,7 +326,7 @@ function paintCutaway(building) {
                  title="Move them to another model">${esc(floor.describes)}</button></div>`}
         </div>
         <div class="floor-right">
-          <span class="state ${floor.state}"><i></i>${said[floor.state] ?? floor.state}</span>
+          <span class="state s-${esc(floor.state)}"><i></i>${esc(said[floor.state] ?? floor.state)}</span>
         </div>
       </div>`,
         )
@@ -368,7 +368,7 @@ function paintWork(building) {
             <div class="row-title">${esc(clip(task.goal, 74))}</div>
             <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.createdAt)}</div>
           </div><div class="row-right">
-            <span class="pill ${kind[task.state] ?? ''}">${state[task.state] ?? task.state}</span>
+            <span class="pill ${kind[task.state] ?? ''}">${esc(state[task.state] ?? task.state)}</span>
           </div></div>`,
         )
         .join('')
