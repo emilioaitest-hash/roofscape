@@ -565,3 +565,10 @@ dialog#settingsDialog { width: min(560px, calc(100vw - 32px)); }
   padding: 4px 8px; display: inline-block; overflow-wrap: anywhere;
 }
 .provider-models { font-family: var(--mono); font-size: 11px; color: var(--faint); text-align: right; max-width: 190px; }
+
+/* The backdrop leans away from the pointer. Eased rather than instant, so it
+   trails the cursor slightly — that lag is most of what reads as distance. */
+.rs-stars, .rs-far, .rs-mid { transition: transform .42s cubic-bezier(.22, 1, .36, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .rs-stars, .rs-far, .rs-mid { transition: none; transform: none !important; }
+}

@@ -146,6 +146,47 @@ async function refreshCity() {
     : 'Nothing built yet. Break ground on the empty lot to start your first company.'
 }
 
+/**
+ * Depth, on mouse move.
+ *
+ * The backdrop is anonymous city that exists so your buildings have somewhere to
+ * stand. Moving it a little behind them — the far layer least, the near layer
+ * most, the stars barely at all — is what turns a printed picture into a place
+ * you are standing in front of. Your own buildings never move: they are the
+ * content, and content that slides under the pointer is a toy.
+ */
+function wireParallax() {
+  const frame = el('cityScroll')
+  let queued = false
+  let at = { x: 0, y: 0 }
+
+  const apply = () => {
+    queued = false
+    const svg = frame.querySelector('svg')
+    if (!svg) return
+    const shift = (selector, amount) => {
+      const layer = svg.querySelector(selector)
+      if (layer) layer.style.transform = `translate(${(at.x * amount).toFixed(1)}px, ${(at.y * amount * 0.4).toFixed(1)}px)`
+    }
+    shift('.rs-stars', -6)
+    shift('.rs-far', -16)
+    shift('.rs-mid', -30)
+  }
+
+  frame.addEventListener('mousemove', (event) => {
+    const box = frame.getBoundingClientRect()
+    at = {
+      x: (event.clientX - box.left) / box.width - 0.5,
+      y: (event.clientY - box.top) / box.height - 0.5,
+    }
+    // One update per frame however fast the pointer moves.
+    if (!queued) { queued = true; requestAnimationFrame(apply) }
+  })
+
+  // Settle back when the pointer leaves, rather than freezing mid-lean.
+  frame.addEventListener('mouseleave', () => { at = { x: 0, y: 0 }; apply() })
+}
+
 function wireCity() {
   for (const plot of el('cityArt').querySelectorAll('[data-building]')) {
     const id = plot.getAttribute('data-building')
@@ -223,7 +264,11 @@ async function refreshBuilding() {
   el('goalGo').textContent = building.working ? 'Working…' : 'Send'
   el('goalText').disabled = building.working
 
-  badge('badgeWork', inHand, 'quiet')
+  // A badge counts what its tab actually contains, or it is a small lie you
+  // notice the moment you click it. `inHand` is the narrower figure — queued
+  // and working — and stays on the vitals pill beside the headcount, where it
+  // is labelled.
+  badge('badgeWork', building.open.length, 'quiet')
   badge('badgeDesk', waiting)
 
   paintCutaway(building)
@@ -945,4 +990,5 @@ if (desktop) {
   button.onclick = () => { if (!button.disabled) desktop.restartToUpdate() }
 }
 
+wireParallax()
 goHome()
