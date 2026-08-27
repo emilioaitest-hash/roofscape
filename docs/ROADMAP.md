@@ -48,9 +48,21 @@ its work.
 
 *Done so far: the daemon, and a dashboard it serves. Break ground, hire, put a
 goal, approve or refuse, move somebody to another model, search the archives and
-send the curator down — all from the page, none of it needing the CLI. The art
-comes from the same renderer the terminal uses, so the two cannot drift.
-Outstanding: the installer and its signing.*
+send the curator down — all from the page, none of it needing the CLI.*
+
+*The skyline is now the home screen rather than a panel on it: drawn, one
+building per company, at their true relative heights, with the form following
+headcount and the materials, windows, crown and roof clutter derived from the
+building's id — so a dozen companies of the same size are a dozen different
+buildings. Clicking one goes inside it, where the staff are drawn as what they
+are: a cutaway, one floor each, manager on top, lobby at street level, archives
+below ground.*
+
+*The art is still one design, said in two alphabets — box characters for the
+terminal, SVG for the browser — so neither renderer can invent a building the
+other has never heard of. See decision 0013.*
+
+*Outstanding: the installer and its signing.*
 
 ## The lobby  ✅ done
 Not a numbered milestone — it was reserved in the architecture from the start and
@@ -58,6 +70,16 @@ kept being deferred. The concierge sees every building, reads any archive, and
 hands work to whichever building's job it is. It holds nothing that can change
 anything, because somebody who can see everything should be able to alter very
 little. In the terminal as `roofscape ask`, and on the dashboard.
+
+## The mailroom  ✅ done
+Also not a numbered milestone. The bus was specified in the architecture from the
+first commit and written into the schema — and never read: `post()` wrote rows,
+nothing ever handed an agent its inbox, and `ask_colleague` told agents they
+would get an answer that could not come. Now the post is delivered, bounded and
+pulled rather than pushed; the owner is a correspondent in it rather than a
+floor; and a building's mailroom can be carried to a Discord channel, so it
+reaches you when you are not at the machine and you can answer from a phone.
+See decision 0014 and `docs/DISCORD.md`.
 
 ## M4 — Always on
 Docker image, VPS deployment, worker registration with capability tags so
