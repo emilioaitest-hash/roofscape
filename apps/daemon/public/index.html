@@ -237,6 +237,13 @@
     </div>
     <p class="field-note dim" id="dPlacesNote">Save a token first, then this fills itself in.</p>
 
+    <label>Who may type <code>!goal</code>
+      <input type="text" id="dAuthors" autocomplete="off" placeholder="Discord user ids, comma separated">
+      <span class="field-note dim">Starting a goal spends your token budget and gives a coder a shell in
+        your workspace, so being in the channel is not enough. Empty means nobody — type
+        <code>!goal</code> once and the bot will tell you your own id.</span>
+    </label>
+
     <label class="check">
       <input type="checkbox" id="dMirrorAll">
       <span>Mirror the whole mailroom, not only what involves you.

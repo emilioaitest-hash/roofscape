@@ -65,11 +65,19 @@ repo that has kept none, and the popular ones carry optional native accelerators
 file.
 
 **What Discord cannot do.** Nothing that arrives from a channel is an
-instruction. It becomes a message from the owner in the building's own post, and
-the manager reads it the next time it is set to work — the same path as typing
-into the mailroom. The single exception is a line beginning `!goal`, which starts
-a goal and says so. That is explicit on purpose: somebody chatting in a channel
-must not be able to spend money by accident.
+instruction. It becomes a message in the building's own post, labelled as
+relayed and with the name of whoever typed it, and the manager reads it the next
+time it is set to work — the same path as typing into the mailroom. The single
+exception is a line beginning `!goal`, which starts a goal and says so.
+
+`!goal` is gated on a named list of Discord user ids, and the list is empty until
+somebody fills it in. Explicitness was the first draft of this and it was not
+enough: it defends against spending money by *accident*, and a channel is a room
+other people can be in. Starting a goal reaches `pursueGoal`, and a coder holds
+`shell`, `write_file` and `edit_file` in the owner's workspace — so the real
+question is not whether the request was deliberate but whose it was. Presence in
+a channel is not authority. Refusing tells you your own id, so allowing yourself
+is one paste.
 
 Mirroring outward is off for internal post by default. Most of what a building
 says to itself is machinery, and a phone that buzzes for every `task` message is
@@ -85,9 +93,12 @@ it is written, and by tests that assert null survives the round trip.
 *A polled mirror.* Outward mirroring polls every four seconds rather than hooking
 `post()`, because a message is written by whichever process happens to be running
 an agent and there is no callback to hang it on without threading one through the
-whole runtime. It is one indexed query per wired building and it cannot miss
-anything, including post written while the bridge was disconnected. It is still a
-poll.
+whole runtime. A cursor on the rowid walks the post in the order it was written,
+a bounded batch per tick, so nothing is skipped and a backlog is carried out over
+several ticks. The first draft used a timestamp and a limit, which did both
+things wrong: it took the *newest* rows in the window and skipped the rest for
+good, and `now()` is millisecond-resolution, so a reply could overtake the
+question it answered. It is still a poll.
 
 *A privileged intent.* Reading channel messages needs MESSAGE CONTENT, which
 Discord gates behind a switch in the developer portal. Somebody setting this up

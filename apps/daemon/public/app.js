@@ -648,6 +648,7 @@ async function openBridge() {
   el('dToken').value = ''
   el('dTokenNote').textContent = bridge?.token ? `Currently ${bridge.token}. Leave blank to keep it.` : 'Not set yet.'
   el('dMirrorAll').checked = Boolean(bridge?.mirrorAll)
+  el('dAuthors').value = (bridge?.allowedAuthors ?? []).join(', ')
   el('bridgeDialog').showModal()
   await loadPlaces()
 }
@@ -697,7 +698,11 @@ el('dUnwire').onclick = async () => {
 el('bridgeForm').onsubmit = async (event) => {
   event.preventDefault()
   const typed = el('dToken').value.trim()
-  const body = { mirrorAll: el('dMirrorAll').checked, enabled: true }
+  const body = {
+    mirrorAll: el('dMirrorAll').checked,
+    enabled: true,
+    allowedAuthors: el('dAuthors').value.split(/[\s,]+/).filter(Boolean),
+  }
   if (typed) {
     // "env:NAME" keeps the secret out of the database, the same way a provider
     // credential can.

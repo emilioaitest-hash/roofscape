@@ -642,6 +642,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
         guild: config.guild,
         mirrorAll: config.mirrorAll,
         enabled: config.enabled,
+        allowedAuthors: config.allowedAuthors,
         wired: Object.entries(config.channels).map(([building, channel]) => ({
           building, channel, buildingName: names.get(building) ?? building,
         })),
@@ -656,6 +657,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
     const input = await ctx.body<{
       token?: string | null; tokenKind?: 'literal' | 'env' | 'none'
       guild?: string | null; mirrorAll?: boolean; enabled?: boolean
+      allowedAuthors?: string[]
       wire?: { building: string; channel: string | null }
     }>()
 
@@ -668,6 +670,14 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       if (input.guild !== undefined) patch.guild = input.guild
       if (input.mirrorAll !== undefined) patch.mirrorAll = input.mirrorAll
       if (input.enabled !== undefined) patch.enabled = input.enabled
+      if (input.allowedAuthors !== undefined) {
+        // Discord snowflakes are digits. Anything else is a typo or a username
+        // somebody pasted by mistake, and silently keeping it would leave a
+        // list that looks populated and authorises nobody.
+        patch.allowedAuthors = input.allowedAuthors
+          .map((id) => String(id).trim())
+          .filter((id) => /^\d{5,}$/.test(id))
+      }
 
       if (input.wire) {
         const building = buildingOr404(sky, input.wire.building)

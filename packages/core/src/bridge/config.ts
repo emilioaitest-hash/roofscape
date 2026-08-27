@@ -28,6 +28,16 @@ export interface BridgeConfig {
    */
   mirrorAll: boolean
   enabled: boolean
+  /**
+   * Discord user ids allowed to set a building working with `!goal`.
+   *
+   * Empty means nobody, and that is the default. A channel is a room other
+   * people can be in: starting a goal spends the owner's token budget and hands
+   * a coder a shell in the owner's workspace, so it needs somebody named rather
+   * than merely somebody present. Ordinary messages are not gated — they are
+   * post, and post from a stranger is still just post.
+   */
+  allowedAuthors: readonly string[]
 }
 
 const KEY = {
@@ -37,6 +47,7 @@ const KEY = {
   channels: 'discord.channels',
   mirrorAll: 'discord.mirrorAll',
   enabled: 'discord.enabled',
+  allowedAuthors: 'discord.allowedAuthors',
 } as const
 
 export function readBridgeConfig(sky: SkylineStore): BridgeConfig {
@@ -55,6 +66,16 @@ export function readBridgeConfig(sky: SkylineStore): BridgeConfig {
     channels = {}
   }
 
+  let allowedAuthors: string[] = []
+  try {
+    const parsed = JSON.parse(sky.setting(KEY.allowedAuthors) ?? '[]') as unknown
+    // Unreadable means nobody, not everybody. This list is the only thing
+    // standing between a channel and the owner's token budget.
+    if (Array.isArray(parsed)) allowedAuthors = parsed.filter((id): id is string => typeof id === 'string')
+  } catch {
+    allowedAuthors = []
+  }
+
   return {
     token,
     tokenKind: kind,
@@ -63,6 +84,7 @@ export function readBridgeConfig(sky: SkylineStore): BridgeConfig {
     channels,
     mirrorAll: sky.setting(KEY.mirrorAll) === 'true',
     enabled: sky.setting(KEY.enabled) !== 'false',
+    allowedAuthors,
   }
 }
 
@@ -73,6 +95,7 @@ export interface BridgePatch {
   channels?: Record<string, string>
   mirrorAll?: boolean
   enabled?: boolean
+  allowedAuthors?: readonly string[]
 }
 
 export function writeBridgeConfig(sky: SkylineStore, patch: BridgePatch): BridgeConfig {
@@ -80,12 +103,21 @@ export function writeBridgeConfig(sky: SkylineStore, patch: BridgePatch): Bridge
     sky.setSetting(KEY.token, patch.token ?? '')
     sky.setSetting(KEY.tokenKind, patch.token ? (patch.tokenKind ?? 'literal') : 'none')
   } else if (patch.tokenKind !== undefined) {
-    sky.setSetting(KEY.tokenKind, patch.tokenKind)
+    // Changing the kind on its own used to leave the stored secret in place and
+    // start reading it as the *name* of an environment variable — which
+    // `describeToken` then printed in full, straight back to a screen. There is
+    // no reading of a literal that makes sense as a variable name, so the value
+    // goes with the kind and has to be given again.
+    sky.setSetting(KEY.token, '')
+    sky.setSetting(KEY.tokenKind, 'none')
   }
   if (patch.guild !== undefined) sky.setSetting(KEY.guild, patch.guild ?? '')
   if (patch.channels !== undefined) sky.setSetting(KEY.channels, JSON.stringify(patch.channels))
   if (patch.mirrorAll !== undefined) sky.setSetting(KEY.mirrorAll, String(patch.mirrorAll))
   if (patch.enabled !== undefined) sky.setSetting(KEY.enabled, String(patch.enabled))
+  if (patch.allowedAuthors !== undefined) {
+    sky.setSetting(KEY.allowedAuthors, JSON.stringify([...new Set(patch.allowedAuthors)].filter(Boolean)))
+  }
   return readBridgeConfig(sky)
 }
 

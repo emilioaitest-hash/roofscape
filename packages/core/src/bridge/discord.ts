@@ -88,6 +88,8 @@ export class DiscordBridge {
    * abandons itself if that is no longer current.
    */
   private generation = 0
+  /** What Discord calls this bot, remembered across a resume. */
+  private botName: string | null = null
 
   constructor(private readonly options: DiscordOptions) {}
 
@@ -98,11 +100,14 @@ export class DiscordBridge {
   start(): void {
     this.stopped = false
     this.attempts = 0
-    void this.connect()
+    void this.connect(++this.generation)
   }
 
   stop(): void {
     this.stopped = true
+    // Anything still in flight belongs to a generation that is now past, and
+    // will close itself the moment it notices.
+    this.generation += 1
     this.clearTimers()
     // 1000 rather than an abort: a clean close tells Discord the session is
     // finished, so it does not hold a slot open waiting for us to resume.
@@ -145,8 +150,8 @@ export class DiscordBridge {
     this.retry = null
   }
 
-  private async connect(): Promise<void> {
-    if (this.stopped) return
+  private async connect(era: number): Promise<void> {
+    if (this.stopped || era !== this.generation) return
     this.announce({ state: this.attempts > 0 ? 'retrying' : 'connecting' })
 
     let url = this.resumeUrl
@@ -156,14 +161,25 @@ export class DiscordBridge {
       url = found
     }
 
+    // Asking Discord where to connect is a network round trip, and `stop()` may
+    // have happened during it. Without this the socket below was created after
+    // the bridge was already shut down, stored nowhere anything could reach,
+    // and left identified with the bot token — heartbeating forever and still
+    // delivering every message to a handler that could not be detached.
+    if (this.stopped || era !== this.generation) return
+
     try {
       const socket = new WebSocket(`${url}?v=10&encoding=json`)
       this.socket = socket
-      socket.addEventListener('message', (event) => this.receive(String(event.data)))
-      socket.addEventListener('close', (event) => this.dropped(`closed (${event.code})`))
-      socket.addEventListener('error', () => this.dropped('the connection failed'))
+      // Each listener checks the era too: a socket from a past generation can
+      // still fire a close event, and it must not reschedule anything.
+      socket.addEventListener('message', (event) => {
+        if (era === this.generation) this.receive(String(event.data))
+      })
+      socket.addEventListener('close', (event) => this.dropped(`closed (${event.code})`, era))
+      socket.addEventListener('error', () => this.dropped('the connection failed', era))
     } catch (error) {
-      this.dropped((error as Error).message)
+      this.dropped((error as Error).message, era)
     }
   }
 
@@ -200,8 +216,17 @@ export class DiscordBridge {
     }
   }
 
-  private dropped(why: string): void {
-    if (this.stopped) return
+  /**
+   * One connection has failed. Wait, then try again.
+   *
+   * A failing WebSocket fires `error` and then `close`, and both used to land
+   * here — so a single failure counted twice and the backoff doubled ahead of
+   * itself. Retiring the generation makes the second call a no-op, which also
+   * stops a socket from a past era rescheduling anything.
+   */
+  private dropped(why: string, era = this.generation): void {
+    if (this.stopped || era !== this.generation) return
+    this.generation += 1
     this.clearTimers()
     this.socket = null
     this.attempts += 1
@@ -209,7 +234,8 @@ export class DiscordBridge {
     // that a bridge fixes itself while somebody makes coffee.
     const wait = Math.min(60_000, 1000 * 2 ** Math.min(this.attempts, 6))
     this.announce({ state: 'retrying', detail: `${why}. Trying again in ${Math.round(wait / 1000)}s.` })
-    this.retry = setTimeout(() => void this.connect(), wait)
+    const next = this.generation
+    this.retry = setTimeout(() => void this.connect(next), wait)
     this.retry.unref?.()
   }
 
@@ -295,16 +321,25 @@ export class DiscordBridge {
       this.sessionId = ready.session_id ?? null
       this.resumeUrl = ready.resume_gateway_url ?? null
       this.attempts = 0
+      if (ready.user?.username) this.botName = ready.user.username
       this.announce({
         state: 'live',
-        ...(ready.user?.username ? { as: ready.user.username } : {}),
+        ...(this.botName ? { as: this.botName } : {}),
         since: new Date().toISOString(),
       })
       return
     }
     if (type === 'RESUMED') {
       this.attempts = 0
-      this.announce({ ...this.state, state: 'live' })
+      // Kept on the instance rather than read back off `this.state`: `connect()`
+      // has already replaced that with a bare `{state:'retrying'}` by the time a
+      // resume lands, so spreading it dropped the bot's name and the connected
+      // time until the next full READY.
+      this.announce({
+        state: 'live',
+        ...(this.botName ? { as: this.botName } : {}),
+        since: new Date().toISOString(),
+      })
       return
     }
     if (type !== 'MESSAGE_CREATE') return
@@ -322,12 +357,20 @@ export class DiscordBridge {
     if (!message.channel_id || !message.content) return
     if (!this.options.listensTo().includes(message.channel_id)) return
 
-    void this.options.onMessage({
-      channelId: message.channel_id,
-      author: message.author?.global_name ?? message.author?.username ?? 'somebody on Discord',
-      authorId: message.author?.id ?? '',
-      content: message.content,
-      messageId: message.id ?? '',
+    // Caught here rather than left to float. The handler opens databases and
+    // may start work; an unhandled rejection takes the whole daemon down under
+    // Node's default, and losing the service because one message could not be
+    // filed is a worse failure than losing the message.
+    void Promise.resolve(
+      this.options.onMessage({
+        channelId: message.channel_id,
+        author: message.author?.global_name ?? message.author?.username ?? 'somebody on Discord',
+        authorId: message.author?.id ?? '',
+        content: message.content,
+        messageId: message.id ?? '',
+      }),
+    ).catch((error: unknown) => {
+      this.announce({ ...this.state, detail: `A message could not be filed: ${(error as Error).message}` })
     })
   }
 }

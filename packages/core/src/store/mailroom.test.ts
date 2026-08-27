@@ -180,3 +180,94 @@ test('the owner’s inbox is the post addressed to nobody in particular', () => 
     cleanup()
   }
 })
+
+test('a relay can walk the post without skipping any of it', () => {
+  // The mirror used to ask `conversation({since, limit})`, which returns the
+  // *newest* rows in the window — so a building writing faster than one batch
+  // per tick had its oldest post skipped, and the cursor then advanced past it.
+  const { dir, cleanup } = scratch()
+  try {
+    const { store, manager, coder } = staffed(dir)
+    for (let i = 0; i < 30; i++) {
+      store.post({ kind: 'note', from: manager.id, to: coder.id, body: `line ${i}` })
+    }
+
+    // A batch deliberately smaller than the backlog, as a busy building gives.
+    let cursor = 0
+    const carried: string[] = []
+    for (let tick = 0; tick < 20; tick++) {
+      const batch = store.messagesSince(cursor, 7)
+      if (batch.messages.length === 0) break
+      carried.push(...batch.messages.map((m) => m.body))
+      cursor = batch.seq
+    }
+
+    assert.equal(carried.length, 30, 'post went missing between ticks')
+    assert.deepEqual(
+      carried,
+      Array.from({ length: 30 }, (_, i) => `line ${i}`),
+      'post came out in an order nobody wrote it in',
+    )
+    assert.equal(store.messagesSince(cursor, 40).messages.length, 0, 'and nothing was carried twice')
+    store.close()
+  } finally {
+    cleanup()
+  }
+})
+
+test('two messages written in the same millisecond both survive the relay', () => {
+  // `now()` is millisecond-resolution and a building writes faster than that.
+  // A timestamp cursor lost the second of a pair for good and could not order
+  // the pair it kept — so a reply could reach Discord before its question.
+  const { dir, cleanup } = scratch()
+  try {
+    const { store, manager, coder } = staffed(dir)
+    const start = store.latestSeq()
+
+    const first = store.post({ kind: 'question', from: manager.id, to: coder.id, body: 'twin A' })
+    const second = store.post({ kind: 'answer', from: coder.id, to: manager.id, body: 'twin B' })
+    assert.equal(first.createdAt, second.createdAt, 'the pair this guards against shares a timestamp')
+
+    const carried = store.messagesSince(start, 40).messages.map((m) => m.body)
+    assert.deepEqual(carried, ['twin A', 'twin B'])
+    store.close()
+  } finally {
+    cleanup()
+  }
+})
+
+test('a relay starting up does not replay everything ever said', () => {
+  const { dir, cleanup } = scratch()
+  try {
+    const { store, manager, coder } = staffed(dir)
+    for (let i = 0; i < 5; i++) {
+      store.post({ kind: 'note', from: manager.id, to: coder.id, body: `old ${i}` })
+    }
+
+    const from = store.latestSeq()
+    store.post({ kind: 'note', from: manager.id, to: coder.id, body: 'new' })
+
+    const carried = store.messagesSince(from, 40).messages.map((m) => m.body)
+    assert.deepEqual(carried, ['new'], 'switching the bridge on replayed the archive into a channel')
+    store.close()
+  } finally {
+    cleanup()
+  }
+})
+
+test('asking for the owner’s side of the correspondence does not return everybody’s', () => {
+  // Null is the owner, and a truthiness check on the filter dropped it —
+  // silently widening "what did they and I say" to "everything anyone said".
+  const { dir, cleanup } = scratch()
+  try {
+    const { store, manager, coder } = staffed(dir)
+    store.post({ kind: 'note', from: manager.id, to: coder.id, body: 'not yours' })
+    store.post({ kind: 'status', from: manager.id, to: OWNER, body: 'yours' })
+
+    const mine = store.conversation({ withFloor: OWNER }).map((m) => m.body)
+    assert.deepEqual(mine, ['yours'])
+    store.close()
+  } finally {
+    cleanup()
+  }
+})

@@ -52,6 +52,17 @@ The bot answers with what it did — that it started, or why it could not.
 Ordinary lines never start work, on purpose: somebody chatting in a channel
 should not be able to spend money by accident.
 
+**`!goal` needs you on a list, and the list starts empty.** Starting a goal
+spends your token budget and gives a coder a shell in your workspace, and a
+channel is a room other people can be in — so being present in it is not
+authority. Type `!goal` once and the bot will tell you your own Discord id; paste
+that into **Who may type `!goal`** in the same dialog. Ordinary messages are not
+gated: they are post, and post from a stranger is still just post.
+
+Everything relayed in is labelled as relayed, with the name of whoever typed it,
+because a message arriving through your channel is not necessarily a message from
+you.
+
 **Mirror the whole mailroom** is a setting, and it is off. On, you also see the
 building talking to itself — every assignment, every question between floors.
 That is interesting once and noisy afterwards.
@@ -68,6 +79,10 @@ permission there, not just in the server.
 
 **Nothing goes out.** The bot needs Send Messages *in that channel*. A
 channel-level permission override beats the server-level one.
+
+**"Not started — nobody is allowed to set work going from this channel yet."**
+Working as intended. The bot has told you your Discord id in the same message;
+add it under **Who may type `!goal`**.
 
 **It says "retrying".** Ordinary. The connection drops when the machine sleeps
 and comes back on its own, with a backoff up to a minute. Nothing is lost while

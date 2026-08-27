@@ -269,10 +269,16 @@ export class BuildingStore {
    * first out of the database so the limit takes the recent end, then reversed,
    * because a conversation reads downward.
    */
-  conversation(options: { limit?: number; withFloor?: FloorId; since?: string } = {}): Message[] {
+  conversation(options: { limit?: number; withFloor?: Correspondent; since?: string } = {}): Message[] {
     const where: string[] = []
     const params: unknown[] = []
-    if (options.withFloor) {
+    // Two traps, both about the owner being null. A truthiness check dropped
+    // their filter entirely and quietly widened "what did they and I say" to
+    // "everything anybody said" — and `sender = ?` bound to null matches
+    // nothing at all in SQL, so the honest form is `is null`.
+    if (options.withFloor === null) {
+      where.push('(sender is null or recipient is null)')
+    } else if (options.withFloor !== undefined) {
       where.push('(sender = ? or recipient = ?)')
       params.push(options.withFloor, options.withFloor)
     }
@@ -286,6 +292,40 @@ export class BuildingStore {
     return allAs<MessageRow>(this.db.prepare(sql), ...params)
       .map((r) => hydrateMessage(r, this.buildingId))
       .reverse()
+  }
+
+  /**
+   * Post written after a point, in the order it was written — for anything
+   * relaying the mailroom somewhere else.
+   *
+   * `conversation({since})` is the wrong tool for that and was being used for
+   * it: it takes the *newest* rows in the window, so a building writing more
+   * than the limit between two polls had its oldest messages skipped, and the
+   * relay's cursor then advanced past them for good.
+   *
+   * The cursor is the rowid, not the timestamp. `now()` has millisecond
+   * resolution and a building writes faster than that, so a timestamp both
+   * loses messages that share one and cannot order the ones it keeps — a reply
+   * would arrive before the question it answered. The rowid is assigned in
+   * insertion order and nothing here is ever deleted.
+   */
+  messagesSince(afterSeq: number, limit = 50): { messages: Message[]; seq: number } {
+    const rows = allAs<MessageRow & { seq: number }>(
+      this.db.prepare('select *, rowid as seq from messages where rowid > ? order by rowid limit ?'),
+      afterSeq,
+      limit,
+    )
+    return {
+      messages: rows.map((r) => hydrateMessage(r, this.buildingId)),
+      seq: rows.length > 0 ? rows[rows.length - 1]!.seq : afterSeq,
+    }
+  }
+
+  /** Where the post has got to, for a relay that should not replay history. */
+  latestSeq(): number {
+    return getAs<{ seq: number | null }>(
+      this.db.prepare('select max(rowid) as seq from messages'),
+    )?.seq ?? 0
   }
 
   /** One message and everything written in reply to it, however deep. */
