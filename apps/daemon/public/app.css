@@ -287,6 +287,23 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .tallies-round:hover .tallies-open { opacity: 1; }
 .tallies-round[aria-expanded="true"] .tallies-open { opacity: 1; }
 
+/**
+ * Buildings taken off the skyline.
+ *
+ * A line under the street rather than a shape on it: a boarded-up building is
+ * not somewhere you can go, and drawing a greyed-out one would be a building
+ * you can see and cannot walk into. It is here so that boarding one up is
+ * plainly reversible — the way back is on the same screen as the loss.
+ */
+.boarded {
+  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+}
+.boarded-one {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  font-size: var(--t-small); color: var(--ink-4);
+}
+
 /* ── the round ──────────────────────────────────────────────────────────── */
 
 /**
@@ -566,10 +583,21 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 .empty-floors { padding: var(--s6) var(--s5); text-align: center; color: var(--ink-4); font-size: var(--t-small); }
 
+.side { position: sticky; top: calc(var(--topbar-h) + var(--s4)); display: grid; gap: var(--s3); }
+
 .hire-box {
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s4); position: sticky; top: calc(var(--topbar-h) + var(--s4));
+  background: var(--panel); padding: var(--s4);
 }
+
+/**
+ * The last thing you do to a building, so it is the quietest control on the
+ * screen: no fill, no colour, and nothing happens until a dialog has said what
+ * it does. It is a shutter rather than a demolition, which is why it is allowed
+ * to be here at all — the alarm colour would be a lie about what it costs.
+ */
+.board-up { justify-self: start; color: var(--ink-4); border-color: var(--line); }
+.board-up:hover:not(:disabled) { color: var(--ink-2); border-color: var(--line-strong); background: transparent; }
 .hire-box p { font-size: var(--t-micro); margin: var(--s1) 0 var(--s3); }
 .hire-box form { display: grid; gap: var(--s2); }
 .hire-box select, .hire-box input { width: 100%; }
@@ -650,11 +678,16 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 .feed-box { border-top: 1px solid var(--line); padding-top: var(--s4); }
 .feed { font-family: var(--mono); font-size: var(--t-micro); max-height: 260px; overflow-y: auto; }
-.feed div { padding: 2px 0; color: var(--ink-3); }
+/* A time, then what happened. Two columns rather than one string, so the second
+   wraps under itself instead of under the clock. */
+.feed div { display: flex; gap: var(--s2); padding: 2px 0; color: var(--ink-3); }
+.feed-when { color: var(--ink-4); flex: none; }
 .feed .hi { color: var(--ink); }
 .feed .lit { color: var(--lamp); }
 .feed .bad { color: var(--alarm); }
-.feed .tool { color: var(--ink-4); padding-left: var(--s3); }
+/* What a floor did on the way, indented under the line it belongs to. */
+.feed .tool { color: var(--ink-4); }
+.feed .tool .feed-when { visibility: hidden; }
 
 /* ── the mailroom ───────────────────────────────────────────────────────── */
 

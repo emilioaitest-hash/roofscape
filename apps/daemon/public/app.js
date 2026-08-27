@@ -77,13 +77,27 @@ const oops = (error) => {
   say(`— ${error.message}`, 'bad')
 }
 
-function say(text, kind = '') {
+/** The wall clock, to the minute. A log with no times is a log you cannot place. */
+function clock(iso) {
+  const at = new Date(iso ?? Date.now())
+  if (Number.isNaN(at.getTime())) return ''
+  return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+}
+
+function say(text, kind = '', at) {
   const feed = el('log')
   if (!feed) return
-  const div = document.createElement('div')
-  div.className = kind
-  div.textContent = text
-  feed.prepend(div)
+  const line = document.createElement('div')
+  line.className = kind
+
+  const when = document.createElement('span')
+  when.className = 'feed-when'
+  when.textContent = clock(at)
+  const what = document.createElement('span')
+  what.textContent = text
+  line.append(when, what)
+
+  feed.prepend(line)
   while (feed.childElementCount > 200) feed.lastElementChild.remove()
 }
 
@@ -157,8 +171,9 @@ const knownForms = new Map()
 
 async function refreshCity() {
   const box = cityBox()
-  const { svg, buildings } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
+  const { svg, buildings, boardedUp } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
   skyline = buildings
+  paintBoarded(boardedUp)
 
   const grew = []
   for (const building of buildings) {
@@ -1204,6 +1219,64 @@ document.addEventListener('keydown', (event) => {
 el('openKeys').onclick = () => el('keysDialog').showModal()
 el('firstGround').onclick = breakGround
 
+/**
+ * Boarding a building up, and bringing one back.
+ *
+ * Breaking ground was one typo away from a building nobody could remove. The
+ * store has been able to mothball one since the first commit and nothing ever
+ * called it — so a skyline could only ever grow, and the only way out was to
+ * edit the database by hand.
+ *
+ * It is not a delete and the dialog says so: one column changes, and the
+ * floors, archives, post and workspace are untouched. That is also why it can
+ * be undone from the street with one press.
+ */
+el('boardUp').onclick = () => {
+  if (!current) return
+  el('boardWho').textContent = `Board up ${current.name}?`
+  el('boardDialog').showModal()
+}
+el('boardCancel').onclick = () => el('boardDialog').close()
+el('boardForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const building = current
+  if (!building) return
+  el('boardDialog').close()
+  try {
+    await post(`/api/buildings/${encodeURIComponent(building.id)}/close`)
+    toast(`${building.name} is boarded up. Nothing was deleted.`)
+    drawnShape = ''
+    goHome()
+  } catch (error) { oops(error) }
+}
+
+/** What has been taken off the skyline, and the way back. */
+function paintBoarded(boardedUp = []) {
+  const box = el('boarded')
+  box.classList.toggle('hidden', boardedUp.length === 0)
+  if (boardedUp.length === 0) return
+  box.innerHTML =
+    `<span class="cut-role">Boarded up</span>` +
+    boardedUp
+      .map(
+        (building) => `<span class="boarded-one">${esc(building.name)}
+          <button type="button" class="ghost" data-reopen="${esc(building.id)}">Bring it back</button>
+        </span>`,
+      )
+      .join('')
+
+  for (const button of box.querySelectorAll('[data-reopen]')) {
+    button.onclick = async () => {
+      try {
+        const { building } = await post(`/api/buildings/${encodeURIComponent(button.getAttribute('data-reopen'))}/reopen`)
+        toast(`${building.name} is back on the skyline.`, 'good')
+        drawnShape = ''
+        await refreshCity()
+      } catch (error) { oops(error) }
+    }
+  }
+}
+
 function selectTab(name) {
   view.tab = name
   // Opening your post is reading it.
@@ -1357,9 +1430,47 @@ api('/api/roles')
 
 // ── the live stream ────────────────────────────────────────────────────────
 
-const LOUD = new Set(['goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated', 'decided'])
+const LOUD = new Set([
+  'goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated', 'decided',
+  'boarded-up', 'reopened',
+])
 /** Events that mean the drawing itself is now wrong, not just the numbers. */
 const RESHAPES = new Set(['hired', 'ground-broken'])
+
+/**
+ * What each event is called on screen.
+ *
+ * The feed printed the event's own name — `goal-started`, `ground-broken`,
+ * `schedule-skipped` — which are identifiers this code passes between its own
+ * functions, and the only place in the product where one reached a person. A
+ * log is still a log: short, monospace, newest first. That is not a reason to
+ * show somebody a hyphenated symbol and expect them to read it as a word.
+ *
+ * A kind with no entry here keeps its own name rather than disappearing, so
+ * one added tomorrow is visible and merely ugly.
+ */
+const SAID = {
+  'goal-started': 'Set to work',
+  'goal-finished': 'Came back',
+  'goal-failed': 'Stopped',
+  'ground-broken': 'Broke ground',
+  hired: 'Taken on',
+  curated: 'Archives tidied',
+  scheduled: 'Standing order set',
+  'schedule-due': 'Standing order due',
+  'schedule-skipped': 'Standing order skipped',
+  'bridge-changed': 'Discord',
+  bridge: 'Discord',
+  asked: 'Asked',
+  answered: 'Answered',
+  looking: 'Reading',
+  progress: 'Working',
+  posted: 'Post',
+  step: 'Step',
+}
+
+/** Events whose detail is already a whole sentence. A prefix would say it twice. */
+const SPEAKS_FOR_ITSELF = new Set(['recovered', 'decided', 'ticker-failed', 'boarded-up', 'reopened'])
 
 const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
 stream.onopen = () => { el('live').className = 'live on'; el('live').lastElementChild.textContent = 'live' }
@@ -1368,9 +1479,17 @@ stream.onerror = () => { el('live').className = 'live off'; el('live').lastEleme
 stream.onmessage = (message) => {
   const event = JSON.parse(message.data)
 
-  if (event.kind === 'tool') say(`  · ${event.detail}`, 'tool')
-  else say(`${event.kind}${event.detail ? `: ${event.detail}` : ''}`,
-           event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit')
+  const tone = event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit'
+  if (event.kind === 'tool') {
+    // A tool call is a thing a floor did on the way, so it is indented under
+    // the line it belongs to rather than given a heading of its own.
+    say(`· ${event.detail}`, 'tool', event.at)
+  } else if (SPEAKS_FOR_ITSELF.has(event.kind)) {
+    say(event.detail ?? SAID[event.kind] ?? event.kind, tone, event.at)
+  } else {
+    const said = SAID[event.kind] ?? event.kind
+    say(event.detail ? `${said} — ${event.detail}` : said, tone, event.at)
+  }
 
   // The concierge says what it is opening as it goes.
   if (event.kind === 'looking' && el('askGo').disabled) {

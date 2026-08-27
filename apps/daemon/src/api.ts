@@ -221,6 +221,13 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       return {
         svg: citySvg(views, { ...asked('width', 6000), ...asked('height', 3000) }),
         buildings: views,
+        // What has been boarded up, so the page can offer it back. Not drawn:
+        // a boarded-up building is off the skyline, and half-drawing it there
+        // would be a building you can see and cannot go into.
+        boardedUp: sky
+          .list({ includeClosed: true })
+          .filter((building) => building.closedAt)
+          .map((building) => ({ id: building.id as string, name: building.name, closedAt: building.closedAt })),
         owner: sky.owner(),
       }
     } finally {
@@ -379,6 +386,61 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       } finally {
         store.close()
       }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * Board a building up, and bring one back.
+   *
+   * Breaking ground has always been one typo away from a building you are
+   * stuck with: the store could mothball one from the first commit, it was
+   * tested, and nothing anywhere called it. Neither the dashboard nor the CLI
+   * could take a building off the skyline.
+   *
+   * It is not a delete and must never become one. The floors, the archives and
+   * the workspace are untouched — this sets one column, and `reopen` clears it.
+   * Deleting a building means deleting its folder, which is the owner's to do
+   * with `rm`, where they can see what they are removing.
+   */
+  router.post('/api/buildings/:id/close', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      // Not while somebody is on a goal for it. The run holds the building's
+      // stores open and would go on writing into a building that had left the
+      // skyline, finishing into somewhere nobody can see.
+      if (working.has(building.id)) {
+        throw new HttpError(409, `${building.name} is working on something. Let it come back first.`)
+      }
+      if (building.closedAt) return { building, alreadyClosed: true }
+
+      sky.boardUp(building.id)
+      events.emit({
+        kind: 'boarded-up',
+        building: building.id,
+        detail: `${building.name} is boarded up. Nothing was deleted.`,
+      })
+      return { building: { ...building, closedAt: new Date().toISOString() } }
+    } finally {
+      sky.close()
+    }
+  })
+
+  router.post('/api/buildings/:id/reopen', (ctx) => {
+    const sky = skyline()
+    try {
+      // `get` finds a boarded-up building; `list` deliberately does not, which
+      // is the whole point of the column. So this route has to go by id.
+      const building = buildingOr404(sky, ctx.params.id!)
+      sky.reopen(building.id)
+      events.emit({
+        kind: 'reopened',
+        building: building.id,
+        detail: `${building.name} is back on the skyline.`,
+      })
+      return { building: { ...building, closedAt: null } }
     } finally {
       sky.close()
     }

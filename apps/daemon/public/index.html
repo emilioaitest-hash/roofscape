@@ -72,6 +72,9 @@
            person the dockets are addressed to has all of them. -->
       <div class="round hidden" id="round"></div>
       <div class="answer hidden" id="answer"></div>
+      <!-- Buildings taken off the skyline. Listed rather than drawn: a
+           half-drawn building is one you can see and cannot walk into. -->
+      <div class="boarded hidden" id="boarded"></div>
     </div>
   </section>
 
@@ -118,15 +121,22 @@
     <div class="panes">
       <div class="pane" data-pane="floors">
         <div class="cutaway" id="cutaway"></div>
-        <aside class="hire-box">
-          <h3>Take somebody on</h3>
-          <p class="dim">Every hire is a floor. The building grows.</p>
-          <form id="hireForm">
-            <select id="hRole"></select>
-            <input type="text" id="hName" autocomplete="off" placeholder="Name (optional)">
-            <button class="solid" type="submit">Hire</button>
-          </form>
-          <div class="next-form dim" id="nextForm"></div>
+        <aside class="side">
+          <div class="hire-box">
+            <h3>Take somebody on</h3>
+            <p class="dim">Every hire is a floor. The building grows.</p>
+            <form id="hireForm">
+              <select id="hRole"></select>
+              <input type="text" id="hName" autocomplete="off" placeholder="Name (optional)">
+              <button class="solid" type="submit">Hire</button>
+            </form>
+            <div class="next-form dim" id="nextForm"></div>
+          </div>
+
+          <!-- Breaking ground was one typo away from a building you were stuck
+               with. Quiet, and at the bottom, because it is the last thing you
+               do to a building rather than something to reach for. -->
+          <button class="ghost board-up" id="boardUp" type="button">Board it up</button>
         </aside>
       </div>
 
@@ -324,6 +334,23 @@
       <button type="button" class="ghost" id="dUnwire">Disconnect</button>
       <button type="button" class="ghost" id="dCancel">Never mind</button>
       <button type="submit" class="solid">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Boarding a building up. It is not a delete, and the dialog's job is to say
+     so plainly enough that nobody hesitates over it or regrets it. -->
+<dialog id="boardDialog">
+  <form method="dialog" id="boardForm">
+    <h2 id="boardWho">Board it up</h2>
+    <p class="dim">It comes off the skyline. Its staff, its archives, its post and everything in
+      its workspace stay exactly where they are — this is a shutter, not a demolition.</p>
+    <p class="ground-then">You can bring it back from the street, and it returns with all of it.
+      To be rid of a building for good, delete its folder yourself, where you can see what you
+      are removing.</p>
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="boardCancel">Never mind</button>
+      <button type="submit" class="solid">Board it up</button>
     </div>
   </form>
 </dialog>

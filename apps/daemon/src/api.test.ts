@@ -237,6 +237,54 @@ test('a task left mid-flight by a crash goes back in the queue', async () => {
   } finally { h.cleanup() }
 })
 
+test('a building can be taken off the skyline and put back on it', async () => {
+  /*
+   * The store could mothball a building from the first commit and nothing ever
+   * called it, so breaking ground was one typo away from a building nobody
+   * could remove without editing the database. It must stay a shutter and
+   * never become a delete: what comes back has to be the same building.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Mistake', workspace: h.workspace })
+    await h.call('POST', '/api/buildings', { name: 'Keeper', workspace: h.workspace })
+    await h.call('POST', '/api/buildings/mistake/hire', { role: 'reviewer' })
+
+    const before = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number }>
+      boardedUp: Array<{ id: string }>
+    }
+    assert.deepEqual(before.buildings.map((b) => b.id).sort(), ['keeper', 'mistake'])
+    assert.deepEqual(before.boardedUp, [], 'nothing was boarded up yet')
+    const staffed = before.buildings.find((b) => b.id === 'mistake')!.headcount
+
+    await h.call('POST', '/api/buildings/mistake/close')
+    const after = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string }>
+      boardedUp: Array<{ id: string; name: string }>
+    }
+    assert.deepEqual(after.buildings.map((b) => b.id), ['keeper'], 'it is off the skyline')
+    assert.deepEqual(after.boardedUp.map((b) => b.name), ['Mistake'], 'and offered back')
+
+    // Its own screen still resolves while it is boarded up, so a link or a
+    // bookmark to it is not a 404 for something that still exists.
+    const inside = (await h.call('GET', '/api/buildings/mistake')) as { headcount: number }
+    assert.equal(inside.headcount, staffed, 'boarding it up cost it a floor')
+
+    await h.call('POST', '/api/buildings/mistake/reopen')
+    const back = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number }>
+      boardedUp: Array<{ id: string }>
+    }
+    assert.deepEqual(back.buildings.map((b) => b.id).sort(), ['keeper', 'mistake'])
+    assert.deepEqual(back.boardedUp, [])
+    assert.equal(
+      back.buildings.find((b) => b.id === 'mistake')!.headcount, staffed,
+      'it came back a different building from the one that left',
+    )
+  } finally { h.cleanup() }
+})
+
 test('what a crash left behind is reported in a sentence, for one task and for several', async () => {
   /*
    * Pluralising the noun and leaving the verb alone produced "1 task were
