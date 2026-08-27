@@ -237,6 +237,49 @@ test('a task left mid-flight by a crash goes back in the queue', async () => {
   } finally { h.cleanup() }
 })
 
+test('what a crash left behind is reported in a sentence, for one task and for several', async () => {
+  /*
+   * Pluralising the noun and leaving the verb alone produced "1 task were
+   * interrupted and have been put back in the queue" — which is the very first
+   * line anybody reads after their machine died mid-job, and the only place in
+   * the product where the count is nearly always one.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    const { BuildingStore } = await import('@app/core')
+    const { recoverInterruptedWork } = await import('./recover.js')
+
+    const said: string[] = []
+    const listener = { emit: (event: { detail?: string }) => { if (event.detail) said.push(event.detail) } }
+
+    const strand = async (name: string, howMany: number) => {
+      await h.call('POST', '/api/buildings', { name, workspace: h.workspace })
+      const view = (await h.call('GET', `/api/buildings/${name.toLowerCase()}`)) as {
+        staff: Array<{ id: string; role: string }>
+      }
+      const manager = view.staff.find((f) => f.role === 'manager')!
+      const coder = view.staff.find((f) => f.role === 'coder')!
+      const store = BuildingStore.open(name.toLowerCase() as never)
+      for (let i = 0; i < howMany; i++) {
+        const task = store.assign({ by: manager.id as never, to: coder.id as never, goal: `Job ${i}` })
+        store.setTaskState(task.id, 'working')
+      }
+      store.close()
+    }
+
+    await strand('Alone', 1)
+    recoverInterruptedWork(listener as never)
+    assert.equal(said.length, 1)
+    assert.match(said[0]!, /^One task was interrupted and is back in the queue\.$/)
+
+    said.length = 0
+    await strand('Several', 3)
+    recoverInterruptedWork(listener as never)
+    assert.equal(said.length, 1)
+    assert.match(said[0]!, /^3 tasks were interrupted and are back in the queue\.$/)
+  } finally { h.cleanup() }
+})
+
 test('a building at its monthly ceiling is refused, not told the work started', async () => {
   const h = harness({ withProvider: true })
   try {

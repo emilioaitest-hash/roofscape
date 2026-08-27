@@ -982,3 +982,49 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   width: 6px; height: 6px; border-radius: 2px;
   border: 1px solid var(--line-strong);
 }
+/* Filled once it came back held: green is "it held" and means nothing else. */
+.task-accept.met li { color: var(--ink-2); }
+.task-accept.met li::before { background: var(--good); border-color: var(--good); }
+
+/* ── what came back ─────────────────────────────────────────────────────── */
+
+/**
+ * A settled task opens onto its result.
+ *
+ * The summary is the only place a floor says, in its own words, what it did —
+ * and it was written, stored, and never shown. A <details> keeps the column
+ * scannable and puts it one press away, from a mouse or a keyboard.
+ */
+.settled { border-bottom: 1px solid var(--line); }
+.settled:last-child { border-bottom: 0; }
+.settled > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: var(--s3) 0; cursor: pointer; list-style: none;
+  transition: color var(--fast);
+}
+.settled > summary::-webkit-details-marker { display: none; }
+.settled > summary:hover .row-title { color: var(--lamp); }
+.settled[open] > summary .row-title { color: var(--ink); }
+
+/* The caret is on the title rather than in a gutter: it belongs to the line it
+   opens, and a gutter would be a column of arrows down an otherwise clean list. */
+.settled > summary .row-title::before {
+  content: "›"; display: inline-block; width: 12px;
+  color: var(--ink-4); font-weight: 400;
+  transition: transform var(--fast);
+}
+.settled[open] > summary .row-title::before { transform: rotate(90deg); }
+
+.settled-what {
+  padding: 0 0 var(--s4) var(--s3);
+  border-left: 2px solid var(--line);
+  margin: 0 0 var(--s2) 5px;
+  animation: rise .2s var(--ease) both;
+}
+.settled-said {
+  font-size: var(--t-small); color: var(--ink-2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.settled-what .task-accept { border-top-color: var(--line); }
+.settled-left { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s3); }
+.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); }

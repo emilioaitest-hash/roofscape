@@ -25,10 +25,16 @@ export function recoverInterruptedWork(events?: EventStream): number {
           recovered += 1
         }
         if (stranded.length > 0) {
+          // The whole clause has to agree, not just the noun: pluralising
+          // "task" alone produced "1 task were interrupted and have been put
+          // back", which is the first thing anybody reads after a crash.
           events?.emit({
             kind: 'recovered',
             building: building.id,
-            detail: `${stranded.length} task${stranded.length === 1 ? '' : 's'} were interrupted and have been put back in the queue.`,
+            detail:
+              stranded.length === 1
+                ? 'One task was interrupted and is back in the queue.'
+                : `${stranded.length} tasks were interrupted and are back in the queue.`,
           })
         }
       } finally {

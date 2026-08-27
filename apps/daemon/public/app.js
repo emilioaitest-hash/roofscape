@@ -521,19 +521,63 @@ function paintWork(building) {
     : `<p class="empty">Nothing on. Put a goal to it and the manager will break it into work.</p>`
 
   el('workDone').innerHTML = building.recent.length
-    ? building.recent
-        .map((task) => {
-          const branch = (task.result?.artifacts ?? []).find((a) => a.startsWith('branch:'))
-          return `<div class="row"><div class="row-main">
-            <div class="row-title">${esc(clip(task.goal, 62))}</div>
-            <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.settledAt)}</div>
-          </div><div class="row-right">
-            ${branch ? `<span class="pill branch">${esc(branch.slice(7))}</span>` : ''}
-            <span class="pill ${task.state === 'done' ? 'good' : 'bad'}">${esc(task.state)}</span>
-          </div></div>`
-        })
-        .join('')
-    : '<p class="empty">Nothing finished yet.</p>'
+    ? building.recent.map((task) => settled(building, task)).join('')
+    : `<p class="empty">Nothing has come back yet. What does lands here — what it did, what it
+       produced, and what it cost.</p>`
+}
+
+/**
+ * A task that has come back, and what came back with it.
+ *
+ * Every result carries a summary in the worker's own words, whatever it
+ * produced, and what it spent — and none of it was on any screen. The row said
+ * a branch name and a state, which tells you that something happened and
+ * nothing whatever about what.
+ *
+ * Shut by default, because the column is for scanning and this is one press
+ * away. A <details> rather than a click handler: it opens from the keyboard,
+ * announces itself, and survives a redraw without anything remembering it.
+ *
+ * The acceptance criteria come back too, and they are the same list the task
+ * carried out with it — ticked, this time, because that is the question the
+ * reviewer was answering.
+ */
+function settled(building, task) {
+  const artifacts = task.result?.artifacts ?? []
+  const branch = artifacts.find((line) => line.startsWith('branch:'))
+  const held = task.state === 'done'
+  const rest = artifacts.filter((line) => line !== branch)
+
+  return `<details class="settled">
+    <summary>
+      <div class="row-main">
+        <div class="row-title">${esc(clip(task.goal, 62))}</div>
+        <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.settledAt)}</div>
+      </div>
+      <div class="row-right">
+        ${branch ? `<span class="pill branch">${esc(branch.slice(7))}</span>` : ''}
+        <span class="pill ${held ? 'good' : 'bad'}">${esc(task.state)}</span>
+      </div>
+    </summary>
+    <div class="settled-what">
+      ${task.result?.summary
+        ? `<p class="settled-said">${esc(task.result.summary)}</p>`
+        : `<p class="empty">It settled without saying anything.</p>`}
+      ${(task.acceptance ?? []).length
+        ? `<ul class="task-accept ${held ? 'met' : ''}">${task.acceptance
+            .map((line) => `<li>${esc(clip(line, 160))}</li>`)
+            .join('')}</ul>`
+        : ''}
+      ${rest.length || task.result?.tokensSpent
+        ? `<div class="settled-left">
+             ${rest.map((line) => `<span class="pill">${esc(clip(line.replace(/^\w+:/, ''), 52))}</span>`).join('')}
+             ${task.result?.tokensSpent
+               ? `<span class="settled-cost">${tokens(task.result.tokensSpent)} tokens</span>`
+               : ''}
+           </div>`
+        : ''}
+    </div>
+  </details>`
 }
 
 const who = (building, floorId) =>
