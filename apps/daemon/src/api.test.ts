@@ -277,3 +277,87 @@ test('a building made from the page is founded exactly as one made from the CLI'
     )
   } finally { h.cleanup() }
 })
+
+test('a workspace that is not there is refused, whichever door you came in', async () => {
+  // `roofscape ground` has always checked this. The page did not, so a typo
+  // made a building that looked right and failed the first time it was given
+  // work — with an error about the work rather than about the path.
+  const h = harness({ withProvider: true })
+  try {
+    await assert.rejects(
+      () => h.call('POST', '/api/buildings', { name: 'Typo', workspace: join(h.workspace, 'nope') }),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError)
+        assert.equal(error.status, 400)
+        assert.match(error.message, /No such directory/)
+        return true
+      },
+    )
+    const after = (await h.call('GET', '/api/skyline')) as { buildings: unknown[] }
+    assert.equal(after.buildings.length, 0, 'nothing was created on the way to failing')
+  } finally { h.cleanup() }
+})
+
+test('breaking ground with no provider says why nobody was taken on', async () => {
+  // A building founded empty is a dead end, and the reason is never in the
+  // building — it is that there was nothing to post a manager to.
+  const h = harness()
+  try {
+    const building = (await h.call('POST', '/api/buildings', {
+      name: 'Unstaffed', workspace: h.workspace,
+    })) as { warning?: string }
+    assert.match(String(building.warning), /no model provider/i)
+
+    const detail = (await h.call('GET', '/api/buildings/unstaffed')) as { staff: unknown[] }
+    assert.equal(detail.staff.length, 0, 'and it really is empty')
+  } finally { h.cleanup() }
+})
+
+test('the owner can write to a floor, and it lands in that floor’s inbox', async () => {
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Post', workspace: h.workspace })
+    const detail = (await h.call('GET', '/api/buildings/post')) as { staff: Array<{ id: string; role: string }> }
+    const manager = detail.staff.find((f) => f.role === 'manager')!
+
+    await h.call('POST', '/api/buildings/post/mail', { to: manager.id, body: 'Chase the invoices.' })
+
+    const mail = (await h.call('GET', '/api/buildings/post/mail')) as {
+      messages: Array<{ body: string; from: { id: string | null }; to: { id: string | null } }>
+      unread: { byFloor: Record<string, number>; owner: number }
+    }
+    assert.equal(mail.messages.length, 1)
+    assert.equal(mail.messages[0]!.body, 'Chase the invoices.')
+    assert.equal(mail.messages[0]!.from.id, null, 'the owner is not a floor')
+    assert.equal(mail.messages[0]!.to.id, manager.id)
+    assert.equal(mail.unread.byFloor[manager.id], 1, 'it is unread post, not just a record')
+    assert.equal(mail.unread.owner, 0, 'and it is not in the owner’s own inbox')
+  } finally { h.cleanup() }
+})
+
+test('an empty message is refused rather than filed', async () => {
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Quiet', workspace: h.workspace })
+    await assert.rejects(
+      () => h.call('POST', '/api/buildings/quiet/mail', { body: '   ' }),
+      (error: unknown) => {
+        assert.ok(error instanceof HttpError)
+        assert.equal(error.status, 400)
+        return true
+      },
+    )
+  } finally { h.cleanup() }
+})
+
+test('the bridge never hands back the token it was given', async () => {
+  const h = harness()
+  try {
+    await h.call('POST', '/api/bridge', { token: 'a-secret-bot-token-abcd', tokenKind: 'literal' })
+    const bridge = (await h.call('GET', '/api/bridge')) as { token: string; connected: boolean }
+
+    assert.equal(bridge.connected, true, 'it knows a token is set')
+    assert.ok(!bridge.token.includes('a-secret-bot-token'), 'but does not repeat it')
+    assert.match(bridge.token, /abcd$/, 'only enough of it to recognise which one')
+  } finally { h.cleanup() }
+})
