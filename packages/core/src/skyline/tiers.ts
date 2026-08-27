@@ -17,6 +17,7 @@ export type TierName =
   | 'cast-iron block'
   | 'skyscraper'
   | 'landmark'
+  | 'arcology'
 
 export interface Tier {
   name: TierName
@@ -81,10 +82,18 @@ const TIERS: readonly Tier[] = [
     ground: [' \u2502\u25aa\u25aa \u25af\u25af \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
     window: '\u25aa',
   },
+  {
+    name: 'arcology',
+    blurb: 'Sky bridges and a halo. It stopped being a building a while ago.',
+    cap: ['     \u25b2     ', '   \u2571\u2500\u2500\u2500\u2572   ', ' \u25dc\u2500\u2524\u25aa\u25aa\u25aa\u251c\u2500\u25dd ', ' \u2570\u2500\u2500\u2534\u2500\u2534\u2500\u2500\u256f '],
+    storey: ' \u255e\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2561 ',
+    ground: [' \u255e\u25aa\u25aa \u25af \u25aa\u25aa\u2561 ', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b '],
+    window: '\u25aa',
+  },
 ]
 
 /** Lower bound of each tier, by headcount. */
-const THRESHOLDS = [1, 2, 3, 5, 8, 12] as const
+const THRESHOLDS = [1, 2, 3, 5, 8, 12, 18] as const
 
 export function tierOf(headcount: number): Tier {
   const n = Math.max(1, Math.floor(headcount))
