@@ -70,9 +70,18 @@ const esc = (text: string): string =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!,
   )
 
-/** Ids have to be unique on a page holding a whole city of gradients. */
+/**
+ * Ids have to be unique on a page holding a whole city of gradients.
+ *
+ * Keyed on the building's own id rather than on its seed. The seed is a 32-bit
+ * hash, so two buildings in one document can share one — `b2cir` as a shack and
+ * `b9kc` as a single storey both hash to 3015174655 — and the first definition
+ * of a duplicated gradient id wins, which paints one building in the other's
+ * walls while its trim and roof stay its own. Building ids are unique by
+ * construction, so this cannot collide at all.
+ */
 const idOf = (design: BuildingDesign, part: string): string =>
-  `rs-${part}-${design.seed.toString(36)}`
+  `rs-${part}-${design.id.replace(/[^A-Za-z0-9_-]/g, '_')}-${design.seed.toString(36)}`
 
 // ---- one building ---------------------------------------------------------
 
@@ -127,7 +136,6 @@ const topWidth = (design: BuildingDesign): number => widthAtFloor(design, design
 export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): string {
   const { palette } = design
   const wallId = idOf(design, 'wall')
-  const glowId = idOf(design, 'glow')
   const blocks = massing(design)
   const lean = design.lean
   const transform = lean === 0 ? '' : ` transform="rotate(${round(lean)} 0 0)"`
@@ -139,10 +147,6 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
     <stop offset="0" stop-color="${palette.wall}"/>
     <stop offset="0.72" stop-color="${palette.wall}"/>
     <stop offset="1" stop-color="${palette.shade}"/>
-  </linearGradient>
-  <linearGradient id="${glowId}" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#ffd9884d"/>
-    <stop offset="1" stop-color="#ffd98800"/>
   </linearGradient>
 </defs>`)
 
@@ -333,7 +337,12 @@ function windowsSvg(design: BuildingDesign, state: BuildingState): string {
     const lit = atWork || ambient.has(bay.index)
     // Three warmths, so a lit facade is a row of separate rooms rather than one
     // painted band. Chosen by position, so it never changes under a re-render.
-    const warmth = lit ? ` rs-t${(bay.index * 7 + bay.floor * 3) % 3}` : ''
+    //
+    // The bay within its storey, offset by the storey — the previous form,
+    // `(index * 7 + floor * 3) % 3`, reduced to `index % 3` (7 ≡ 1 and 3 ≡ 0,
+    // mod 3), and with a bay count divisible by three that made every column
+    // one fixed tone all the way up. This actually staggers.
+    const warmth = lit ? ` rs-t${(bay.index + bay.floor * 2) % 3}` : ''
     const classes = `rs-w${lit ? ' rs-on' : ''}${atWork ? ' rs-busy' : ''}${warmth}`
     out.push(windowShape(design, bay, classes))
   }
@@ -524,11 +533,19 @@ function facadeSign(design: BuildingDesign, top: number, width: number): string 
 </g>`
 }
 
-/** Up to three initials, for a name no shopfront could carry. */
+/**
+ * Up to three initials, for a name no shopfront could carry.
+ *
+ * Counted in characters rather than in UTF-16 units. Slicing a string by index
+ * cuts an emoji in half, and half a surrogate pair is not a character: it
+ * survives JSON intact and reaches the browser as a tofu box, or gets replaced
+ * with U+FFFD the moment the SVG is written to a file. A building called 🏢
+ * should get 🏢 on its sign or nothing.
+ */
 function initials(name: string): string {
   const words = name.split(/[\s\-_]+/).filter(Boolean)
-  if (words.length === 1) return words[0]!.slice(0, 3).toUpperCase()
-  return words.slice(0, 3).map((w) => w[0]!.toUpperCase()).join('')
+  if (words.length === 1) return [...words[0]!].slice(0, 3).join('').toUpperCase()
+  return words.slice(0, 3).map((w) => [...w][0]!.toUpperCase()).join('')
 }
 
 function awning(design: BuildingDesign, left: number, right: number, y: number): string {
@@ -956,10 +973,27 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
    * alone and scrolls, because shrinking thirty buildings to fit one screen is
    * how you get thirty buildings nobody can tell apart.
    */
-  const aspect = options.width && options.height ? options.width / options.height : 0
-  const width = Math.max(options.minWidth ?? 760, natural, aspect > 0 ? Math.round(height * aspect) : 0)
+  // Either dimension on its own is still worth honouring: the option's whole
+  // purpose is to stop a drawing being marooned in a frame, and a caller who
+  // gives only a width was previously ignored entirely. A width with no height
+  // is taken as a floor to reach rather than a ratio to match.
+  const asked = (value: number | undefined): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+  const wantWidth = asked(options.width)
+  const wantHeight = asked(options.height)
+  const aspect = wantWidth > 0 && wantHeight > 0 ? wantWidth / wantHeight : 0
+
+  // Bounded. `stars()` and `backdrop()` loop across the whole canvas, so a
+  // width that runs away is megabytes of markup and, if the aspect were ever
+  // non-finite, a loop that never ends. Wide enough for a very large skyline on
+  // a very wide screen; nowhere near enough to hang anything.
+  const MAX_WIDTH = 40_000
+  const width = Math.min(
+    MAX_WIDTH,
+    Math.max(options.minWidth ?? 760, natural, wantWidth, aspect > 0 ? Math.round(height * aspect) : 0),
+  )
   // Spare width becomes pavement on both sides rather than a hole on one.
-  const spare = (width - natural) / 2
+  const spare = Math.max(0, (width - natural) / 2)
 
   const parts: string[] = []
   parts.push(
@@ -1192,8 +1226,14 @@ function nameplate(design: BuildingDesign, state: BuildingState, slot: number, n
 </g>`
 }
 
-const clip = (text: string, max: number): string =>
-  text.length > Math.max(4, max) ? `${text.slice(0, Math.max(3, max - 1))}…` : text
+/** Truncate by characters, not by UTF-16 units — see `initials` for why. */
+const clip = (text: string, max: number): string => {
+  const characters = [...text]
+  const limit = Math.max(4, max)
+  return characters.length > limit
+    ? `${characters.slice(0, Math.max(3, max - 1)).join('')}…`
+    : text
+}
 
 /** Where the next one goes. An empty skyline should still look like a place. */
 function emptyLot(x: number, groundY: number, width: number, zoom = 1): string {

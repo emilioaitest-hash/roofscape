@@ -299,7 +299,11 @@ export interface DesignInput {
  * somebody changes the building, opening the app twice does not.
  */
 export function designFor(input: DesignInput): BuildingDesign {
-  const headcount = Math.max(0, Math.floor(input.headcount))
+  // `Math.max` passes NaN straight through, and a NaN headcount reaches the
+  // drawing as `viewBox="0 0 NaN NaN"` — a document that renders as nothing at
+  // all rather than as an error anybody could act on.
+  const asked = Math.floor(input.headcount)
+  const headcount = Number.isFinite(asked) ? Math.max(0, asked) : 0
   const floors = Math.max(1, headcount)
   const tier = tierOf(floors)
   const look = LOOKS[tier.name]

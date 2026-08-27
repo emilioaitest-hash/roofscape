@@ -76,6 +76,18 @@ export class DiscordBridge {
   private acked = true
   private stopped = false
   private state: BridgeStatus = { state: 'off' }
+  /**
+   * Bumped by `stop()` and by every fresh `connect()`.
+   *
+   * `connect()` awaits a network call before it has a socket to close, so a
+   * `stop()` during that window closed nothing and the connection that arrived
+   * afterwards was unreachable — still identified with the bot token, still
+   * heartbeating, still delivering messages to a handler nobody could detach.
+   * Two of those meant every Discord line was filed twice and every `!goal`
+   * started two paid runs. Each attempt carries the generation it began in and
+   * abandons itself if that is no longer current.
+   */
+  private generation = 0
 
   constructor(private readonly options: DiscordOptions) {}
 
