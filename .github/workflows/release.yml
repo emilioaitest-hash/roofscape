@@ -1,0 +1,77 @@
+name: Release
+
+# Merging to main is what publishes an update. The running app finds it within
+# half an hour, downloads it quietly, and offers a restart. See decision 0012.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # The patch number is the run number, so every merge to main is a version
+      # the updater can see as newer. Major and minor stay a deliberate edit to
+      # apps/desktop/package.json.
+      - name: Set the version
+        shell: bash
+        run: |
+          BASE=$(node -p "require('./apps/desktop/package.json').version.split('.').slice(0,2).join('.')")
+          echo "VERSION=$BASE.${{ github.run_number }}" >> "$GITHUB_ENV"
+
+      - name: Stamp it
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = 'apps/desktop/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
+
+      - name: Build and publish the app
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Nothing is signed yet. Without this, electron-builder looks for a
+          # certificate on macOS, finds none, and fails the build rather than
+          # producing the unsigned app we actually want for now.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run dist -w @app/desktop -- --publish always
+
+  # electron-builder uploads into a draft, and a draft is invisible to the
+  # updater. Undrafting once — after every platform has uploaded — is what stops
+  # an update going out with only some of its downloads attached.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASE=$(node -p "require('./apps/desktop/package.json').version.split('.').slice(0,2).join('.')")
+          TAG="v$BASE.${{ github.run_number }}"
+          gh release edit "$TAG" --draft=false --latest

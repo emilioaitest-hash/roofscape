@@ -39,7 +39,7 @@ mac:
 win:
   target:
     - target: nsis
-      arch: [x64, arm64]
+      arch: [x64]
 
 nsis:
   oneClick: false
@@ -49,4 +49,4 @@ linux:
   category: Development
   target:
     - target: AppImage
-      arch: [x64, arm64]
+      arch: [x64]
