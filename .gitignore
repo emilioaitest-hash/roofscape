@@ -16,7 +16,8 @@ data/
 # os
 .DS_Store
 
-# tauri
-apps/desktop/src-tauri/target/
+# desktop app build output
+apps/desktop/release/
+apps/desktop/public/
 .scratch/
 .tsbuildinfo

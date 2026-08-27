@@ -39,8 +39,9 @@ approve, and the new floor picks up work.
 
 ## M3 — The skyline you can see  ◐ in progress
 Web dashboard: the skyline, each building at its true height, org charts, live
-tasks, the approval desk, the archives browser, spend. Tauri desktop shell around
-it. Installer.
+tasks, the approval desk, the archives browser, spend. Electron desktop shell
+around it, which carries the daemon with it. Installer, and a page to download
+it from.
 
 **Done when** someone who cannot code can break ground on a building and follow
 its work.
@@ -49,7 +50,7 @@ its work.
 goal, approve or refuse, move somebody to another model, search the archives and
 send the curator down — all from the page, none of it needing the CLI. The art
 comes from the same renderer the terminal uses, so the two cannot drift.
-Outstanding: the Tauri shell around it, and an installer.*
+Outstanding: the installer and its signing.*
 
 ## The lobby  ✅ done
 Not a numbered milestone — it was reserved in the architecture from the start and

@@ -12,7 +12,9 @@
   "scripts": {
     "build": "tsc --build && node scripts/postbuild.mjs",
     "typecheck": "tsc --build --force",
-    "test": "npm run build && node scripts/test.mjs"
+    "test": "npm run build && node scripts/test.mjs",
+    "desktop": "npm run build && npm run start -w @app/desktop",
+    "desktop:dist": "npm run build && npm run dist -w @app/desktop"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

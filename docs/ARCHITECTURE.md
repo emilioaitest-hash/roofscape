@@ -14,7 +14,7 @@ or not any window is open.
 Everything a person touches is a **client** talking to that daemon over HTTP and
 a websocket: the desktop app, the web dashboard, the CLI, and later a phone.
 
-    ┌─ desktop app (Tauri) ─┐
+    ┌─ desktop app (Electron)┐
     ├─ web dashboard ───────┤──▶ HTTP + WS ──▶ ┌──────────────┐
     ├─ CLI ─────────────────┤                  │  the daemon  │──▶ SQLite
     └─ phone (PWA, later) ──┘                  └──────────────┘──▶ providers
@@ -203,9 +203,10 @@ to Postgres without touching agent code.
 
 ## 8. Stack
 
-TypeScript throughout: Node 24 on the daemon, React in the dashboard, a Tauri
+TypeScript throughout: Node 24 on the daemon, React in the dashboard, an Electron
 shell for the desktop app, npm workspaces for the monorepo. One language for the
-service, the interface and the app.
+service, the interface and the app — and, since Electron's bundled Node *is*
+Node 24, one runtime for the app as well. See decision 0012.
 
 ## 9. Deliberately not here yet
 

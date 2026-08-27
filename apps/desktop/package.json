@@ -1,0 +1,26 @@
+{
+  "name": "@app/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Every project a building. Every hire a floor.",
+  "author": {
+    "name": "Emilio F."
+  },
+  "homepage": "https://roofscape.ai",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "pack": "node build.mjs && electron-builder --dir",
+    "dist": "node build.mjs && electron-builder"
+  },
+  "dependencies": {
+    "@app/core": "*",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "44.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.0"
+  }
+}
