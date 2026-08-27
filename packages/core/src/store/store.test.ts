@@ -39,15 +39,22 @@ test('breaking ground twice on the same name does not collide', () => {
   } finally { cleanup() }
 })
 
-test('a mothballed building leaves the skyline but not the record', () => {
+test('a boarded-up building leaves the skyline but not the record', () => {
   const { dir, cleanup } = scratch()
   try {
     const sky = openSkyline(dir)
     const b = sky.breakGround({ name: 'Old', charter: 'x', workspace: '/tmp/o' })
-    sky.close_building(b.id)
+    sky.boardUp(b.id)
     assert.equal(sky.list().length, 0)
     assert.equal(sky.list({ includeClosed: true }).length, 1)
     assert.ok(sky.get(b.id)?.closedAt)
+
+    // And it comes back, or boarding one up is a deletion wearing a gentler
+    // word. Everything under it — floors, archives, workspace — was never
+    // touched, so there is nothing to restore but the row.
+    sky.reopen(b.id)
+    assert.equal(sky.list().length, 1, 'a boarded-up building could not be brought back')
+    assert.equal(sky.get(b.id)?.closedAt, null)
     sky.close()
   } finally { cleanup() }
 })

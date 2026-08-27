@@ -40,8 +40,14 @@ Two rules: `--line` for an ordinary division, `--line-strong` for the edge of a
 control. There is no third weight, and there are no shadows on anything that is
 not floating — a card does not need to hover, it needs an edge.
 
-`--scrim` sits outside the four. It is the dark behind an open dialog, which is
-not a depth in the stack so much as the absence of one.
+Two grounds sit outside the four, and both are outside for the same reason: the
+four are heights above a page, and these are not heights.
+
+- `--scrim` is the dark behind an open dialog — not a depth in the stack so much
+  as the absence of one.
+- `--under` is below ground: the archives, and the curator who works down there.
+  Darker than `--sunk`, because earth is darker than shadow. It was a bare hex
+  repeated in three places until it earned a name.
 
 ## Ink
 

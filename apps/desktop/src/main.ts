@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { join, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
+import { homedir } from 'node:os'
 // Reached through their own modules rather than the package entry on purpose:
 // the entry re-exports the whole of core, which would pull the provider SDKs
 // into a process that wants a product name and a directory. Core declares no
@@ -39,8 +40,49 @@ const daemonEntry = (): string => unpacked(join(__dirname, 'daemon.mjs'))
  */
 app.setName(BRAND.name)
 
-// Two windows would be two daemons racing for one lock, and the loser exits.
-if (!app.requestSingleInstanceLock()) app.quit()
+/**
+ * An installation is a data directory, and that has to include this window.
+ *
+ * `ROOFSCAPE_HOME` is documented as the way to run a second copy without
+ * disturbing the first — it is how the tests get their own, and how you look at
+ * a first run without losing what you have. For the daemon it always was. For
+ * the app it never was: Electron keys `userData` off the app's *name*, and the
+ * single-instance lock is keyed off `userData`, so both copies wanted the same
+ * one however many data directories you gave them.
+ *
+ * So the second one lost the lock and quit, and the honest advice — "give it
+ * somewhere of its own" — did not work when followed. Electron's own state
+ * lives under the data directory now, which makes the lock per-installation and
+ * makes one variable mean one whole thing.
+ */
+const HOME = process.env.ROOFSCAPE_HOME
+if (HOME) app.setPath('userData', join(resolve(HOME), 'electron'))
+
+/**
+ * Two windows would be two daemons racing for one lock, and the loser exits.
+ *
+ * It used to exit in silence. That is right for the case it was written for —
+ * somebody double-clicking the icon twice, where the copy already running takes
+ * its window to the front and there is nothing to explain. It is wrong for the
+ * other case, and the other case is the one whoever is working on this hits:
+ * with the installed app open, `npm run desktop` built the whole bundle,
+ * printed "Done", exited 0, and opened nothing. Every symptom of a build that
+ * worked, and no window to show for it.
+ */
+if (!app.requestSingleInstanceLock()) {
+  process.stdout.write(
+    `\n${BRAND.name} is already running here, and has brought its window to the front.\n` +
+      `That copy holds ${HOME ?? join(homedir(), BRAND.homeDir)}, so this one stopped rather\n` +
+      `than open a second window onto the same buildings.\n\n` +
+      `To run this build beside it, give it an installation of its own — a data\n` +
+      `directory, and a port, since a fresh directory walks past the lock and\n` +
+      `collides on the port instead:\n\n` +
+      `  ROOFSCAPE_HOME=~/${BRAND.homeDir}-dev ROOFSCAPE_PORT=7788 npm run desktop\n\n`,
+  )
+  // Not `quit()`: that is a request, and the rest of this file goes on running
+  // while it is being considered.
+  app.exit(0)
+}
 
 let window: BrowserWindow | null = null
 let daemon: Daemon | null = null
@@ -148,6 +190,13 @@ ipcMain.on('update:install', () => {
   // The installer replaces this app and does not come back through the quit
   // handler, so the daemon is stopped here or not at all.
   void stopDaemon(daemon?.owned ?? false).then(() => updates?.installNow())
+})
+
+// Where an update cannot install itself — macOS, until these builds carry a
+// real certificate — the offer is the download rather than a restart.
+ipcMain.on('update:download', () => {
+  const url = updates?.downloadUrl()
+  if (url) void shell.openExternal(url)
 })
 
 // Closing the last window ends the app on every platform, macOS included. The

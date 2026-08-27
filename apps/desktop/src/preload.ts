@@ -27,4 +27,8 @@ contextBridge.exposeInMainWorld('roofscape', {
   restartToUpdate(): void {
     ipcRenderer.send('update:install')
   },
+  /** For the platforms where an update cannot install itself. */
+  openDownload(): void {
+    ipcRenderer.send('update:download')
+  },
 })

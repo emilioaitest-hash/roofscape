@@ -178,6 +178,64 @@ test('the canvas is bounded, however strange the frame it is given', () => {
   }
 })
 
+test('the drawing fills the frame it was given, in both directions', () => {
+  /*
+   * An SVG whose ratio does not match its frame is letterboxed by the browser,
+   * and the bars are the page's own background — so the failure looks like a
+   * black stripe above the sky and another below the street rather than like a
+   * bug. Widening with pavement covered a frame that was relatively wider; a
+   * frame that was relatively *taller* had nothing to give, which is the common
+   * case: four shacks on a laptop.
+   */
+  const ratio = (svg: string) => {
+    const box = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)!
+    return Number(box[1]) / Number(box[2])
+  }
+
+  const frames = [
+    { width: 1440, height: 760 }, // a laptop, which is where this was found
+    { width: 1024, height: 900 }, // taller than it is wide, near enough
+    { width: 2560, height: 500 }, // a very wide, very short strip
+  ]
+  const skylines = [
+    [{ id: 'a', name: 'A', headcount: 1 }],
+    [{ id: 'a', name: 'A', headcount: 2 }, { id: 'b', name: 'B', headcount: 3 }],
+    [{ id: 'a', name: 'A', headcount: 9 }, { id: 'b', name: 'B', headcount: 14 }],
+  ]
+
+  for (const frame of frames) {
+    for (const buildings of skylines) {
+      const svg = citySvg(buildings, frame)
+      const want = frame.width / frame.height
+      const got = ratio(svg)
+      // A city too wide for its frame is left alone and scrolls — that is the
+      // documented behaviour, and it does not letterbox. Only the other
+      // direction, where the drawing is too *narrow*, leaves bars.
+      assert.ok(
+        got >= want - 0.02,
+        `${buildings.length} buildings in ${frame.width}×${frame.height} drew at ${got.toFixed(3)}, ` +
+          `narrower than the frame's ${want.toFixed(3)} — that is a letterbox`,
+      )
+    }
+  }
+})
+
+test('sky is what makes up the difference, not stretched buildings', () => {
+  // The fit must not come out of the drawing itself: the buildings stay the
+  // size they were drawn and the street stays where it is. Only the evening
+  // above them grows.
+  const short = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 400 })
+  const tall = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 1000 })
+  const heightOf = (svg: string) => Number(svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1])
+
+  assert.ok(heightOf(tall) > heightOf(short), 'a taller frame did not get a taller canvas')
+
+  // The plot transform carries the scale each building is drawn at. Same in
+  // both, or the fit is being paid for by the buildings.
+  const scaleOf = (svg: string) => svg.match(/class="rs-plot"[^>]*scale\(([\d.]+)\)/)![1]
+  assert.equal(scaleOf(tall), scaleOf(short), 'the buildings were resized to fit the frame')
+})
+
 test('a width on its own is honoured rather than quietly dropped', () => {
   // The option exists to stop a drawing being marooned in its frame. Given one
   // dimension it used to throw both away and behave as though nothing was said.

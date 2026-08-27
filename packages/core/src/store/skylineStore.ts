@@ -107,9 +107,21 @@ export class SkylineStore {
     return allAs<BuildingRow>(this.db.prepare(sql)).map(hydrate)
   }
 
-  /** Mothball a building. Nothing is deleted; its folder stays where it is. */
-  close_building(id: BuildingId): void {
+  /**
+   * Board a building up. Nothing is deleted: its floors, its archives and its
+   * workspace stay exactly where they are, and it comes back with all of them.
+   *
+   * Named for what it does to the building rather than to the row, because
+   * `close()` on this same object shuts the database — and the snake_case it
+   * used to wear was the only one in the codebase.
+   */
+  boardUp(id: BuildingId): void {
     this.db.prepare('update buildings set closed_at = ? where id = ?').run(now(), id)
+  }
+
+  /** Put it back on the skyline, exactly as it was left. */
+  reopen(id: BuildingId): void {
+    this.db.prepare('update buildings set closed_at = null where id = ?').run(id)
   }
 
   setBudget(id: BuildingId, budget: Budget): void {

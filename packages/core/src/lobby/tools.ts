@@ -50,7 +50,10 @@ export function lobbyTools(deps: LobbyDeps): LobbyTool[] {
   return [
     {
       name: 'list_buildings',
-      description: 'Every building, how big it is, and what it is for. Start here.',
+      description:
+        'Every building, how big it is, and what it is for. Start here. `floors` is how tall a ' +
+        'building is and `staff` is how many people are in it; they differ when somebody works ' +
+        'below ground, because the archives are not a storey.',
       shape: {},
       run: async () =>
         withSkyline((sky) => ({
@@ -61,7 +64,13 @@ export function lobbyTools(deps: LobbyDeps): LobbyTool[] {
                 id: building.id,
                 name: building.name,
                 charter: building.charter.slice(0, 300),
-                staff: store.headcount(),
+                // These were one field called `staff`, holding the floor count
+                // — which excludes the curator, because tidying up is not
+                // growth. `look_into` then listed everybody, so the two tools
+                // disagreed about the same building by one, and a concierge
+                // reading both said so and could not tell which was right.
+                floors: store.headcount(),
+                staff: store.staff().length,
                 form: tierOf(Math.max(1, store.headcount())).name,
                 inHand: store.tasks({ state: 'queued' }).length + store.tasks({ state: 'working' }).length,
                 waitingOnOwner: store.pendingApprovals().length,
@@ -79,7 +88,15 @@ export function lobbyTools(deps: LobbyDeps): LobbyTool[] {
       shape: { building: z.string() },
       run: async (input) =>
         withBuilding(input.building as string, (store) => ({
-          staff: store.staff().map((f) => ({ name: f.name, role: f.role, running: describePosting(f.posting) })),
+          floors: store.headcount(),
+          staff: store.staff().map((f) => ({
+            name: f.name,
+            role: f.role,
+            running: describePosting(f.posting),
+            // Says outright why the roster can be longer than the building is
+            // tall, rather than leaving a reader to reconcile two numbers.
+            worksBelowGround: f.role === 'curator',
+          })),
           inHand: store.tasks({ state: 'queued' }).concat(store.tasks({ state: 'working' }))
             .map((t) => ({ goal: t.goal.slice(0, 120), state: t.state })),
           recentlyFinished: store.tasks({ state: 'done' }).slice(-5)

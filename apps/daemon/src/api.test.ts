@@ -237,6 +237,136 @@ test('a task left mid-flight by a crash goes back in the queue', async () => {
   } finally { h.cleanup() }
 })
 
+test('a curator is staff and is not a storey, and nothing says otherwise', async () => {
+  /*
+   * `headcount()` deliberately leaves the curator out: it works in the archives,
+   * below ground, and a building should not appear to grow because it started
+   * tidying up. Every nameplate then called that number "on staff" — so a
+   * six-floor building with a curator in it had seven people and a sign saying
+   * six, and the concierge, given both figures by two different tools, said so
+   * and could not tell which was right.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Tidy', workspace: h.workspace })
+    const before = (await h.call('GET', '/api/buildings/tidy')) as {
+      headcount: number
+      staff: Array<{ role: string }>
+    }
+    assert.equal(before.headcount, before.staff.length, 'no curator yet, so the two agree')
+
+    await h.call('POST', '/api/buildings/tidy/hire', { role: 'curator' })
+    const after = (await h.call('GET', '/api/buildings/tidy')) as {
+      headcount: number
+      staff: Array<{ role: string }>
+    }
+    assert.equal(after.staff.length, before.staff.length + 1, 'the curator was taken on')
+    assert.equal(after.headcount, before.headcount, 'and the building did not grow a storey for it')
+
+    // The drawn nameplate carries the floor count, so it must not be worded as
+    // a number of people — that is the sentence that was wrong.
+    const city = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number; note: string }>
+      svg: string
+    }
+    const drawn = city.buildings.find((b) => b.id === 'tidy')!
+    assert.equal(drawn.headcount, after.headcount)
+    assert.match(drawn.note, /^\d+ floors?$/, `the nameplate reads "${drawn.note}"`)
+    assert.ok(!city.svg.includes('on staff'), 'the drawing still calls its floor count a headcount')
+  } finally { h.cleanup() }
+})
+
+test('a building can be taken off the skyline and put back on it', async () => {
+  /*
+   * The store could mothball a building from the first commit and nothing ever
+   * called it, so breaking ground was one typo away from a building nobody
+   * could remove without editing the database. It must stay a shutter and
+   * never become a delete: what comes back has to be the same building.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Mistake', workspace: h.workspace })
+    await h.call('POST', '/api/buildings', { name: 'Keeper', workspace: h.workspace })
+    await h.call('POST', '/api/buildings/mistake/hire', { role: 'reviewer' })
+
+    const before = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number }>
+      boardedUp: Array<{ id: string }>
+    }
+    assert.deepEqual(before.buildings.map((b) => b.id).sort(), ['keeper', 'mistake'])
+    assert.deepEqual(before.boardedUp, [], 'nothing was boarded up yet')
+    const staffed = before.buildings.find((b) => b.id === 'mistake')!.headcount
+
+    await h.call('POST', '/api/buildings/mistake/close')
+    const after = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string }>
+      boardedUp: Array<{ id: string; name: string }>
+    }
+    assert.deepEqual(after.buildings.map((b) => b.id), ['keeper'], 'it is off the skyline')
+    assert.deepEqual(after.boardedUp.map((b) => b.name), ['Mistake'], 'and offered back')
+
+    // Its own screen still resolves while it is boarded up, so a link or a
+    // bookmark to it is not a 404 for something that still exists.
+    const inside = (await h.call('GET', '/api/buildings/mistake')) as { headcount: number }
+    assert.equal(inside.headcount, staffed, 'boarding it up cost it a floor')
+
+    await h.call('POST', '/api/buildings/mistake/reopen')
+    const back = (await h.call('GET', '/api/skyline/city')) as {
+      buildings: Array<{ id: string; headcount: number }>
+      boardedUp: Array<{ id: string }>
+    }
+    assert.deepEqual(back.buildings.map((b) => b.id).sort(), ['keeper', 'mistake'])
+    assert.deepEqual(back.boardedUp, [])
+    assert.equal(
+      back.buildings.find((b) => b.id === 'mistake')!.headcount, staffed,
+      'it came back a different building from the one that left',
+    )
+  } finally { h.cleanup() }
+})
+
+test('what a crash left behind is reported in a sentence, for one task and for several', async () => {
+  /*
+   * Pluralising the noun and leaving the verb alone produced "1 task were
+   * interrupted and have been put back in the queue" — which is the very first
+   * line anybody reads after their machine died mid-job, and the only place in
+   * the product where the count is nearly always one.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    const { BuildingStore } = await import('@app/core')
+    const { recoverInterruptedWork } = await import('./recover.js')
+
+    const said: string[] = []
+    const listener = { emit: (event: { detail?: string }) => { if (event.detail) said.push(event.detail) } }
+
+    const strand = async (name: string, howMany: number) => {
+      await h.call('POST', '/api/buildings', { name, workspace: h.workspace })
+      const view = (await h.call('GET', `/api/buildings/${name.toLowerCase()}`)) as {
+        staff: Array<{ id: string; role: string }>
+      }
+      const manager = view.staff.find((f) => f.role === 'manager')!
+      const coder = view.staff.find((f) => f.role === 'coder')!
+      const store = BuildingStore.open(name.toLowerCase() as never)
+      for (let i = 0; i < howMany; i++) {
+        const task = store.assign({ by: manager.id as never, to: coder.id as never, goal: `Job ${i}` })
+        store.setTaskState(task.id, 'working')
+      }
+      store.close()
+    }
+
+    await strand('Alone', 1)
+    recoverInterruptedWork(listener as never)
+    assert.equal(said.length, 1)
+    assert.match(said[0]!, /^One task was interrupted and is back in the queue\.$/)
+
+    said.length = 0
+    await strand('Several', 3)
+    recoverInterruptedWork(listener as never)
+    assert.equal(said.length, 1)
+    assert.match(said[0]!, /^3 tasks were interrupted and are back in the queue\.$/)
+  } finally { h.cleanup() }
+})
+
 test('a building at its monthly ceiling is refused, not told the work started', async () => {
   const h = harness({ withProvider: true })
   try {

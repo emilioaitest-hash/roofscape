@@ -1,4 +1,4 @@
-import { renderSkyline, tierOf, nextTierAt, type BuildingView } from '@app/core'
+import { renderSkyline, tierOf, nextTierAt, floorsSaid, type BuildingView } from '@app/core'
 import { openSkyline, openBuilding, findBuilding } from '../context.js'
 import { say, dim, bold, colour, heading, amber } from '../ui.js'
 
@@ -33,7 +33,7 @@ export function showSkyline(): void {
       working: busy,
       // What is stalled matters more than what is busy: work waiting on you is
       // work not happening, and it should not have to be gone looking for.
-      note: pending > 0 ? `${pending} for you` : open > 0 ? `${open} in hand` : `${headcount} on staff`,
+      note: pending > 0 ? `${pending} for you` : open > 0 ? `${open} in hand` : floorsSaid(headcount),
     }
   })
 

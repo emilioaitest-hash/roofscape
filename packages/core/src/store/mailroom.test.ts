@@ -222,11 +222,25 @@ test('two messages written in the same millisecond both survive the relay', () =
   const { dir, cleanup } = scratch()
   try {
     const { store, manager, coder } = staffed(dir)
-    const start = store.latestSeq()
 
-    const first = store.post({ kind: 'question', from: manager.id, to: coder.id, body: 'twin A' })
-    const second = store.post({ kind: 'answer', from: coder.id, to: manager.id, body: 'twin B' })
-    assert.equal(first.createdAt, second.createdAt, 'the pair this guards against shares a timestamp')
+    /*
+     * The pair has to genuinely share a millisecond or this test proves
+     * nothing — and whether two writes do is a fact about how busy the machine
+     * is, not about the relay. Asserting it as a precondition made the suite
+     * fail on a loaded one for a reason unrelated to what is being guarded.
+     * Writing pairs until one lands together makes the condition hold instead
+     * of hoping it does; on any machine that can hit it at all, it hits on the
+     * first or second go.
+     */
+    let start = store.latestSeq()
+    let first = store.post({ kind: 'question', from: manager.id, to: coder.id, body: 'twin A' })
+    let second = store.post({ kind: 'answer', from: coder.id, to: manager.id, body: 'twin B' })
+    for (let tries = 0; first.createdAt !== second.createdAt && tries < 200; tries++) {
+      start = store.latestSeq()
+      first = store.post({ kind: 'question', from: manager.id, to: coder.id, body: 'twin A' })
+      second = store.post({ kind: 'answer', from: coder.id, to: manager.id, body: 'twin B' })
+    }
+    assert.equal(first.createdAt, second.createdAt, 'never managed two writes inside one millisecond')
 
     const carried = store.messagesSince(start, 40).messages.map((m) => m.body)
     assert.deepEqual(carried, ['twin A', 'twin B'])

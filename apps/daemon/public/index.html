@@ -18,6 +18,8 @@
   <div class="topbar-right">
     <button class="ghost update hidden" id="update" type="button"></button>
     <button class="ghost" id="openSettings" type="button">Models</button>
+    <button class="ghost keys-open" id="openKeys" type="button" title="Keys (?)"
+            aria-label="Which keys do what">?</button>
     <span class="live" id="live" title="Connection to the daemon"><i></i><span>connecting</span></span>
   </div>
 </header>
@@ -33,7 +35,24 @@
     </div>
 
     <div class="strip">
-      <div class="strip-inner">
+      <!-- Nothing built yet. Four zeros and a box for questioning a skyline
+           that does not exist are worse than saying what a building is, which
+           is the only thing anybody can do from here anyway. -->
+      <div class="strip-inner first-run hidden" id="firstRun">
+        <div>
+          <p class="eyebrow">An empty skyline</p>
+          <p class="first-run-what">Every project is its own building — its own staff, its own
+            memory, its own money, its own workspace, and it shares none of them with its
+            neighbours. Take somebody on and it grows a storey. A side project that has quietly
+            reached eleven floors is telling you something a list of project names never would.</p>
+        </div>
+        <div class="first-run-do">
+          <button class="solid" id="firstGround" type="button">Break ground</button>
+          <p class="ask-note">Or press <kbd>n</kbd>, or click the empty lot out on the street.</p>
+        </div>
+      </div>
+
+      <div class="strip-inner" id="stripInner">
         <div>
           <div class="tallies" id="tallies"></div>
           <p class="city-hint" id="cityHint">Click a building to go inside it.</p>
@@ -48,7 +67,14 @@
           <p class="ask-note">Sees every building. Changes nothing.</p>
         </form>
       </div>
+      <!-- Every lobby's approval desk at once, opened from the tally that
+           counts them. A building shares nothing with its neighbours, but the
+           person the dockets are addressed to has all of them. -->
+      <div class="round hidden" id="round"></div>
       <div class="answer hidden" id="answer"></div>
+      <!-- Buildings taken off the skyline. Listed rather than drawn: a
+           half-drawn building is one you can see and cannot walk into. -->
+      <div class="boarded hidden" id="boarded"></div>
     </div>
   </section>
 
@@ -80,32 +106,61 @@
       </div>
     </div>
 
+    <!-- The digit on each tab is the key that reaches it. They are set as lift
+         buttons because that is what they are: the row of numbers you press to
+         get to a floor, in a product whose floors are the point. -->
     <nav class="tabs" id="tabs" role="tablist">
-      <button role="tab" class="tab on" data-tab="floors">The building</button>
-      <button role="tab" class="tab" data-tab="work">Work<span class="badge hidden" id="badgeWork"></span></button>
-      <button role="tab" class="tab" data-tab="desk">Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
-      <button role="tab" class="tab" data-tab="mail">Mailroom<span class="badge hidden" id="badgeMail"></span></button>
-      <button role="tab" class="tab" data-tab="orders">Standing orders</button>
-      <button role="tab" class="tab" data-tab="archives">Archives</button>
+      <button role="tab" class="tab on" data-tab="floors"><b>1</b>The building</button>
+      <button role="tab" class="tab" data-tab="work"><b>2</b>Work<span class="badge hidden" id="badgeWork"></span></button>
+      <button role="tab" class="tab" data-tab="desk"><b>3</b>Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
+      <button role="tab" class="tab" data-tab="mail"><b>4</b>Mailroom<span class="badge hidden" id="badgeMail"></span></button>
+      <button role="tab" class="tab" data-tab="orders"><b>5</b>Standing orders</button>
+      <button role="tab" class="tab" data-tab="archives"><b>6</b>Archives</button>
     </nav>
 
     <div class="panes">
       <div class="pane" data-pane="floors">
         <div class="cutaway" id="cutaway"></div>
-        <aside class="hire-box">
-          <h3>Take somebody on</h3>
-          <p class="dim">Every hire is a floor. The building grows.</p>
-          <form id="hireForm">
-            <select id="hRole"></select>
-            <input type="text" id="hName" autocomplete="off" placeholder="Name (optional)">
-            <button class="solid" type="submit">Hire</button>
-          </form>
-          <div class="next-form dim" id="nextForm"></div>
+        <aside class="side">
+          <div class="hire-box">
+            <h3>Take somebody on</h3>
+            <p class="dim">Every hire is a floor. The building grows.</p>
+            <form id="hireForm">
+              <select id="hRole"></select>
+              <input type="text" id="hName" autocomplete="off" placeholder="Name (optional)">
+              <button class="solid" type="submit">Hire</button>
+            </form>
+            <div class="next-form dim" id="nextForm"></div>
+          </div>
+
+          <!-- Breaking ground was one typo away from a building you were stuck
+               with. Quiet, and at the bottom, because it is the last thing you
+               do to a building rather than something to reach for. -->
+          <button class="ghost board-up" id="boardUp" type="button">Board it up</button>
         </aside>
       </div>
 
       <div class="pane hidden" data-pane="work">
-        <div class="work-cols">
+        <!-- Until a building has ever done anything, two empty columns and a
+             silent feed raise a question they do not answer: what happens when
+             I press Send? The riser answers it, and stands aside the moment
+             there is real work to show instead. -->
+        <div class="riser hidden" id="riser">
+          <h3 class="pane-title">How work moves through it</h3>
+          <ol class="riser-stops">
+            <li class="yours"><b>You put a goal to it.</b> One sentence, the way you would say it
+              to somebody on their first morning.</li>
+            <li><b>The top floor breaks it into tasks</b> — each carrying the terms it will be
+              judged on, agreed before anybody starts.</li>
+            <li><b>A floor takes one.</b> Its own worktree, its own budget, its own context.
+              Nobody here holds a conversation; work is a record.</li>
+            <li><b>The reviewer reads it against those terms</b> and says whether it holds. It
+              holds nothing that can write, so it cannot quietly fix what it is judging.</li>
+            <li class="yours"><b>Anything leaving the building stops at your desk</b> in the
+              lobby. It begins with you and it ends with you.</li>
+          </ol>
+        </div>
+        <div class="work-cols" id="workCols">
           <div>
             <h3 class="pane-title">In hand</h3>
             <div id="workOpen"></div>
@@ -115,7 +170,7 @@
             <div id="workDone"></div>
           </div>
         </div>
-        <div class="feed-box">
+        <div class="feed-box" id="feedBox">
           <h3 class="pane-title">As it happens</h3>
           <div id="log" class="feed"></div>
         </div>
@@ -146,10 +201,22 @@
 
       <div class="pane hidden" data-pane="orders">
         <h3 class="pane-title">Standing orders <button class="ghost" id="showSchedule" type="button">Add one</button></h3>
-        <form class="row-form hidden" id="scheduleForm">
-          <input type="text" id="sGoal" placeholder="Check the build still passes" autocomplete="off" required>
-          <input type="text" id="sEvery" placeholder="daily" value="daily" autocomplete="off">
-          <input type="text" id="sAt" placeholder="09:00" autocomplete="off">
+        <!-- Three bare boxes, one of them wanting a syntax nobody could guess.
+             The interval accepts 30m, 4h, daily, weekly — which the error
+             message said only once you had already got it wrong. -->
+        <form class="order-form hidden" id="scheduleForm">
+          <label class="order-goal-field">What should it do, every time?
+            <input type="text" id="sGoal" placeholder="Check the build still passes"
+                   autocomplete="off" required>
+          </label>
+          <label>How often
+            <input type="text" id="sEvery" placeholder="daily" value="daily" autocomplete="off">
+            <span class="field-note dim">30m, 4h, daily, weekly</span>
+          </label>
+          <label>At
+            <input type="text" id="sAt" placeholder="09:00" autocomplete="off">
+            <span class="field-note dim">Optional — without one it runs an interval from now.</span>
+          </label>
           <button class="solid" type="submit">Set it</button>
         </form>
         <div id="schedules"></div>
@@ -279,6 +346,62 @@
       <button type="button" class="ghost" id="dUnwire">Disconnect</button>
       <button type="button" class="ghost" id="dCancel">Never mind</button>
       <button type="submit" class="solid">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Boarding a building up. It is not a delete, and the dialog's job is to say
+     so plainly enough that nobody hesitates over it or regrets it. -->
+<dialog id="boardDialog">
+  <form method="dialog" id="boardForm">
+    <h2 id="boardWho">Board it up</h2>
+    <p class="dim">It comes off the skyline. Its staff, its archives, its post and everything in
+      its workspace stay exactly where they are — this is a shutter, not a demolition.</p>
+    <p class="ground-then">You can bring it back from the street, and it returns with all of it.
+      To be rid of a building for good, delete its folder yourself, where you can see what you
+      are removing.</p>
+    <div class="dialog-buttons">
+      <button type="button" class="ghost" id="boardCancel">Never mind</button>
+      <button type="submit" class="solid">Board it up</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- The keys, as a plan of the place rather than an alphabetical table: where
+     you are decides what the same key does, so the two lists are kept apart. -->
+<dialog id="keysDialog">
+  <form method="dialog" id="keysForm">
+    <h2>Keys</h2>
+    <p class="dim">Anywhere text can be typed, these stand aside and let you type.</p>
+
+    <div class="keys-where">
+      <div class="cut-role">On the street</div>
+      <dl class="keys">
+        <dt><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Go into that building, left to right</dd>
+        <dt><kbd>/</kbd></dt><dd>Ask the concierge</dd>
+        <dt><kbd>n</kbd></dt><dd>Break ground on a new one</dd>
+      </dl>
+    </div>
+
+    <div class="keys-where">
+      <div class="cut-role">Inside a building</div>
+      <dl class="keys">
+        <dt><kbd>1</kbd>…<kbd>6</kbd></dt><dd>The tab with that number on it</dd>
+        <dt><kbd>/</kbd></dt><dd>Put a goal to it</dd>
+        <dt><kbd>g</kbd></dt><dd>Back out to the street</dd>
+      </dl>
+    </div>
+
+    <div class="keys-where">
+      <div class="cut-role">Anywhere</div>
+      <dl class="keys">
+        <dt><kbd>Esc</kbd></dt><dd>Close this, or step back outside</dd>
+        <dt><kbd>?</kbd></dt><dd>This</dd>
+      </dl>
+    </div>
+
+    <div class="dialog-buttons">
+      <button type="submit" class="solid">Got it</button>
     </div>
   </form>
 </dialog>

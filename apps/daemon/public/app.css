@@ -41,6 +41,13 @@
   --on-lamp: #241d07;
   /* The dark behind a dialog. Not a fifth depth — the absence of one. */
   --scrim: #06050a;
+  /**
+   * Below ground. Also not a fifth depth: the four are heights above a page,
+   * and this is the one place the app draws something that is under it — the
+   * archives, and the curator who works down there. Darker than `--sunk`
+   * because earth is darker than shadow.
+   */
+  --under: #131118;
 
   /* ── type ──────────────────────────────────────────────────────────────── */
   --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -208,8 +215,11 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 /* ── the skyline ────────────────────────────────────────────────────────── */
 
+/* The floor is what the skyline keeps when something opens underneath it. Below
+   about this, the buildings are too short to tell apart and it stops being a
+   picture of anything. */
 .city-frame {
-  position: relative; flex: 1; min-height: 320px;
+  position: relative; flex: 1; min-height: 400px;
   display: flex; flex-direction: column;
   background: var(--sunk); border-bottom: 1px solid var(--line);
 }
@@ -248,12 +258,81 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 }
 @media (max-width: 860px) { .strip-inner { grid-template-columns: 1fr; gap: var(--s5); } }
 
-.tallies { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); }
-.tallies div { display: flex; flex-direction: column; gap: 2px; }
+.tallies { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); align-items: start; }
+.tallies div, .tallies button { display: flex; flex-direction: column; gap: 2px; }
 .tallies dd { margin: 0; font-size: var(--t-display); font-weight: 600; line-height: 1.05; letter-spacing: -.02em; }
 /* Amber is work in hand; terracotta is waiting on you. Never the other way. */
 .tallies .accent dd { color: var(--lamp); }
 .tallies .warn dd { color: var(--flag); }
+
+/**
+ * The only tally you can press.
+ *
+ * It is also the only one that is about you rather than about work, and those
+ * two facts are the same fact: a count of your own unanswered post is a chore,
+ * and a chore you cannot start from where you are told about it is worse than
+ * one you were not told about. It opens the round.
+ */
+.tallies-round {
+  background: none; border: 0; padding: 0; text-align: left;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--fast);
+}
+.tallies-round:hover { border-bottom-color: #d4703a66; }
+.tallies-open {
+  font-size: var(--t-plate); text-transform: uppercase; letter-spacing: .11em;
+  font-weight: 600; color: var(--flag);
+  opacity: .75; transition: opacity var(--fast);
+}
+.tallies-round:hover .tallies-open { opacity: 1; }
+.tallies-round[aria-expanded="true"] .tallies-open { opacity: 1; }
+
+/**
+ * Buildings taken off the skyline.
+ *
+ * A line under the street rather than a shape on it: a boarded-up building is
+ * not somewhere you can go, and drawing a greyed-out one would be a building
+ * you can see and cannot walk into. It is here so that boarding one up is
+ * plainly reversible — the way back is on the same screen as the loss.
+ */
+.boarded {
+  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4);
+}
+.boarded-one {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  font-size: var(--t-small); color: var(--ink-4);
+}
+
+/* ── the round ──────────────────────────────────────────────────────────── */
+
+/**
+ * Every lobby's desk at once. The dockets are the same ones, drawn the same
+ * way, decided down the same route — this is a second door onto them, not a
+ * second copy of them.
+ */
+.round {
+  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5);
+  animation: rise var(--base) both;
+}
+.round .pane-title { margin-bottom: var(--s3); }
+/* Which building left it, since on the street you have not been told. */
+.docket-where { color: var(--ink-2); font-weight: 600; }
+
+/**
+ * The strip on a skyline with nothing in it.
+ *
+ * A row of four zeros over a box for questioning buildings that do not exist
+ * is the shape of a dashboard rather than the shape of a beginning. This says
+ * what a building is — the one thing worth knowing before you make one — and
+ * offers the only action there is.
+ */
+.first-run { align-items: center; }
+.first-run-what { font-size: var(--t-small); color: var(--ink-3); max-width: 62ch; margin-top: var(--s2); }
+.first-run-do { text-align: right; }
+.first-run-do .ask-note { margin-top: var(--s2); }
+.first-run-do kbd { vertical-align: baseline; }
+@media (max-width: 860px) { .first-run-do { text-align: left; } }
 
 .ask-row { display: flex; gap: var(--s2); margin-top: var(--s2); }
 .ask-row input { flex: 1; min-width: 0; }
@@ -337,6 +416,25 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .tab:hover { color: var(--ink); }
 .tab.on { color: var(--ink); border-bottom-color: var(--lamp); }
 
+/**
+ * The digit on a tab is the key that reaches it, set as the button you press in
+ * a lift. Quiet at rest — it is a hint, not a label — and lit on the tab you
+ * are standing on, the same way the floor you are on is lit in a real one.
+ */
+.tab b {
+  font-family: var(--mono); font-size: var(--t-plate); font-weight: 500;
+  color: var(--ink-4);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  width: 16px; height: 16px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: color var(--fast), border-color var(--fast);
+}
+.tab:hover b { border-color: var(--line-strong); color: var(--ink-3); }
+.tab.on b { border-color: var(--lamp-dim); color: var(--lamp); }
+
+/* Square, so it reads as one of a pair with the button beside it. */
+.keys-open { width: 26px; padding: var(--s1) 0; text-align: center; }
+
 .badge {
   background: var(--flag); color: #2a1206; font-size: var(--t-plate); font-weight: 700;
   min-width: 18px; height: 18px; border-radius: var(--r-pill);
@@ -395,12 +493,37 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
   font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52ch;
 }
+/**
+ * What a floor runs on, said as quietly as it deserves.
+ *
+ * This was a full underlined sentence on every storey, repeating the building's
+ * provider once per floor until it outweighed the names. The provider is now
+ * stated once on the supply line above; this is usually just a model name, and
+ * it only offers itself as a control when the pointer is on the row.
+ */
 .floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4); }
 .floor-model button {
   background: none; border: 0; padding: 0; color: inherit; font: inherit;
-  text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px;
+  text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px;
+  transition: color var(--fast), text-decoration-color var(--fast);
 }
-.floor-model button:hover { color: var(--ink-2); }
+.floor:hover .floor-model button { text-decoration-color: var(--line-strong); }
+.floor-model button:hover { color: var(--ink-2); text-decoration-color: var(--lamp-dim); }
+
+/**
+ * The supply: the grid the whole building is on, named once under the roof.
+ *
+ * A real building has one supply and a meter by the door. A floor that is
+ * somewhere else spells its provider out on its own row, which is the only
+ * place that fact is now worth the ink.
+ */
+.cut-supply {
+  display: flex; align-items: baseline; gap: var(--s2);
+  padding: var(--s2) var(--s4);
+  background: var(--sunk);
+  border-bottom: 1px solid var(--line);
+}
+.cut-supply-who { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-3); }
 
 .floor-right { display: flex; align-items: center; gap: var(--s2); }
 
@@ -440,16 +563,41 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .cut-band .cut-role { margin-bottom: 1px; }
 .cut-band-what { font-size: var(--t-small); color: var(--ink-3); }
 /* Below ground, so it is drawn as below ground. */
-.cut-band.below { background: #131118; }
+.cut-band.below { background: var(--under); }
 /* Street level: a kerb line where the building meets the pavement. */
 .cut-band.street { box-shadow: inset 0 2px 0 var(--line-strong); }
 
+/**
+ * The curator's floor is in the basement, because that is where the archives
+ * are and where the product has always said it works. It is not counted in the
+ * headcount for the same reason — a building should not appear to grow because
+ * it started tidying up — so it gets `B` on the lift plate rather than a
+ * number, and the earth-dark ground of everything below street level.
+ */
+.floor.below { background: var(--under); border-bottom: 0; }
+.floor.below:hover { background: color-mix(in srgb, var(--under) 92%, var(--ink)); }
+.floor.below .floor-no {
+  background: var(--scrim); color: var(--ink-4); border-color: var(--line);
+  letter-spacing: .04em;
+}
+
 .empty-floors { padding: var(--s6) var(--s5); text-align: center; color: var(--ink-4); font-size: var(--t-small); }
+
+.side { position: sticky; top: calc(var(--topbar-h) + var(--s4)); display: grid; gap: var(--s3); }
 
 .hire-box {
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s4); position: sticky; top: calc(var(--topbar-h) + var(--s4));
+  background: var(--panel); padding: var(--s4);
 }
+
+/**
+ * The last thing you do to a building, so it is the quietest control on the
+ * screen: no fill, no colour, and nothing happens until a dialog has said what
+ * it does. It is a shutter rather than a demolition, which is why it is allowed
+ * to be here at all — the alarm colour would be a lie about what it costs.
+ */
+.board-up { justify-self: start; color: var(--ink-4); border-color: var(--line); }
+.board-up:hover:not(:disabled) { color: var(--ink-2); border-color: var(--line-strong); background: transparent; }
 .hire-box p { font-size: var(--t-micro); margin: var(--s1) 0 var(--s3); }
 .hire-box form { display: grid; gap: var(--s2); }
 .hire-box select, .hire-box input { width: 100%; }
@@ -483,8 +631,30 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 .row-form { display: flex; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
 .row-form input { flex: 1; min-width: 140px; }
-.row-form input#sEvery { max-width: 110px; flex: none; }
-.row-form input#sAt { max-width: 96px; flex: none; }
+
+/**
+ * Setting a standing order.
+ *
+ * The interval takes a small syntax — 30m, 4h, daily, weekly — and the form
+ * said so only in the error you got for guessing wrong. Labelled fields, the
+ * accepted forms under the one that needs them, and the fact that leaving the
+ * time empty is allowed rather than unfinished.
+ */
+.order-form {
+  display: grid; grid-template-columns: 1fr 140px 120px auto;
+  gap: var(--s3); align-items: start;
+  border: 1px solid var(--line); border-radius: var(--r-surface);
+  background: var(--panel); padding: var(--s4);
+  margin-bottom: var(--s4);
+}
+@media (max-width: 780px) { .order-form { grid-template-columns: 1fr; } }
+.order-form label {
+  display: block; font-size: var(--t-plate);
+  text-transform: uppercase; letter-spacing: .11em; font-weight: 600; color: var(--ink-3);
+}
+.order-form input { width: 100%; margin-top: var(--s1); text-transform: none; letter-spacing: normal; }
+.order-form button { align-self: start; margin-top: 20px; }
+.order-form .field-note { text-transform: none; letter-spacing: normal; font-weight: 400; }
 
 /* Empty states say what the thing is for, not that it is empty. */
 .empty { color: var(--ink-4); font-size: var(--t-small); padding: var(--s4) 0; font-style: italic; }
@@ -493,13 +663,53 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .note-row:last-child { border-bottom: 0; }
 .note-row p { font-size: var(--t-small); color: var(--ink-2); min-width: 0; }
 
+/**
+ * The riser: how work moves through a building, drawn as the shaft it moves in.
+ *
+ * A building that has never run anything showed two empty columns and a silent
+ * feed — three headings over six hundred pixels of nothing, which reads as a
+ * page that failed to load rather than as a building waiting for a goal. This
+ * answers the question those columns raise instead, and it is gone the moment
+ * there is a real task to put there.
+ *
+ * The stops that are *you* are terracotta, and they are the first and the last
+ * — which is not a flourish, it is the shape of the thing: you say what it is
+ * for, and nothing leaves without you.
+ */
+.riser { max-width: 680px; }
+.riser-stops {
+  list-style: none;
+  margin: 0 0 0 5px; padding: 0;
+  border-left: 1px solid var(--line-strong);
+}
+.riser-stops li {
+  position: relative;
+  padding: 0 0 var(--s5) var(--s5);
+  font-size: var(--t-small); color: var(--ink-3); line-height: 1.6;
+}
+.riser-stops li:last-child { padding-bottom: 0; }
+.riser-stops b { color: var(--ink); font-weight: 600; }
+
+/* A stop on the shaft, set like the floor indicator beside a lift. */
+.riser-stops li::before {
+  content: ""; position: absolute; left: -5px; top: 7px;
+  width: 9px; height: 9px; border-radius: var(--r-pill);
+  background: var(--sunk); border: 1px solid var(--line-strong);
+}
+.riser-stops li.yours::before { background: var(--flag); border-color: var(--flag); }
+
 .feed-box { border-top: 1px solid var(--line); padding-top: var(--s4); }
 .feed { font-family: var(--mono); font-size: var(--t-micro); max-height: 260px; overflow-y: auto; }
-.feed div { padding: 2px 0; color: var(--ink-3); }
+/* A time, then what happened. Two columns rather than one string, so the second
+   wraps under itself instead of under the clock. */
+.feed div { display: flex; gap: var(--s2); padding: 2px 0; color: var(--ink-3); }
+.feed-when { color: var(--ink-4); flex: none; }
 .feed .hi { color: var(--ink); }
 .feed .lit { color: var(--lamp); }
 .feed .bad { color: var(--alarm); }
-.feed .tool { color: var(--ink-4); padding-left: var(--s3); }
+/* What a floor did on the way, indented under the line it belongs to. */
+.feed .tool { color: var(--ink-4); }
+.feed .tool .feed-when { visibility: hidden; }
 
 /* ── the mailroom ───────────────────────────────────────────────────────── */
 
@@ -608,6 +818,33 @@ dialog code {
   border-top: 1px solid var(--line); padding-top: var(--s3); margin-top: var(--s1);
 }
 
+/* ── the keys ───────────────────────────────────────────────────────────── */
+
+/**
+ * Grouped by where you are standing, because that is what decides what a key
+ * does here. An alphabetical list of sixteen bindings would be the same facts
+ * and none of the shape.
+ */
+dialog#keysDialog { width: min(430px, calc(100vw - var(--s6))); }
+.keys-where { margin-bottom: var(--s4); }
+.keys-where:last-of-type { margin-bottom: 0; }
+.keys-where .cut-role { margin-bottom: var(--s2); }
+
+.keys {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s2) var(--s3);
+  margin: 0; align-items: baseline;
+}
+.keys dt { display: flex; align-items: center; gap: 3px; color: var(--ink-4); font-size: var(--t-micro); }
+.keys dd { margin: 0; font-size: var(--t-small); color: var(--ink-2); }
+
+/* A keycap: the thing under your finger, drawn with an edge you could catch. */
+kbd {
+  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink);
+  background: var(--raised); border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: var(--r-control);
+  padding: 2px var(--s1); min-width: 20px; display: inline-block; text-align: center;
+}
+
 dialog#bridgeDialog { width: min(520px, calc(100vw - var(--s6))); }
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 @media (max-width: 460px) { .two-up { grid-template-columns: 1fr; } }
@@ -699,7 +936,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 /* ── the archives, which are below ground ───────────────────────────────── */
 
 .archive-shelf {
-  background: #131118;
+  background: var(--under);
   border: 1px solid var(--line); border-radius: var(--r-surface);
   padding: var(--s1) var(--s4);
   margin-top: var(--s3);
@@ -800,3 +1037,49 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   width: 6px; height: 6px; border-radius: 2px;
   border: 1px solid var(--line-strong);
 }
+/* Filled once it came back held: green is "it held" and means nothing else. */
+.task-accept.met li { color: var(--ink-2); }
+.task-accept.met li::before { background: var(--good); border-color: var(--good); }
+
+/* ── what came back ─────────────────────────────────────────────────────── */
+
+/**
+ * A settled task opens onto its result.
+ *
+ * The summary is the only place a floor says, in its own words, what it did —
+ * and it was written, stored, and never shown. A <details> keeps the column
+ * scannable and puts it one press away, from a mouse or a keyboard.
+ */
+.settled { border-bottom: 1px solid var(--line); }
+.settled:last-child { border-bottom: 0; }
+.settled > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
+  padding: var(--s3) 0; cursor: pointer; list-style: none;
+  transition: color var(--fast);
+}
+.settled > summary::-webkit-details-marker { display: none; }
+.settled > summary:hover .row-title { color: var(--lamp); }
+.settled[open] > summary .row-title { color: var(--ink); }
+
+/* The caret is on the title rather than in a gutter: it belongs to the line it
+   opens, and a gutter would be a column of arrows down an otherwise clean list. */
+.settled > summary .row-title::before {
+  content: "›"; display: inline-block; width: 12px;
+  color: var(--ink-4); font-weight: 400;
+  transition: transform var(--fast);
+}
+.settled[open] > summary .row-title::before { transform: rotate(90deg); }
+
+.settled-what {
+  padding: 0 0 var(--s4) var(--s3);
+  border-left: 2px solid var(--line);
+  margin: 0 0 var(--s2) 5px;
+  animation: rise .2s var(--ease) both;
+}
+.settled-said {
+  font-size: var(--t-small); color: var(--ink-2);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.settled-what .task-accept { border-top-color: var(--line); }
+.settled-left { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s3); }
+.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); }

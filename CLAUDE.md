@@ -105,10 +105,27 @@ on this machine says nothing about the one people download. Fetch the published
 file and check that.
 
 **A second service needs a second port, not just a second data directory.** The
-single-instance lock is per data directory — `daemon.pid` lives inside
+daemon's own lock is per data directory — `daemon.pid` lives inside
 `dataRoot()` — so a fresh `ROOFSCAPE_HOME` walks straight past it and collides on
 the port instead. The failure is an unhandled `EADDRINUSE`, not the message
 written for two services meeting. Set `ROOFSCAPE_PORT` as well.
+
+**And the app's lock was not per data directory at all.** Electron keys
+`userData` off the app's *name*, and `requestSingleInstanceLock()` is keyed off
+`userData` — so with the installed app open, `npm run desktop` built the whole
+bundle, printed "Done", exited 0, and opened nothing. Every symptom of a build
+that worked and no window to show for it, which is the same silent nothing the
+`app.setName` note above describes and a different cause. `ROOFSCAPE_HOME` did
+not help, because it only ever moved the *daemon's* directory.
+
+Electron's own state lives under `ROOFSCAPE_HOME/electron` now, so one variable
+means one whole installation and the lock is per installation. Losing the lock
+also says so, and says what to run:
+
+    ROOFSCAPE_HOME=~/.roofscape-dev ROOFSCAPE_PORT=7788 npm run desktop
+
+Quitting on a lost lock is `app.exit(0)`, not `app.quit()` — the latter is a
+request, and the rest of `main.ts` goes on running while it is considered.
 
 **The macOS app does not inherit your shell.** An app launched from Finder gets
 launchd's environment, so `ROOFSCAPE_CLAUDE_BIN=none` exported in a terminal does
@@ -132,6 +149,19 @@ unverified-developer prompt, which a person can get past. It is not a substitute
 for a Developer ID: without one, macOS auto-update does not work at all, because
 Squirrel validates the signature before installing. Windows and Linux update
 normally.
+
+So the app does not pretend otherwise. `updater.ts` asks whether an update can
+install itself — `process.platform !== 'darwin'` unless a real certificate is
+present — and where it cannot, it turns off `autoDownload` and
+`autoInstallOnAppQuit` and offers the download page instead of a restart.
+Without that it fetched 130MB it could never use, offered "Restart to update",
+failed the signature check, and then retried the failing install on every
+subsequent quit.
+
+The day a Developer ID appears, set `CSC_LINK` and `CSC_KEY_PASSWORD` and drop
+`CSC_IDENTITY_AUTO_DISCOVERY: false` from the release workflow. Nothing else
+changes: the ad-hoc hook already stands aside when a real certificate is set,
+and the updater's own check flips with it.
 
 `executableName` belongs under `linux` only. At the top level it also renames the
 macOS bundle.

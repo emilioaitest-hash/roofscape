@@ -41,6 +41,29 @@ const esc = (s) =>
 const clip = (s, n) => (String(s ?? '').length > n ? `${String(s).slice(0, n - 1)}…` : String(s ?? ''))
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many ?? `${one}s`}`
 
+/** The value that turns up most often, ignoring empty ones. Ties go to the first. */
+function commonest(values) {
+  const tally = new Map()
+  for (const value of values) if (value) tally.set(value, (tally.get(value) ?? 0) + 1)
+  let best = ''
+  let most = 0
+  for (const [value, count] of tally) if (count > most) { best = value; most = count }
+  return best
+}
+
+/**
+ * "Anthropic · claude-opus-5 (via Claude Code)" → "Anthropic (via Claude Code)".
+ *
+ * The provider's own label is only ever built in one place, on the server, and
+ * this takes the model back out of it rather than rebuilding it from parts — a
+ * second recipe for the same sentence is a second recipe to keep in step.
+ */
+function withoutModel(describes, model) {
+  const said = String(describes ?? '')
+  if (!model) return said
+  return said.replace(` · ${model}`, '').trim() || said
+}
+
 function toast(text, kind = '') {
   const node = document.createElement('div')
   node.className = `toast ${kind}`
@@ -54,13 +77,27 @@ const oops = (error) => {
   say(`— ${error.message}`, 'bad')
 }
 
-function say(text, kind = '') {
+/** The wall clock, to the minute. A log with no times is a log you cannot place. */
+function clock(iso) {
+  const at = new Date(iso ?? Date.now())
+  if (Number.isNaN(at.getTime())) return ''
+  return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+}
+
+function say(text, kind = '', at) {
   const feed = el('log')
   if (!feed) return
-  const div = document.createElement('div')
-  div.className = kind
-  div.textContent = text
-  feed.prepend(div)
+  const line = document.createElement('div')
+  line.className = kind
+
+  const when = document.createElement('span')
+  when.className = 'feed-when'
+  when.textContent = clock(at)
+  const what = document.createElement('span')
+  what.textContent = text
+  line.append(when, what)
+
+  feed.prepend(line)
   while (feed.childElementCount > 200) feed.lastElementChild.remove()
 }
 
@@ -134,8 +171,9 @@ const knownForms = new Map()
 
 async function refreshCity() {
   const box = cityBox()
-  const { svg, buildings } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
+  const { svg, buildings, boardedUp } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
   skyline = buildings
+  paintBoarded(boardedUp)
 
   const grew = []
   for (const building of buildings) {
@@ -155,11 +193,14 @@ async function refreshCity() {
   paintCityState()
   paintTallies()
   for (const building of grew) itGrew(building)
-  // Telling somebody to click a building when there are none is the sort of
-  // small dishonesty that makes a first run feel unfinished.
-  el('cityHint').textContent = buildings.length
-    ? 'Click a building to go inside it.'
-    : 'Nothing built yet. Break ground on the empty lot to start your first company.'
+
+  // Nothing built yet gets a different strip rather than a thinner version of
+  // this one. Four zeros say nothing, and the concierge reads buildings one at
+  // a time — with none to read, asking it anything spends a turn to be told so.
+  const empty = buildings.length === 0
+  el('firstRun').classList.toggle('hidden', !empty)
+  el('stripInner').classList.toggle('hidden', empty)
+  el('cityHint').textContent = 'Click a building to go inside it.'
 }
 
 /**
@@ -264,11 +305,27 @@ function paintTallies() {
   const waiting = skyline.reduce((n, b) => n + b.pendingApprovals, 0)
   const tally = (label, value, kind = '') =>
     `<div class="${kind}"><dt>${label}</dt><dd>${value}</dd></div>`
+
+  // The one tally that is about you is also the only one you can do anything
+  // about, so it is the only one that is a control. A number that counts your
+  // own unanswered post and cannot be pressed is a number that has told you
+  // about a chore and then hidden it in four different lobbies.
+  const round = waiting
+    ? `<button type="button" class="warn tallies-round" data-round aria-expanded="false">
+         <dt>Waiting on you</dt><dd>${waiting}</dd>
+         <span class="tallies-open">Answer them</span>
+       </button>`
+    : tally('Waiting on you', waiting)
+
   el('tallies').innerHTML =
     tally('Buildings', skyline.length) +
     tally('On staff', staff) +
     tally('In hand', inHand, inHand ? 'accent' : '') +
-    tally('Waiting on you', waiting, waiting ? 'warn' : '')
+    round
+
+  el('tallies').querySelector('[data-round]')?.addEventListener('click', () => toggleRound())
+  // Nothing left to answer closes it rather than leaving an empty desk open.
+  if (!waiting) el('round').classList.add('hidden')
 }
 
 // ── one building ───────────────────────────────────────────────────────────
@@ -286,14 +343,24 @@ async function refreshBuilding() {
   el('bTier').textContent = building.tier
   el('bCharter').textContent = building.charter === building.name ? '' : building.charter
 
+  // A vital is shown when it has something to say. A row of pills reading
+  // "0 in hand · 0 waiting on you · 0 tokens this month · 0 in the archives" is
+  // four facts a new building already implies, and it crowds out the one that
+  // is actually true of it. Headcount is always there because a building always
+  // has one, and it is the number the whole product is built on.
   const waiting = building.approvals.length
   const inHand = building.open.filter((t) => t.state === 'queued' || t.state === 'working').length
+  // "6 floors on staff" was a contradiction in three words once a curator was
+  // in the building: six is how tall it is, and the seventh person works below
+  // ground. The label says which number this is.
+  const below = building.staff.filter((floor) => floor.role === 'curator').length
   el('bVitals').innerHTML = [
-    vital(plural(building.headcount, 'floor'), 'on staff'),
+    vital(plural(building.headcount, 'floor'), below ? 'above ground' : 'on staff'),
+    below ? vital(String(below), 'below ground') : '',
     inHand ? vital(String(inHand), 'in hand', 'lit') : '',
-    waiting ? vital(String(waiting), waiting === 1 ? 'waiting on you' : 'waiting on you', 'warn') : '',
-    vital(tokens(building.spentThisMonth), 'tokens this month'),
-    vital(String(building.archives.total), 'in the archives'),
+    waiting ? vital(String(waiting), 'waiting on you', 'warn') : '',
+    building.spentThisMonth ? vital(tokens(building.spentThisMonth), 'tokens this month') : '',
+    building.archives.total ? vital(String(building.archives.total), 'in the archives') : '',
   ].join('')
 
   el('goalGo').disabled = building.working
@@ -337,7 +404,14 @@ function paintCutaway(building) {
   // forced to the front — it holds the top floor and rides up as the building
   // grows. Re-sorting by the stored level here put it in the basement, which is
   // the opposite of what the building means.
-  const staff = building.staff
+  //
+  // The curator is the exception, and it is the store's own rule: `headcount()`
+  // leaves it out, because a building should not appear to grow because it
+  // started tidying up. Drawing it as a numbered storey anyway made the cutaway
+  // one floor taller than the building outside the window, and put somebody the
+  // caption calls a night worker in the archives up on the fifth floor.
+  const staff = building.staff.filter((floor) => floor.role !== 'curator')
+  const nightShift = building.staff.filter((floor) => floor.role === 'curator')
   const top = staff[0]
 
   const said = {
@@ -348,30 +422,61 @@ function paintCutaway(building) {
     idle: 'on a break',
   }
 
-  const floors = staff.length
-    ? staff
-        .map(
-          (floor, index) => `
-      <div class="floor ${floor.state === 'working' ? 'is-working' : ''} ${floor === top ? 'top-floor' : ''}"
+  /**
+   * A building runs on one supply, the way a real one runs on one grid, and
+   * printing "Anthropic · claude-opus-5 (via Claude Code)" on all seven floors
+   * said that thirty-five-character fact seven times — loudly, in mono, under a
+   * link's underline — until it outweighed the names of the people on them.
+   *
+   * So the supply is named once, above the floors, and a floor carries only its
+   * model. A floor somewhere else is the fact worth having, and now it is the
+   * only one on the row that is spelt out.
+   */
+  // Two floors share a supply when they share both the provider and the engine
+  // that reaches it: Anthropic on a key and Anthropic through Claude Code are
+  // billed differently and fail differently, so they are not the same supply.
+  const supplyOf = (floor) => (floor.posting ? `${floor.posting.provider}|${floor.posting.engine}` : '')
+  const supply = commonest(building.staff.map(supplyOf))
+
+  const runsOn = (floor) =>
+    !floor.posting || supplyOf(floor) !== supply ? floor.describes : floor.posting.model
+
+  /** One storey. `plate` is what goes on the lift button beside it. */
+  const storey = (floor, plate, extra = '') => `
+      <div class="floor ${extra} ${floor.state === 'working' ? 'is-working' : ''}"
            data-floor="${esc(floor.id)}">
-        <div class="floor-no">${staff.length - index}</div>
+        <div class="floor-no">${esc(plate)}</div>
         <div class="floor-who">
           <div class="floor-name">${esc(floor.name)} <span class="cut-role">${esc(floor.role)}</span></div>
           ${floor.on
             ? `<div class="floor-on">${esc(clip(floor.on.goal, 78))}</div>`
             : `<div class="floor-model"><button type="button" data-repost="${esc(floor.id)}"
-                 title="Move them to another model">${esc(floor.describes)}</button></div>`}
+                 title="${esc(floor.describes)} — click to move them">${esc(runsOn(floor))}</button></div>`}
         </div>
         <div class="floor-right">
           <span class="state s-${esc(floor.state)}"><i></i>${esc(said[floor.state] ?? floor.state)}</span>
         </div>
-      </div>`,
-        )
-        .join('')
-    : `<div class="empty-floors">Nobody in it yet. Take somebody on and the building grows a storey.</div>`
+      </div>`
+
+  const floors = staff.length
+    ? staff.map((floor, index) => storey(floor, staff.length - index, floor === top ? 'top-floor' : '')).join('')
+    : `<div class="empty-floors">Nobody upstairs yet. Take somebody on and the building grows a storey.</div>`
+
+  // The label is already in the floor's own description — "Anthropic ·
+  // claude-opus-5 (via Claude Code)" — so the supply line is that string with
+  // the model taken out of the middle of it, rather than a second source of
+  // truth about what a provider is called.
+  const onSupply = building.staff.find((floor) => supplyOf(floor) === supply)
+  const supplyLabel = onSupply ? withoutModel(onSupply.describes, onSupply.posting?.model) : ''
 
   el('cutaway').innerHTML = `
     <div class="cut-roof"></div>
+    ${supplyLabel
+      ? `<div class="cut-supply">
+           <span class="cut-role">Runs on</span>
+           <span class="cut-supply-who">${esc(supplyLabel)}</span>
+         </div>`
+      : ''}
     ${floors}
     <div class="cut-band street">
       <div>
@@ -387,10 +492,11 @@ function paintCutaway(building) {
     <div class="cut-band below">
       <div>
         <div class="cut-role">Archives</div>
-        <div class="cut-band-what">Everything it remembers. The curator works nights.</div>
+        <div class="cut-band-what">Everything it remembers${nightShift.length ? '' : '. Nobody is looking after them yet'}.</div>
       </div>
       <span class="pill">${plural(building.archives.total, 'note')}</span>
-    </div>`
+    </div>
+    ${nightShift.map((floor) => storey(floor, 'B', 'below')).join('')}`
 
   for (const button of el('cutaway').querySelectorAll('[data-repost]')) {
     button.onclick = () => repost(button.getAttribute('data-repost'))
@@ -401,6 +507,14 @@ function paintWork(building) {
   const open = building.open
   const state = { queued: 'queued', working: 'working', 'awaiting-review': 'in review', 'awaiting-approval': 'needs you', escalated: 'blocked' }
   const kind = { working: 'lit', escalated: 'bad' }
+
+  // A building that has never done anything gets the riser instead of two
+  // empty columns over a silent feed. The moment there is one real task, the
+  // explanation has been replaced by the thing it was explaining.
+  const untouched = open.length === 0 && building.recent.length === 0
+  el('riser').classList.toggle('hidden', !untouched)
+  el('workCols').classList.toggle('hidden', untouched)
+  el('feedBox').classList.toggle('hidden', untouched)
 
   el('workOpen').innerHTML = open.length
     ? open
@@ -427,19 +541,63 @@ function paintWork(building) {
     : `<p class="empty">Nothing on. Put a goal to it and the manager will break it into work.</p>`
 
   el('workDone').innerHTML = building.recent.length
-    ? building.recent
-        .map((task) => {
-          const branch = (task.result?.artifacts ?? []).find((a) => a.startsWith('branch:'))
-          return `<div class="row"><div class="row-main">
-            <div class="row-title">${esc(clip(task.goal, 62))}</div>
-            <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.settledAt)}</div>
-          </div><div class="row-right">
-            ${branch ? `<span class="pill branch">${esc(branch.slice(7))}</span>` : ''}
-            <span class="pill ${task.state === 'done' ? 'good' : 'bad'}">${esc(task.state)}</span>
-          </div></div>`
-        })
-        .join('')
-    : '<p class="empty">Nothing finished yet.</p>'
+    ? building.recent.map((task) => settled(building, task)).join('')
+    : `<p class="empty">Nothing has come back yet. What does lands here — what it did, what it
+       produced, and what it cost.</p>`
+}
+
+/**
+ * A task that has come back, and what came back with it.
+ *
+ * Every result carries a summary in the worker's own words, whatever it
+ * produced, and what it spent — and none of it was on any screen. The row said
+ * a branch name and a state, which tells you that something happened and
+ * nothing whatever about what.
+ *
+ * Shut by default, because the column is for scanning and this is one press
+ * away. A <details> rather than a click handler: it opens from the keyboard,
+ * announces itself, and survives a redraw without anything remembering it.
+ *
+ * The acceptance criteria come back too, and they are the same list the task
+ * carried out with it — ticked, this time, because that is the question the
+ * reviewer was answering.
+ */
+function settled(building, task) {
+  const artifacts = task.result?.artifacts ?? []
+  const branch = artifacts.find((line) => line.startsWith('branch:'))
+  const held = task.state === 'done'
+  const rest = artifacts.filter((line) => line !== branch)
+
+  return `<details class="settled">
+    <summary>
+      <div class="row-main">
+        <div class="row-title">${esc(clip(task.goal, 62))}</div>
+        <div class="row-sub">${who(building, task.assignedTo)} · ${ago(task.settledAt)}</div>
+      </div>
+      <div class="row-right">
+        ${branch ? `<span class="pill branch">${esc(branch.slice(7))}</span>` : ''}
+        <span class="pill ${held ? 'good' : 'bad'}">${esc(task.state)}</span>
+      </div>
+    </summary>
+    <div class="settled-what">
+      ${task.result?.summary
+        ? `<p class="settled-said">${esc(task.result.summary)}</p>`
+        : `<p class="empty">It settled without saying anything.</p>`}
+      ${(task.acceptance ?? []).length
+        ? `<ul class="task-accept ${held ? 'met' : ''}">${task.acceptance
+            .map((line) => `<li>${esc(clip(line, 160))}</li>`)
+            .join('')}</ul>`
+        : ''}
+      ${rest.length || task.result?.tokensSpent
+        ? `<div class="settled-left">
+             ${rest.map((line) => `<span class="pill">${esc(clip(line.replace(/^\w+:/, ''), 52))}</span>`).join('')}
+             ${task.result?.tokensSpent
+               ? `<span class="settled-cost">${tokens(task.result.tokensSpent)} tokens</span>`
+               : ''}
+           </div>`
+        : ''}
+    </div>
+  </details>`
 }
 
 const who = (building, floorId) =>
@@ -453,33 +611,48 @@ const who = (building, floorId) =>
  * the colour that means *you*, and the two answers side by side rather than a
  * row you might click through by accident.
  */
-function paintApprovals(building) {
-  // What granting it actually does, said in the fewest ordinary words.
-  const consequence = {
-    hire: 'Somebody joins, and the building grows a storey.',
-    publish: 'This leaves the building.',
-    send: 'This goes to somebody outside.',
-    deploy: 'This reaches the world.',
-    spend: 'This costs money.',
-    merge: 'This lands on main.',
-  }
+/** What granting it actually does, said in the fewest ordinary words. */
+const CONSEQUENCE = {
+  hire: 'Somebody joins, and the building grows a storey.',
+  publish: 'This leaves the building.',
+  send: 'This goes to somebody outside.',
+  deploy: 'This reaches the world.',
+  spend: 'This costs money.',
+  merge: 'This lands on main.',
+}
 
+/**
+ * One docket. `asked` is the line above it, which differs by where you read it:
+ * at the desk you already know the building, and on the round you do not.
+ */
+const docket = (approval, asked) => `<div class="docket">
+  <div class="docket-head">
+    <span class="kind k-${esc(approval.kind)}">${esc(approval.kind)}</span>
+    <span class="docket-when">${asked}</span>
+  </div>
+  <p class="docket-intent">${esc(approval.intent)}</p>
+  <p class="docket-if">${esc(CONSEQUENCE[approval.kind] ?? 'This reaches outside the building.')}</p>
+  <div class="docket-answer">
+    <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
+    <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
+  </div>
+</div>`
+
+/** Both answers on every docket in a container, wired to the same decision. */
+function wireDockets(node, after) {
+  for (const button of node.querySelectorAll('[data-yes]')) {
+    button.onclick = () => decide(button.getAttribute('data-yes'), true, after)
+  }
+  for (const button of node.querySelectorAll('[data-no]')) {
+    button.onclick = () => decide(button.getAttribute('data-no'), false, after)
+  }
+}
+
+function paintApprovals(building) {
   el('approvals').innerHTML = building.approvals.length
     ? building.approvals
-        .map(
-          (approval) => `<div class="docket">
-            <div class="docket-head">
-              <span class="kind k-${esc(approval.kind)}">${esc(approval.kind)}</span>
-              <span class="docket-when">${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}</span>
-            </div>
-            <p class="docket-intent">${esc(approval.intent)}</p>
-            <p class="docket-if">${esc(consequence[approval.kind] ?? 'This reaches outside the building.')}</p>
-            <div class="docket-answer">
-              <button class="ghost" data-no="${esc(approval.id)}">Refuse</button>
-              <button class="solid" data-yes="${esc(approval.id)}">Allow</button>
-            </div>
-          </div>`,
-        )
+        .map((approval) =>
+          docket(approval, `${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}`))
         .join('')
     : `<div class="desk-clear">
          <p>The desk is clear.</p>
@@ -487,18 +660,66 @@ function paintApprovals(building) {
             deploying, spending, merging to main, hiring — stops here first.</p>
        </div>`
 
-  for (const node of el('approvals').querySelectorAll('[data-yes]')) {
-    node.onclick = () => decide(node.getAttribute('data-yes'), true)
-  }
-  for (const node of el('approvals').querySelectorAll('[data-no]')) {
-    node.onclick = () => decide(node.getAttribute('data-no'), false)
-  }
+  wireDockets(el('approvals'), refreshBuilding)
+}
+
+/**
+ * The round: everything waiting on you, in every building, from the street.
+ *
+ * Each building's desk is in its own lobby, which is right — a building shares
+ * nothing with its neighbours, and that includes its post. But the person the
+ * dockets are addressed to has all of them, and the skyline was already
+ * counting them in terracotta while giving nobody anywhere to answer. You had
+ * to guess which buildings and walk into each.
+ *
+ * The count on the street is the way in now. This is the same docket as the one
+ * in the lobby, decided down the same route — the daemon finds the building the
+ * approval belongs to, so nothing here has to know.
+ */
+async function paintRound() {
+  const box = el('round')
+  if (box.classList.contains('hidden')) return
+  try {
+    const { pending } = await api('/api/approvals')
+    if (pending.length === 0) {
+      box.innerHTML = `<div class="desk-clear">
+          <p>Nothing is waiting on you.</p>
+          <p class="dim">Anything that would reach outside a building stops in its lobby until
+             you say so. This is where all of them stop at once.</p>
+        </div>`
+      return
+    }
+    box.innerHTML =
+      `<h3 class="pane-title">Waiting on you${
+        pending.length > 1 ? ` <span class="pill warn">${pending.length}</span>` : ''
+      }</h3>` +
+      pending
+        .map((approval) =>
+          docket(approval, `<b class="docket-where">${esc(approval.buildingName)}</b> · asked ${ago(approval.createdAt)}`))
+        .join('')
+    wireDockets(box, refreshCity)
+  } catch (error) { oops(error) }
+}
+
+/** Open or shut the round, and remember which it is. */
+function toggleRound(open) {
+  const box = el('round')
+  const want = open ?? box.classList.contains('hidden')
+  box.classList.toggle('hidden', !want)
+  el('tallies').querySelector('[data-round]')?.setAttribute('aria-expanded', String(want))
+  if (want) { box.innerHTML = '<p class="empty">Reading every lobby…</p>'; paintRound() }
 }
 
 function paintNextForm(building) {
-  el('nextForm').innerHTML = building.nextTierAt
-    ? `Another ${plural(building.nextTierAt - building.headcount, 'hire')} and it changes form.`
-    : 'It has taken every form there is.'
+  if (!building.nextTierAt) {
+    el('nextForm').textContent = 'It has taken every form there is.'
+    return
+  }
+  // `plural` was right for the count and wrong for the sentence: "Another 1
+  // hire and it changes form" is a number where a person would use a word.
+  const away = building.nextTierAt - building.headcount
+  el('nextForm').textContent =
+    away === 1 ? 'One more hire and it changes form.' : `Another ${away} hires and it changes form.`
 }
 
 async function paintSchedules() {
@@ -540,12 +761,16 @@ async function paintArchives(query) {
   const path = `/api/buildings/${encodeURIComponent(view.building)}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
   const { stats, notes } = await api(path)
   el('archives').innerHTML =
-    `<div class="archive-shelf">
-      <div class="archive-stats">
-        <span><b>${stats.total}</b> notes</span>
-        <span><b>${stats.pinned}</b> pinned</span>
-        <span><b>${stats.expired}</b> expired</span>
-      </div>` +
+    `<div class="archive-shelf">` +
+    // Three zeros above "Nothing written down yet" is the same fact told twice,
+    // the second time in a way that says nothing.
+    (stats.total
+      ? `<div class="archive-stats">
+           <span><b>${stats.total}</b> notes</span>
+           <span><b>${stats.pinned}</b> pinned</span>
+           <span><b>${stats.expired}</b> expired</span>
+         </div>`
+      : '') +
     (notes.length
       ? notes
           .slice(0, 20)
@@ -820,12 +1045,20 @@ setInterval(tickWorking, 1000)
 
 // ── things you can do ──────────────────────────────────────────────────────
 
-async function decide(id, granted) {
+/**
+ * Answer a docket. `after` is what to redraw, because the same decision is
+ * offered from two places: the building's own desk, and the round on the
+ * street. The daemon finds the building the approval belongs to either way.
+ */
+async function decide(id, granted, after = refreshBuilding) {
   try {
     const result = await post(`/api/approvals/${encodeURIComponent(id)}`, { granted })
     toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Approved.' : 'Refused.', granted ? 'good' : '')
-    await refreshBuilding()
+    // A hire is a new storey, so the drawing is now wrong rather than just out
+    // of date. Cleared before the redraw, or the redraw reuses the old shape.
     drawnShape = ''
+    await after()
+    if (!el('round').classList.contains('hidden')) await paintRound()
   } catch (error) { oops(error) }
 }
 
@@ -920,12 +1153,138 @@ function breakGround() {
 
 el('goHome').onclick = goHome
 
-// Escape steps back outside. Not while a dialog is open — that is the dialog's.
+/**
+ * The keyboard.
+ *
+ * Where you are decides what a key does, because the two screens are two
+ * places: on the street a number is a building, inside one it is a floor's
+ * tab. That is the same rule the rest of the app follows, and it means the
+ * whole map is six keys rather than sixteen.
+ *
+ * Nothing here fires while a person is typing, and nothing here fires while a
+ * dialog is open — a dialog is a room with its own door, and Escape is how you
+ * leave it.
+ */
+const TABS = ['floors', 'work', 'desk', 'mail', 'orders', 'archives']
+
+/** True when the keystroke belongs to whatever is being typed into. */
+function typing(target) {
+  if (!target) return false
+  if (target.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+}
+
+/** Put the cursor where the main thing you write on this screen is written. */
+function focusTheBox() {
+  const box = view.screen === 'building' ? el('goalText') : el('askText')
+  if (box.disabled) return
+  box.focus()
+  box.select()
+}
+
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return
-  if (document.querySelector('dialog[open]')) return
-  if (view.screen === 'building') goHome()
+  const open = document.querySelector('dialog[open]')
+
+  // Escape steps back outside. Not while a dialog is open — that is the
+  // dialog's own, and the browser already handles it.
+  if (event.key === 'Escape') {
+    if (!open && view.screen === 'building') goHome()
+    return
+  }
+
+  // `?` is the one key that works from inside a dialog, because the moment you
+  // most want the map is the moment you are somewhere you did not mean to be.
+  if (event.key === '?' && !typing(event.target)) {
+    event.preventDefault()
+    open?.close()
+    el('keysDialog').showModal()
+    return
+  }
+
+  if (open || typing(event.target)) return
+  if (event.metaKey || event.ctrlKey || event.altKey) return
+
+  // `/` reaches for the box you write in, wherever you are. Prevented, or the
+  // slash arrives in the box you just focused.
+  if (event.key === '/') {
+    event.preventDefault()
+    focusTheBox()
+    return
+  }
+
+  if (view.screen === 'building') {
+    const tab = TABS[Number(event.key) - 1]
+    if (tab) { event.preventDefault(); selectTab(tab) }
+    else if (event.key === 'g') { event.preventDefault(); goHome() }
+    return
+  }
+
+  // On the street, left to right, the way they are standing.
+  if (event.key === 'n') { event.preventDefault(); breakGround(); return }
+  const nth = skyline[Number(event.key) - 1]
+  if (nth) { event.preventDefault(); openBuilding(nth.id) }
 })
+
+el('openKeys').onclick = () => el('keysDialog').showModal()
+el('firstGround').onclick = breakGround
+
+/**
+ * Boarding a building up, and bringing one back.
+ *
+ * Breaking ground was one typo away from a building nobody could remove. The
+ * store has been able to mothball one since the first commit and nothing ever
+ * called it — so a skyline could only ever grow, and the only way out was to
+ * edit the database by hand.
+ *
+ * It is not a delete and the dialog says so: one column changes, and the
+ * floors, archives, post and workspace are untouched. That is also why it can
+ * be undone from the street with one press.
+ */
+el('boardUp').onclick = () => {
+  if (!current) return
+  el('boardWho').textContent = `Board up ${current.name}?`
+  el('boardDialog').showModal()
+}
+el('boardCancel').onclick = () => el('boardDialog').close()
+el('boardForm').onsubmit = async (event) => {
+  event.preventDefault()
+  const building = current
+  if (!building) return
+  el('boardDialog').close()
+  try {
+    await post(`/api/buildings/${encodeURIComponent(building.id)}/close`)
+    toast(`${building.name} is boarded up. Nothing was deleted.`)
+    drawnShape = ''
+    goHome()
+  } catch (error) { oops(error) }
+}
+
+/** What has been taken off the skyline, and the way back. */
+function paintBoarded(boardedUp = []) {
+  const box = el('boarded')
+  box.classList.toggle('hidden', boardedUp.length === 0)
+  if (boardedUp.length === 0) return
+  box.innerHTML =
+    `<span class="cut-role">Boarded up</span>` +
+    boardedUp
+      .map(
+        (building) => `<span class="boarded-one">${esc(building.name)}
+          <button type="button" class="ghost" data-reopen="${esc(building.id)}">Bring it back</button>
+        </span>`,
+      )
+      .join('')
+
+  for (const button of box.querySelectorAll('[data-reopen]')) {
+    button.onclick = async () => {
+      try {
+        const { building } = await post(`/api/buildings/${encodeURIComponent(button.getAttribute('data-reopen'))}/reopen`)
+        toast(`${building.name} is back on the skyline.`, 'good')
+        drawnShape = ''
+        await refreshCity()
+      } catch (error) { oops(error) }
+    }
+  }
+}
 
 function selectTab(name) {
   view.tab = name
@@ -1080,9 +1439,47 @@ api('/api/roles')
 
 // ── the live stream ────────────────────────────────────────────────────────
 
-const LOUD = new Set(['goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated', 'decided'])
+const LOUD = new Set([
+  'goal-started', 'goal-finished', 'hired', 'ground-broken', 'curated', 'decided',
+  'boarded-up', 'reopened',
+])
 /** Events that mean the drawing itself is now wrong, not just the numbers. */
 const RESHAPES = new Set(['hired', 'ground-broken'])
+
+/**
+ * What each event is called on screen.
+ *
+ * The feed printed the event's own name — `goal-started`, `ground-broken`,
+ * `schedule-skipped` — which are identifiers this code passes between its own
+ * functions, and the only place in the product where one reached a person. A
+ * log is still a log: short, monospace, newest first. That is not a reason to
+ * show somebody a hyphenated symbol and expect them to read it as a word.
+ *
+ * A kind with no entry here keeps its own name rather than disappearing, so
+ * one added tomorrow is visible and merely ugly.
+ */
+const SAID = {
+  'goal-started': 'Set to work',
+  'goal-finished': 'Came back',
+  'goal-failed': 'Stopped',
+  'ground-broken': 'Broke ground',
+  hired: 'Taken on',
+  curated: 'Archives tidied',
+  scheduled: 'Standing order set',
+  'schedule-due': 'Standing order due',
+  'schedule-skipped': 'Standing order skipped',
+  'bridge-changed': 'Discord',
+  bridge: 'Discord',
+  asked: 'Asked',
+  answered: 'Answered',
+  looking: 'Reading',
+  progress: 'Working',
+  posted: 'Post',
+  step: 'Step',
+}
+
+/** Events whose detail is already a whole sentence. A prefix would say it twice. */
+const SPEAKS_FOR_ITSELF = new Set(['recovered', 'decided', 'ticker-failed', 'boarded-up', 'reopened'])
 
 const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
 stream.onopen = () => { el('live').className = 'live on'; el('live').lastElementChild.textContent = 'live' }
@@ -1091,9 +1488,17 @@ stream.onerror = () => { el('live').className = 'live off'; el('live').lastEleme
 stream.onmessage = (message) => {
   const event = JSON.parse(message.data)
 
-  if (event.kind === 'tool') say(`  · ${event.detail}`, 'tool')
-  else say(`${event.kind}${event.detail ? `: ${event.detail}` : ''}`,
-           event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit')
+  const tone = event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit'
+  if (event.kind === 'tool') {
+    // A tool call is a thing a floor did on the way, so it is indented under
+    // the line it belongs to rather than given a heading of its own.
+    say(`· ${event.detail}`, 'tool', event.at)
+  } else if (SPEAKS_FOR_ITSELF.has(event.kind)) {
+    say(event.detail ?? SAID[event.kind] ?? event.kind, tone, event.at)
+  } else {
+    const said = SAID[event.kind] ?? event.kind
+    say(event.detail ? `${said} — ${event.detail}` : said, tone, event.at)
+  }
 
   // The concierge says what it is opening as it goes.
   if (event.kind === 'looking' && el('askGo').disabled) {
@@ -1129,15 +1534,37 @@ stream.onmessage = (message) => {
   else if (!event.building || event.building === view.building) refreshBuilding().catch(() => {})
 }
 
-// A resized window is a differently-shaped hole, and the drawing was cut to fit
-// the old one. Debounced: a drag fires this a hundred times.
+/**
+ * A differently-shaped hole needs the drawing cut again.
+ *
+ * The window was the only thing watched, and it is not the only thing that
+ * changes the shape of that hole: the frame takes what is left after the strip
+ * below it, so opening the concierge's answer or the round shortens the city
+ * without the window moving at all. The drawing stayed the ratio it was cut to
+ * and shrank to a postage stamp in the middle of a wide black band.
+ *
+ * Watching the frame itself covers the window too, so there is one rule rather
+ * than a list of things that happen to resize it. Debounced: a drag fires this
+ * a hundred times, and each one is a round trip.
+ */
 let resizeTimer
-window.addEventListener('resize', () => {
+let refitBox = ''
+const refit = () => {
+  // The observer fires on our own redraw as well as on a real change, and a
+  // drawing wide enough to want a scrollbar changes the height of the box it
+  // is measured against. Comparing the box we would ask for against the one we
+  // last asked for stops that becoming a loop between two sizes.
+  const box = cityBox()
+  const asking = `${box.width}×${box.height}`
+  if (asking === refitBox) return
+  refitBox = asking
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => {
     if (view.screen === 'city') refreshCity().catch(() => {})
   }, 220)
-})
+}
+window.addEventListener('resize', refit)
+new ResizeObserver(refit).observe(el('cityScroll'))
 
 // A slow poll behind the stream, because a dropped connection should not leave
 // the numbers frozen until somebody clicks something.
@@ -1157,15 +1584,30 @@ if (desktop) {
     button.disabled = !enabled
     button.classList.remove('hidden')
   }
+  // What the button does depends on what this platform can actually do.
+  let act = () => desktop.restartToUpdate()
+
   desktop.onUpdate((state) => {
-    if (state.phase === 'ready') offer(`Restart to update to ${state.version}`, true)
-    else if (state.phase === 'downloading') offer(`Downloading update… ${state.percent ?? 0}%`, false)
-    else if (state.phase === 'available') offer('Update found…', false)
-    else button.classList.add('hidden')
+    if (state.phase === 'ready') {
+      act = () => desktop.restartToUpdate()
+      offer(`Restart to update to ${state.version}`, true)
+    } else if (state.phase === 'manual') {
+      // macOS, until these builds carry a real certificate: Squirrel will not
+      // install an update whose signature it cannot verify, so offering a
+      // restart here would be offering something that fails. Offer the download.
+      act = () => desktop.openDownload?.()
+      offer(`Version ${state.version} is out — get it`, true)
+    } else if (state.phase === 'downloading') {
+      offer(`Downloading update… ${state.percent ?? 0}%`, false)
+    } else if (state.phase === 'available') {
+      offer('Update found…', false)
+    } else {
+      button.classList.add('hidden')
+    }
   })
   // Downloading happens on its own; the restart is the only part that is ours
   // to choose, because nothing should be replaced under somebody mid-goal.
-  button.onclick = () => { if (!button.disabled) desktop.restartToUpdate() }
+  button.onclick = () => { if (!button.disabled) act() }
 }
 
 wireParallax()
