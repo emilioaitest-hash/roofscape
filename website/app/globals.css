@@ -1,0 +1,134 @@
+/* The palette is the dashboard's, so the page and the app it hands over look
+   like one thing rather than two. */
+:root {
+  --bg: #faf9f7;
+  --panel: #ffffff;
+  --ink: #1b1a18;
+  --dim: #6f6a63;
+  --line: #e3ded6;
+  --accent: #7a5c3e;
+  --lit: #b8860b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14130f;
+    --panel: #1c1b17;
+    --ink: #eae6df;
+    --dim: #948d82;
+    --line: #2e2c26;
+    --accent: #c9a227;
+    --lit: #e8c15a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 72px 24px 96px;
+}
+
+h1 {
+  font-size: 26px;
+  margin: 0 0 6px;
+  letter-spacing: 0.01em;
+}
+
+.tagline {
+  color: var(--dim);
+  margin: 0 0 34px;
+}
+
+pre.skyline {
+  font: 13px/1.15 ui-monospace, 'SF Mono', Menlo, monospace;
+  margin: 0 0 38px;
+  overflow-x: auto;
+  color: var(--ink);
+}
+
+.downloads {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 11px 24px;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.primary:hover {
+  opacity: 0.88;
+}
+
+.secondary {
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 17px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.secondary:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.fineprint {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+section {
+  margin-top: 44px;
+  border-top: 1px solid var(--line);
+  padding-top: 26px;
+}
+
+h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--dim);
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+li {
+  margin-bottom: 7px;
+}
+
+a {
+  color: var(--accent);
+}
+
+footer {
+  margin-top: 44px;
+  color: var(--dim);
+  font-size: 13px;
+}
