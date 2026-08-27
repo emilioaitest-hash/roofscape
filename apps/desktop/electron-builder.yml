@@ -1,5 +1,9 @@
 appId: ai.roofscape.desktop
 productName: Roofscape
+# Without this the binary is named after the npm package, and "@app/desktop"
+# becomes "@appdesktop" — which AppImage refuses, because an @ cannot be used
+# safely in a file path. It failed the Linux build and took the release with it.
+executableName: roofscape
 copyright: Copyright © 2026 Emilio F.
 
 directories:

@@ -1,4 +1,5 @@
 import { Downloads } from './Downloads'
+import { latestRelease, PLATFORMS, type Platform } from './release'
 
 /** The same drawing the terminal and the dashboard show. */
 const SKYLINE = `              ╒═══════╕
@@ -14,7 +15,10 @@ const SKYLINE = `              ╒═══════╕
  Demo Site   Help Center
 4 on staff   5 on staff`
 
-export default function Home() {
+export default async function Home() {
+  const release = await latestRelease()
+  const available = PLATFORMS.filter((entry) => Boolean(release?.builds[entry as Platform]))
+
   return (
     <main>
       <h1>Roofscape</h1>
@@ -22,7 +26,7 @@ export default function Home() {
 
       <pre className="skyline">{SKYLINE}</pre>
 
-      <Downloads />
+      <Downloads version={release?.version ?? null} available={available} />
 
       <section>
         <h2>What it is</h2>
