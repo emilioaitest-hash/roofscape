@@ -65,6 +65,15 @@ calls `createRequire(import.meta.url)` — undefined once esbuild emits CommonJS
 The app will not boot. Import the specific modules instead; the main bundle is
 8kb because of it.
 
+**Name the Electron app before anything asks what it is called.** Unpackaged,
+Electron takes the name from `package.json` — `@app/desktop` — and
+`getPath('userData')` then has a slash in it, so the single-instance lock cannot
+be taken. `requestSingleInstanceLock()` returns false, the app quits before it
+opens a window, silently and with exit code 0. `npm run desktop` did nothing at
+all and said nothing about it. `app.setName(BRAND.name)` runs before the lock
+check now. electron-builder sets `productName` for a packaged build, so this
+only ever bit the person developing it.
+
 **`apps/desktop/build/` is source, not output.** It holds electron-builder's
 `buildResources`, including the signing hook. The root `build/` ignore rule
 swallowed it once: every release build failed on a module it could not find,

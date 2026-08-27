@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join, sep } from 'node:path'
 // Reached through their own modules rather than the package entry on purpose:
 // the entry re-exports the whole of core, which would pull the provider SDKs
@@ -22,6 +22,22 @@ const unpacked = (path: string): string => path.replace(`app.asar${sep}`, `app.a
 
 /** The daemon, bundled beside this file, run on the Node that Electron carries. */
 const daemonEntry = (): string => unpacked(join(__dirname, 'daemon.mjs'))
+
+/**
+ * Name the app before anything asks it what it is called.
+ *
+ * Unpackaged, Electron takes the name from package.json, which is
+ * `@app/desktop` — and `getPath('userData')` then contains a slash, so the
+ * single-instance lock cannot be taken and `requestSingleInstanceLock()` returns
+ * false. The app quit before it ever opened a window, silently and with exit
+ * code 0, which is why `npm run desktop` did nothing at all.
+ *
+ * electron-builder sets `productName` for a packaged build, so only running
+ * from a checkout was affected — which is to say, only ever the person
+ * developing it. Setting it here fixes that and makes the two agree: unpackaged
+ * and installed now keep their state in the same place.
+ */
+app.setName(BRAND.name)
 
 // Two windows would be two daemons racing for one lock, and the loser exits.
 if (!app.requestSingleInstanceLock()) app.quit()
@@ -52,9 +68,11 @@ function createWindow(): BrowserWindow {
     minWidth: 860,
     minHeight: 560,
     show: false,
-    // The dashboard paints its own background from the system theme; matching it
-    // here is what stops a white flash before the first paint.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#14130f' : '#faf9f7',
+    // Matching the dashboard's own ground is what stops a flash before the first
+    // paint. It is one colour rather than two now: the city is drawn at dusk and
+    // the page around it is dark whatever the system theme says, because a
+    // skyline at noon on white is a different product.
+    backgroundColor: '#100f17',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     title: BRAND.name,
     webPreferences: {
