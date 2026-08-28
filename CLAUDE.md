@@ -13,6 +13,22 @@ things that have already gone wrong.
     npm run desktop     # the desktop app, from this checkout
     npm run desktop:dist  # installers into apps/desktop/release
 
+Looking at it, which is most of how the drawing gets judged:
+
+    node scripts/seed-demo.mjs              # six buildings worth looking at, into .scratch
+    sh scripts/demo-daemon.sh               # serves them on :7788, so your own data is untouched
+    sh scripts/shots.sh <tag>               # photographs every screen at once
+    sh scripts/verify.sh                    # typecheck, build, test, then photograph
+    node scripts/vendor-fonts.mjs           # re-fetch the typefaces (rarely)
+
+    node_modules/.bin/electron scripts/shoot.cjs <url|file> <out.png> [w] [h] [wait] [js…]
+    node_modules/.bin/electron scripts/probe.cjs <url> <wait> <js…>
+
+`shoot` answers "does it look right". `probe` evaluates JavaScript in the running
+page and prints the result, which answers "is it actually there" — a different
+question, and the one that catches a button wired to nothing. Two review findings
+were overturned by it and several confirmed; prefer it to reasoning about the DOM.
+
 Node 24 or later, and it is not optional: storage uses `node:sqlite`, which is
 built into Node. There is no native module anywhere in the tree, and it should
 stay that way — it is what makes the desktop app a single bundled file.
@@ -131,6 +147,46 @@ request, and the rest of `main.ts` goes on running while it is considered.
 launchd's environment, so `ROOFSCAPE_CLAUDE_BIN=none` exported in a terminal does
 nothing to the installed app. `launchctl setenv` reaches it, and does not survive
 a reboot. Run the app from a terminal and the variable behaves as written.
+
+**`tsc --noEmit -p tsconfig.json` checks nothing.** The root config is
+`files: []` plus references, so it exits 0 over a broken tree. Typecheck each
+package: `npx tsc --noEmit -p packages/core/tsconfig.json`, and the same for
+`apps/daemon` and `apps/cli`. `scripts/verify.sh` does it that way.
+
+**A pipeline hides an exit code.** `npm test | tail` returns tail's status, so
+`set -e` never fires and a red suite reports success. Redirect to a file and test
+the command's own status.
+
+**Anything inside a plot is scaled twice.** By the plot's own `scale(zoom)` and
+again by the page fitting the whole SVG to its frame. A length meant to be a
+*screen* size — the misregistration, the captions — has to be divided back out by
+both, and the composed number is not `svg.getScreenCTM()`; that carries only the
+page's half. Measured on a real home screen the two together came to 0.51, which
+put the misprint at half a pixel and the caption under each building at 7.7px,
+below the floor of the type scale. There is one measured quantity for this now,
+`--rs-px`, set by `setSlip()` from *a plot's* transform. Anything screen-sized
+derives from it; nothing else should be a bare `px` inside the drawing.
+
+**A backtick inside `CITY_STYLE` ends the template literal.** The whole
+stylesheet is a template string in `svg.ts`, so a comment that quotes an
+identifier in backticks produces a stream of syntax errors a long way from the
+comment. Quote with nothing, or with single quotes.
+
+**The recurring failure in this codebase is a server capability with no caller.**
+`POST /api/providers`, the `next` state machine, and `read-work` were each
+finished, tested and documented on the daemon with nothing in the browser
+reaching them — and the last of the three left the home screen naming an action
+the app gave you no way to take. `design.test.ts` now reads every `do:` out of
+`api.ts` and fails unless the page has a `case` for it. When you add a state to
+the daemon, that test is what will tell you the page never heard of it.
+
+**The design language is Overprint and the city is New York.** `docs/DESIGN.md`
+is the whole of it, and decisions 0015–0018 say why. Two rules do the most work:
+marigold means light and vermilion means you, so neither may ever fill an
+ordinary control — the primary button is `--ink` — and light is a *mark* rather
+than an emission, because on paper you cannot emit anything. A window is a
+socket; a marigold counter is work in hand. Both rules are enforced by tests, and
+both were broken once by code that looked right.
 
 ## Releases and the app
 

@@ -131,10 +131,30 @@ function notice(label, what, fix) {
   el('notice').classList.remove('hidden')
 }
 
+/**
+ * Turn the notice's button from "Dismiss" into the thing that would fix it.
+ *
+ * A remedy the owner has to go and find is a remedy in name only. When a goal
+ * stopped because nothing could answer it, the fix is one dialog away, so the
+ * bar offers the dialog instead of offering to go away.
+ */
+function offerProviders() {
+  el('noticeGo').textContent = 'Connect a model'
+  el('noticeGo').classList.add('solid')
+  el('noticeGo').classList.remove('ghost')
+  el('noticeGo').onclick = () => { clearNotice(); openProviders() }
+}
+
 function clearNotice() {
   noticeSaid = ''
   noticeCount = 0
   el('notice').classList.add('hidden')
+  // Back to a plain dismissal, or the next unrelated failure inherits an offer
+  // that has nothing to do with it.
+  el('noticeGo').textContent = 'Dismiss'
+  el('noticeGo').classList.add('ghost')
+  el('noticeGo').classList.remove('solid')
+  el('noticeGo').onclick = clearNotice
 }
 
 el('noticeGo').onclick = clearNotice
@@ -2358,7 +2378,25 @@ function onEvent(message) {
   }
 
   if (event.kind === 'goal-finished') cameBack(event)
-  if (event.kind === 'goal-failed') oops(new Trouble(event.detail ?? 'That goal stopped.'))
+  if (event.kind === 'goal-failed') {
+    /*
+     * The daemon works out *why* a goal stopped and *what to do about it*, and
+     * this used to throw both away and print the headline alone.
+     *
+     * That is the worst possible moment to be terse. A first goal that stops
+     * for want of a credential is the exact failure this app was abandoned
+     * over, and what the owner got was a red bar reading "Help Center could not
+     * start." and nothing else — no cause, no remedy, and no way on. Both
+     * fields are already computed, already tested, and already on the event.
+     */
+    const why = event.data?.why
+    const remedy = event.data?.remedy
+    const said = event.data?.headline ?? event.detail ?? 'That goal stopped.'
+    oops(new Trouble(why ? `${said} ${why}` : said, remedy))
+    // When the cause is that nothing can answer, the remedy is a dialog rather
+    // than a sentence, so offer the dialog.
+    if (event.data?.verdict === 'could-not-start') offerProviders()
+  }
   if (event.kind === 'asked') toast('Something needs your say-so.')
 
   // What the building is doing right now, in its own words.
