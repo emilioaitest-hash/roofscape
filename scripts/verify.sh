@@ -25,7 +25,17 @@ echo "   built"
 
 echo
 echo "== tests =="
-npm test 2>&1 | tail -8
+# Not `npm test | tail`: in POSIX sh a pipeline's status is the last command's,
+# so `tail` would return 0 however the suite went and `set -e` would never fire.
+# A verifier that cannot see a red suite is worse than no verifier, because it
+# is believed.
+if ! npm test >.scratch/test.log 2>&1; then
+  tail -40 .scratch/test.log
+  echo
+  echo "tests failed — not photographing a broken build"
+  exit 1
+fi
+tail -8 .scratch/test.log
 
 echo
 echo "== the app, photographed =="
