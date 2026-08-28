@@ -359,10 +359,39 @@ async function refreshCity() {
     drawnShape = shape
     wireCity()
   }
+  setSlip()
   paintCityState()
   paintTallies()
   paintNext(next)
   for (const building of grew) itGrew(building)
+}
+
+/**
+ * How far out of register the colour plate lands, in the drawing's own units.
+ *
+ * A press misregisters by a fixed distance on the paper, not by a fraction of
+ * whatever it is printing. The drawing carries the *direction* as a fraction per
+ * building; this supplies the distance, worked back through the scale the page
+ * is actually rendering at so the slip is the same size on every screen.
+ *
+ * It used to be baked in drawing units and so shrank with the city: measured on
+ * a real home screen it came to between 0.44 and 0.98 CSS pixels — half a pixel
+ * at the low end, which on a one-times display is nothing at all. The signature
+ * of the whole visual language was below the resolution of the screen.
+ *
+ * Clamped at both ends: a portrait is drawn much larger than a street, and an
+ * unclamped slip there would read as a printing fault rather than a print.
+ */
+const SLIP_CSS_PX = 2
+function setSlip() {
+  const svg = el('cityArt').querySelector('svg')
+  if (!svg || !svg.getScreenCTM) return
+  const ctm = svg.getScreenCTM()
+  // No layout yet, or a detached node: leave the drawing's own fallback alone
+  // rather than dividing by zero and translating everything to nowhere.
+  if (!ctm || !ctm.a) return
+  const units = Math.min(4, Math.max(1.2, SLIP_CSS_PX / ctm.a))
+  svg.style.setProperty('--rs-slip', `${units.toFixed(2)}px`)
 }
 
 /**

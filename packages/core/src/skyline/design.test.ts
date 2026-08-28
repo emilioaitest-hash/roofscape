@@ -358,10 +358,27 @@ test('every building comes off two plates, and the colour one lands off the ink'
   const svg = citySvg([{ id: 'press', name: 'Press', headcount: 7 }], { width: 1400, height: 800 })
   const { dx, dy } = design('press', 7).register
   assert.ok(svg.includes('class="rs-plate-ink"'), 'no ink plate')
+
+  /*
+   * The plate carries a *direction*, not a distance. A press misregisters by a
+   * fixed distance on the paper, not by a fraction of whatever it is printing —
+   * and emitting drawing units meant the slip shrank with the city, down to
+   * between 0.44 and 0.98 CSS pixels on a real home screen. Half a pixel is
+   * nothing on a one-times display, so the signature of the whole language was
+   * below the resolution of the screen it ships on.
+   *
+   * The page supplies the distance as `--rs-slip`, worked back through the
+   * scale it is really rendering at, and the fallback in the stylesheet keeps a
+   * standalone SVG printing exactly as it used to.
+   */
+  const round2 = (n: number) => Math.round(n * 100) / 100
   assert.ok(
-    svg.includes(`class="rs-plate-colour" style="--rs-dx:${dx}px;--rs-dy:${dy}px"`),
+    svg.includes(
+      `class="rs-plate-colour" style="--rs-dx:${round2(dx / REGISTER_SLIP)};--rs-dy:${round2(dy / REGISTER_SLIP)}"`,
+    ),
     'the colour plate carries no misregistration for CSS to snap back',
   )
+  assert.match(svg, /--rs-dx, 0\) \* var\(--rs-slip, [\d.]+px\)/, 'the slip has no distance to scale')
   // Snapping into register on hover is the whole hover interaction, and it has
   // to survive the drawing being handed around on its own.
   assert.match(svg, /\.rs-plot:hover \.rs-plate-colour[^}]*transform: none/)

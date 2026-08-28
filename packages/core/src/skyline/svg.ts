@@ -30,7 +30,7 @@
  * has to think about it.
  */
 import type { BuildingDesign, Ornament, Palette, StreetFixture, WindowShape } from './design.js'
-import { designFor, Chooser, seedOf, streetFurniture, type DesignInput } from './design.js'
+import { designFor, Chooser, seedOf, streetFurniture, REGISTER_SLIP, type DesignInput } from './design.js'
 import { floorsSaid } from './tiers.js'
 
 /** What the building is doing, which is the only thing that animates. */
@@ -350,12 +350,31 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
     ornamentSvg(ornament === 'sidewalk-shed' ? front : pen, design, ornament)
   }
 
-  const { dx, dy } = design.register
+  /*
+   * The misprint is carried as a *fraction*, not a distance.
+   *
+   * It used to be emitted in drawing units, which meant it shrank with the
+   * drawing: measured on a real home screen, the colour plate landed between
+   * 0.44 and 0.98 CSS pixels off the ink — half a pixel at the low end, which
+   * on a one-times display renders as nothing at all. The thing the design
+   * document calls the whole visual identity was invisible on the screen it
+   * ships on, and the 16-pixel brand mark in the corner — a flat 2px offset —
+   * was teaching the idea better than the entire city.
+   *
+   * A press does not misregister proportionally to the size of the drawing; it
+   * misregisters by a fixed distance on the paper. So the fraction travels with
+   * the building and the page multiplies it by `--rs-slip`, which it sets from
+   * the scale the drawing is actually rendered at. The fallback keeps a
+   * standalone SVG — one handed around on its own, with no page to measure it —
+   * printing exactly as it always did.
+   */
+  const dxOf = round(design.register.dx / REGISTER_SLIP)
+  const dyOf = round(design.register.dy / REGISTER_SLIP)
   const plate = (marks: readonly string[], ink: readonly string[]): string[] =>
     marks.length + ink.length === 0
       ? []
       : [
-          `<g class="rs-plate-colour" style="--rs-dx:${dx}px;--rs-dy:${dy}px">`,
+          `<g class="rs-plate-colour" style="--rs-dx:${dxOf};--rs-dy:${dyOf}">`,
           ...marks,
           '</g>',
           '<g class="rs-plate-ink">',
@@ -2363,7 +2382,8 @@ const CITY_STYLE = `<style>
   /* One ink, one weight, round caps. Every line in the city is this line. */
   .rs-plate-ink { fill: none; stroke: var(--ink, #1E1B16); stroke-width: 1.6;
                   stroke-linecap: round; stroke-linejoin: round; }
-  .rs-plate-colour { transform: translate(var(--rs-dx, 0px), var(--rs-dy, 0px));
+  .rs-plate-colour { transform: translate(calc(var(--rs-dx, 0) * var(--rs-slip, 1.6px)),
+                                          calc(var(--rs-dy, 0) * var(--rs-slip, 1.6px)));
                      transition: transform var(--base, .26s) var(--ease, cubic-bezier(.22,1,.36,1)); }
   .rs-plot:hover .rs-plate-colour, .rs-plot:focus-visible .rs-plate-colour { transform: none; }
 
