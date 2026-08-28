@@ -14,12 +14,19 @@ const { writeFileSync } = require('node:fs')
 const { pathToFileURL } = require('node:url')
 const { resolve } = require('node:path')
 
-const [target, out, widthArg, heightArg, waitArg] = process.argv.slice(2)
+const [target, out, widthArg, heightArg, waitArg, ...evalParts] = process.argv.slice(2)
 
 if (!target || !out) {
-  process.stderr.write('usage: electron scripts/shoot.cjs <file-or-url> <out.png> [w] [h] [waitMs]\n')
+  process.stderr.write('usage: electron scripts/shoot.cjs <file-or-url> <out.png> [w] [h] [waitMs] [js…]\n')
   process.exit(2)
 }
+
+/**
+ * Anything after the wait is run in the page before the shot, so a screen you
+ * can only reach by clicking can still be photographed. It is joined back with
+ * spaces because a shell will have split it on them.
+ */
+const script = evalParts.join(' ').trim()
 
 const width = Number(widthArg || 1440)
 const height = Number(heightArg || 900)
@@ -61,6 +68,11 @@ app.whenReady().then(async () => {
       .executeJavaScript('document.fonts && document.fonts.ready ? document.fonts.ready.then(function(){return 1}) : 1')
       .catch(() => {})
     await new Promise((r) => setTimeout(r, wait))
+    if (script) {
+      await win.webContents.executeJavaScript(script, true)
+      // Whatever the script opened needs the same settling time the page got.
+      await new Promise((r) => setTimeout(r, wait))
+    }
     const image = await win.capturePage()
     writeFileSync(resolve(out), image.toPNG())
     process.stdout.write('Wrote ' + out + ' (' + width + 'x' + height + ')\n')

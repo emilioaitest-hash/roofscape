@@ -150,6 +150,12 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const ASSETS = new Map<string, string>([
   ['/app.css', 'text/css; charset=utf-8'],
   ['/app.js', 'text/javascript; charset=utf-8'],
+  // The typefaces are part of the app, not a request to somebody else's server.
+  // Named one by one for the same reason everything else here is: this answers
+  // before the token is checked. See scripts/vendor-fonts.mjs.
+  ['/fonts/fraunces.woff2', 'font/woff2'],
+  ['/fonts/instrument-sans.woff2', 'font/woff2'],
+  ['/fonts/plex-mono.woff2', 'font/woff2'],
 ])
 
 const TYPES: Record<string, string> = { 'index.html': 'text/html; charset=utf-8' }
