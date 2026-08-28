@@ -161,6 +161,16 @@ export class SkylineStore {
       .run(record.name, record.baseUrl, record.credential, record.credentialKind, now())
   }
 
+  /**
+   * Disconnect a provider. The credential goes; nothing that was built with it
+   * does. A floor posted to it will fall back to whatever else can be reached,
+   * and say so, which is the same path a key going stale already takes.
+   */
+  forgetProvider(name: string): boolean {
+    const result = this.db.prepare('delete from providers where name = ?').run(name)
+    return Number(result.changes ?? 0) > 0
+  }
+
   providers(): ProviderRecord[] {
     const rows = allAs<{
       name: string

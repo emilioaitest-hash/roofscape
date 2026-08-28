@@ -4,9 +4,9 @@ import {
   parseEvery, parseAtTime, describeSchedule, ask,
   citySvg, portraitSvg, designFor, floorsSaid,
   readBridgeConfig, writeBridgeConfig, describeToken, listGuilds, listChannels,
-  PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo,
+  PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo, providerSpec, availableProviders,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
-  type Floor, type Task, type MessageId,
+  type Floor, type Task, type MessageId, type EscalationKind,
 } from '@app/core'
 import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -66,6 +66,8 @@ function skylineViews(sky: SkylineStore) {
         busy: working.has(building.id),
         open: inHand,
         pendingApprovals: pending,
+        /** Has anybody ever put a goal to it? Not the same as being idle. */
+        everGivenWork: store.taskCount() > 0,
         note: inHand > 0 ? `${inHand} in hand` : floorsSaid(headcount),
       }
     } finally {
@@ -75,6 +77,194 @@ function skylineViews(sky: SkylineStore) {
 }
 
 export const isWorking = (buildingId: string): boolean => working.has(buildingId)
+
+/**
+ * Runs that are standing at the approval desk, by the id of what they asked.
+ *
+ * The daemon used to record a docket and refuse it in the same breath, before
+ * the owner could possibly have seen it — the agent was told "no", moved on,
+ * and the flag on the roof went up over a decision that had already been made.
+ * Deciding it later resumed nothing, because there was nothing left to resume.
+ *
+ * So an ask is now a promise, and this is where it waits. In memory on purpose:
+ * a waiting run only exists in this process, and a docket whose run has gone is
+ * a docket nobody can act on — which is why deciding one says whether anything
+ * was actually waiting for the answer.
+ */
+const desk = new Map<string, { building: string; settle: (granted: boolean) => void }>()
+
+/**
+ * How long a run waits before taking silence for a no.
+ *
+ * Shorter than a turn's own deadline, so the refusal reaches the agent as an
+ * answer it can act on rather than as the whole turn being cut off — and an
+ * unattended building stops rather than assuming yes. Read each time so a test
+ * can shorten it, and so a restart is not needed to change it.
+ */
+const askTimeoutMs = (): number => Number(process.env.ROOFSCAPE_ASK_TIMEOUT_MS ?? 5 * 60_000)
+
+/** Answer a waiting run, if one is still waiting. */
+function settleAsk(approvalId: string, granted: boolean): boolean {
+  const waiting = desk.get(approvalId)
+  if (!waiting) return false
+  desk.delete(approvalId)
+  waiting.settle(granted)
+  return true
+}
+
+/** The run has ended; nobody is at the desk any more. Refuse what it left. */
+function abandonAsks(events: EventStream, buildingId: string): void {
+  for (const [id, waiting] of [...desk]) {
+    if (waiting.building !== buildingId) continue
+    desk.delete(id)
+    waiting.settle(false)
+    events.emit({
+      kind: 'ask-abandoned', building: buildingId,
+      detail: 'The run ended before this was answered, so it was refused.',
+      data: { approval: id },
+    })
+  }
+}
+
+/**
+ * How an agent reaches the owner mid-goal from the dashboard.
+ *
+ * It records the docket, raises the flag, and then genuinely waits. The CLI has
+ * always done this properly by blocking on a prompt; this is the same promise,
+ * settled by the approvals endpoint instead of by a keypress.
+ *
+ * Exported so a test can hold one open and answer it through the route, which
+ * is the whole behaviour and cannot be observed from outside without a model.
+ */
+export function askOwner(
+  events: EventStream,
+  building: Building,
+  store: BuildingStore,
+  approveEverything: boolean,
+): (kind: EscalationKind, intent: string) => Promise<boolean> {
+  return (kind, intent) =>
+    new Promise<boolean>((resolve) => {
+      // Somebody has to be on the docket as having asked. The manager speaks for
+      // the building; if there is no manager the run would not have started.
+      const asker = store.floorByRole('manager') ?? store.staff()[0]
+      if (!asker) {
+        events.emit({ kind: 'asked', building: building.id, detail: intent })
+        resolve(false)
+        return
+      }
+
+      const approval = store.requestApproval({ kind: kind as 'publish', by: asker.id, intent })
+      events.emit({
+        kind: 'asked', building: building.id, floor: asker.id, detail: intent,
+        data: { approval: approval.id, kind, waiting: !approveEverything },
+      })
+
+      if (approveEverything) {
+        store.decide(approval.id, true)
+        events.emit({ kind: 'decided', building: building.id, detail: `Approved in advance: ${intent}` })
+        resolve(true)
+        return
+      }
+
+      const patience = askTimeoutMs()
+      let answered = false
+      const finish = (granted: boolean) => {
+        if (answered) return
+        answered = true
+        clearTimeout(timer)
+        desk.delete(approval.id)
+        resolve(granted)
+      }
+
+      const timer = setTimeout(() => {
+        // The store belongs to the run and the run is still inside this ask, so
+        // it is open — but a turn cut off by its own deadline can leave this
+        // timer as the last thing holding the handle, and throwing in here
+        // would take the daemon down rather than one goal.
+        try {
+          store.decide(approval.id, false)
+        } catch { /* the run has already packed up; the docket stands as it is */ }
+        events.emit({
+          kind: 'ask-timed-out', building: building.id,
+          detail: `Nobody answered in time, so this was refused: ${intent}`,
+          data: { approval: approval.id, waitedMs: patience },
+        })
+        finish(false)
+      }, patience)
+      // A pending question is not a reason for the process to stay alive.
+      timer.unref()
+
+      desk.set(approval.id, { building: building.id, settle: finish })
+    })
+}
+
+/**
+ * Is there any way at all to reach a model from here?
+ *
+ * Answered without a network call, because it is wanted on the home screen:
+ * a credential for a hosted provider, an installed Claude Code — which reaches
+ * Anthropic on the owner's subscription and needs no key — or a local provider
+ * the owner has recorded.
+ */
+function couldReachAModel(sky: SkylineStore): boolean {
+  if (availableProviders(sky).length > 0) return true
+  if (claudeExecutable()) return true
+  return sky.providers().some((record) => providerSpec(record.name)?.needsKey === false)
+}
+
+/**
+ * The one thing to do next, or nothing.
+ *
+ * A new owner's first screen was four zeros and "Click a building to go inside
+ * it", which is where the app was actually abandoned: nothing anywhere said
+ * *hire somebody*, and hiring somebody is the only thing that makes a building
+ * do anything. First-run is a state machine, not a boolean, and this is the
+ * machine — the page's job is to say it well.
+ */
+function nextAction(
+  sky: SkylineStore,
+  views: ReturnType<typeof skylineViews>,
+): { do: string; say: string; building: string | null } {
+  if (!couldReachAModel(sky)) {
+    return {
+      do: 'connect-provider',
+      say: 'No model provider is set up yet, so nobody can be hired. Connect one.',
+      building: null,
+    }
+  }
+  if (views.length === 0) {
+    return { do: 'break-ground', say: 'Break ground on your first building.', building: null }
+  }
+
+  const empty = views.find((view) => view.headcount === 0)
+  if (empty) {
+    return {
+      do: 'hire',
+      say: `${empty.name} has nobody in it yet. Take somebody on and it grows a storey.`,
+      building: empty.id,
+    }
+  }
+
+  const waiting = views.find((view) => view.pendingApprovals > 0)
+  if (waiting) {
+    return {
+      do: 'decide',
+      say: `${waiting.name} is waiting on your say-so.`,
+      building: waiting.id,
+    }
+  }
+
+  const idle = views.find((view) => !view.everGivenWork)
+  if (idle) {
+    return {
+      do: 'set-goal',
+      say: `${idle.name} is staffed and has never been asked for anything. Put a goal to it.`,
+      building: idle.id,
+    }
+  }
+
+  return { do: 'nothing', say: 'Nothing needs you. Go and do something else.', building: null }
+}
 
 /**
  * Start a goal and return immediately.
@@ -98,12 +288,7 @@ export function startGoal(
   void pursueGoal(
     {
       building, store, credentials: sky,
-      ask: async (kind, intent) => {
-        const manager = store.floorByRole('manager')
-        if (manager) store.requestApproval({ kind: kind as 'publish', by: manager.id, intent })
-        events.emit({ kind: 'asked', building: building.id, detail: intent })
-        return options.approveEverything === true
-      },
+      ask: askOwner(events, building, store, options.approveEverything === true),
       report: (line) => events.emit({ kind: 'progress', building: building.id, detail: line }),
       onEvent: (floor, event) =>
         events.emit({ kind: event.kind, building: building.id, floor: floor.id, detail: event.detail }),
@@ -111,15 +296,38 @@ export function startGoal(
     goal,
   )
     .then((outcome) => {
+      // The building has come back, and what it says is not always "finished".
+      // A goal nobody could start is announced as a failure even to a page that
+      // reads nothing but the event's kind, and the verdict rides alongside so
+      // a page that does read it can tell "did nothing" from "did something".
       events.emit({
-        kind: 'goal-finished', building: building.id, detail: outcome.managerSummary,
-        data: { worked: outcome.worked.length, tokens: outcome.tokensSpent, outstanding: outcome.outstanding },
+        kind: outcome.verdict === 'could-not-start' ? 'goal-failed' : 'goal-finished',
+        building: building.id,
+        detail: outcome.headline,
+        data: {
+          verdict: outcome.verdict,
+          headline: outcome.headline,
+          why: outcome.why,
+          remedy: outcome.remedy,
+          managerSummary: outcome.managerSummary,
+          worked: outcome.worked.length,
+          finished: outcome.worked.filter((item) => item.settled === 'done').length,
+          tokens: outcome.tokensSpent,
+          outstanding: outcome.outstanding,
+        },
       })
     })
     .catch((error: unknown) => {
-      events.emit({ kind: 'goal-failed', building: building.id, detail: (error as Error).message })
+      // A budget reached or a building already claimed. These carry the command
+      // that lifts them in the message itself, so the message is the remedy.
+      const message = (error as Error).message
+      events.emit({
+        kind: 'goal-failed', building: building.id, detail: message,
+        data: { verdict: 'could-not-start', headline: `${building.name} could not start.`, why: message, remedy: null },
+      })
     })
     .finally(() => {
+      abandonAsks(events, building.id)
       working.delete(building.id)
       store.close()
       sky.close()
@@ -221,6 +429,9 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       return {
         svg: citySvg(views, { ...asked('width', 6000), ...asked('height', 3000) }),
         buildings: views,
+        // The single next action, worked out here because this is the only
+        // place that can see every building at once.
+        next: nextAction(sky, views),
         // What has been boarded up, so the page can offer it back. Not drawn:
         // a boarded-up building is off the skyline, and half-drawing it there
         // would be a building you can see and cannot go into.
@@ -815,14 +1026,28 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
     }
   })
 
+  /**
+   * Everything waiting on the owner.
+   *
+   * Boarded-up buildings included, deliberately. `list()` leaves them off the
+   * skyline, which is right for a drawing and wrong here: boarding one up with
+   * dockets pending made them un-answerable — a 404 on the one action the
+   * product describes as safe and reversible.
+   */
   router.get('/api/approvals', () => {
     const sky = skyline()
     try {
       return {
-        pending: sky.list().flatMap((building) => {
+        pending: sky.list({ includeClosed: true }).flatMap((building) => {
           const store = BuildingStore.open(building.id)
           try {
-            return store.pendingApprovals().map((approval) => ({ ...approval, buildingName: building.name }))
+            return store.pendingApprovals().map((approval) => ({
+              ...approval,
+              buildingName: building.name,
+              boardedUp: building.closedAt !== null,
+              /** Whether a run is actually standing there waiting for the answer. */
+              waiting: desk.has(approval.id),
+            }))
           } finally {
             store.close()
           }
@@ -837,12 +1062,16 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
     const input = await ctx.body<{ granted?: boolean }>()
     const sky = skyline()
     try {
-      for (const building of sky.list()) {
+      for (const building of sky.list({ includeClosed: true })) {
         const store = BuildingStore.open(building.id)
         try {
           const match = store.pendingApprovals().find((a) => a.id === ctx.params.id)
           if (!match) continue
           store.decide(match.id as ApprovalId, input.granted === true)
+          // And let go of whoever was waiting for this. A decision that resumes
+          // nothing is not a decision; when nothing was waiting — a docket left
+          // by a run that has since ended — say so rather than implying it took.
+          const resumed = settleAsk(match.id, input.granted === true)
 
           if (input.granted === true && match.payload?.do === 'hire') {
             const entry = rosterFor(match.payload.role as FloorRole)
@@ -854,11 +1083,21 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
                 tools: TOOLS_FOR_ROLE[entry.role] ?? [],
               })
               events.emit({ kind: 'hired', building: building.id, floor: floor.id, detail: `${floor.name} joins as ${entry.role}` })
-              return { decided: true, hired: floor }
+              return { decided: true, resumed, hired: floor }
             }
           }
-          events.emit({ kind: 'decided', building: building.id, detail: `${input.granted ? 'Approved' : 'Refused'}: ${match.intent}` })
-          return { decided: true }
+          events.emit({
+            kind: 'decided', building: building.id,
+            detail: `${input.granted ? 'Approved' : 'Refused'}: ${match.intent}`,
+            data: { approval: match.id, granted: input.granted === true, resumed },
+          })
+          return {
+            decided: true,
+            resumed,
+            note: resumed
+              ? `${building.name} has been told, and is carrying on.`
+              : 'Recorded. Nothing was waiting on this any more — the run that asked has already ended.',
+          }
         } finally {
           store.close()
         }
@@ -886,15 +1125,184 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   router.get('/api/providers', async () => {
     const sky = skyline()
     try {
+      const claude = claudeExecutable()
+      const recorded = new Map(sky.providers().map((record) => [record.name, record]))
       return {
-        claudeCode: Boolean(claudeExecutable()),
+        claudeCode: Boolean(claude),
+        claudeCodePath: claude,
         providers: await Promise.all(
           PROVIDERS.map(async (spec) => ({
             name: spec.name, label: spec.label, note: spec.note,
             suggested: spec.suggested, needsKey: spec.needsKey,
+            envVar: spec.envVar ?? null,
+            /** Whether anything has been said about this one here. */
+            configured: recorded.has(spec.name),
+            /** Where its credential lives, for a page that must not show it. */
+            credentialKind: recorded.get(spec.name)?.credentialKind ?? null,
+            /**
+             * An installed Claude Code reaches Anthropic on the owner's
+             * subscription and wants no key at all. It is the one way to finish
+             * setup without going and buying metered billing, so the page is
+             * told about it rather than left to infer it from a green tick.
+             */
+            viaClaudeCode: spec.name === 'anthropic' && !sky.credentialFor('anthropic') && Boolean(claude),
             status: await probeProvider(spec.name, sky),
           })),
         ),
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * Connect a provider, from wherever the owner happens to be.
+   *
+   * This did not exist. `putProvider` was reachable only from the CLI, which
+   * the desktop app does not ship — so the Models dialog was a read-only list
+   * whose remedies were terminal commands the app never installs, under a
+   * promise that there is nothing to install first.
+   *
+   * An environment variable is preferred over a pasted key for the same reason
+   * the CLI prefers it: the secret stays out of the database, so a data
+   * directory can be copied or backed up without carrying the key along.
+   */
+  router.post('/api/providers', async (ctx) => {
+    const input = await ctx.body<{ name?: string; key?: string; env?: string; remove?: boolean }>()
+    const spec = input.name ? providerSpec(input.name) : undefined
+    if (!spec) {
+      throw badRequest(
+        input.name
+          ? `No provider called "${input.name}". Known: ${PROVIDERS.map((p) => p.name).join(', ')}.`
+          : 'Which provider?',
+      )
+    }
+
+    const sky = skyline()
+    try {
+      if (input.remove === true) {
+        const forgotten = sky.forgetProvider(spec.name)
+        events.emit({ kind: 'provider-changed', detail: `${spec.label} disconnected.` })
+        return { ok: true, forgotten, name: spec.name, status: await probeProvider(spec.name, sky) }
+      }
+
+      const key = input.key?.trim()
+      const envVar = input.env?.trim()
+
+      if (!spec.needsKey) {
+        sky.putProvider({ name: spec.name, baseUrl: spec.baseUrl ?? null, credentialKind: 'none', credential: null })
+      } else if (envVar) {
+        sky.putProvider({ name: spec.name, baseUrl: spec.baseUrl ?? null, credentialKind: 'env', credential: envVar })
+      } else if (key) {
+        sky.putProvider({ name: spec.name, baseUrl: spec.baseUrl ?? null, credentialKind: 'literal', credential: key })
+      } else if (spec.envVar && process.env[spec.envVar]) {
+        // The key is already in the environment this daemon is running in.
+        // Recording the variable rather than its value is the better of the two
+        // and costs the owner nothing.
+        sky.putProvider({ name: spec.name, baseUrl: spec.baseUrl ?? null, credentialKind: 'env', credential: spec.envVar })
+      } else {
+        throw new HttpError(
+          422,
+          `${spec.label} needs a key. Paste one, or name an environment variable that holds it${spec.envVar ? ` — usually ${spec.envVar}` : ''}.`,
+        )
+      }
+
+      const status = await probeProvider(spec.name, sky)
+      events.emit({
+        kind: 'provider-changed',
+        detail: status.ok ? `${spec.label} is connected.` : `${spec.label} was saved, but does not answer yet.`,
+        data: { provider: spec.name, ok: status.ok },
+      })
+      return {
+        ok: true,
+        name: spec.name,
+        label: spec.label,
+        status,
+        // Said here as well because this is the one moment the owner is looking
+        // for it: a variable that is not set right now will not work yet.
+        warning:
+          envVar && !process.env[envVar]
+            ? `${envVar} is not set in this daemon's environment, so it will not work until it is.`
+            : null,
+      }
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * Who the owner is.
+   *
+   * `setOwner` existed from the first commit and nothing could reach it, so the
+   * name was always empty and every message in the mailroom was from "You".
+   */
+  router.post('/api/owner', async (ctx) => {
+    const input = await ctx.body<{ name?: string; profile?: string }>()
+    if (input.name === undefined && input.profile === undefined) throw badRequest('Nothing to change.')
+    const sky = skyline()
+    try {
+      sky.setOwner({
+        ...(input.name !== undefined ? { name: input.name.trim().slice(0, 80) } : {}),
+        ...(input.profile !== undefined ? { profile: input.profile.trim().slice(0, 2000) } : {}),
+      })
+      const owner = sky.owner()
+      events.emit({ kind: 'owner-changed', detail: owner.name ? `You are ${owner.name}.` : 'Your name was cleared.' })
+      return owner
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * Somebody leaves, and the building gets shorter.
+   *
+   * Height is headcount, and until now height only ever went up: `vacate` had
+   * no caller anywhere — no route, no command — so a mis-hire was permanently
+   * built into the skyline. A metaphor with no way down is a trap.
+   *
+   * It is not a delete. The floor stays on record, their memory stays in the
+   * archives, and anything they were holding comes back to the desk rather
+   * than staying assigned to somebody who no longer works here.
+   */
+  router.post('/api/buildings/:id/floors/:floor/vacate', (ctx) => {
+    const sky = skyline()
+    try {
+      const building = buildingOr404(sky, ctx.params.id!)
+      // Not mid-goal: the run holds this floor's work open and would settle a
+      // task onto somebody who left while it was being written.
+      if (working.has(building.id)) {
+        throw new HttpError(409, `${building.name} is working on something. Let it come back first.`)
+      }
+      const store = BuildingStore.open(building.id)
+      try {
+        const floor = store.floor(ctx.params.floor as FloorId)
+        if (!floor) throw notFound(`floor "${ctx.params.floor}"`)
+        if (floor.vacatedAt) return { floor, alreadyGone: true }
+
+        const before = store.headcount()
+        const { handedBack } = store.vacate(floor.id)
+        const after = store.headcount()
+        events.emit({
+          kind: 'vacated', building: building.id, floor: floor.id,
+          detail: `${floor.name} has left ${building.name}.`,
+          data: {
+            headcount: after, tier: tierOf(Math.max(1, after)).name,
+            shrank: tierOf(Math.max(1, before)).name !== tierOf(Math.max(1, after)).name,
+            handedBack,
+          },
+        })
+        return {
+          floor: { ...floor, vacatedAt: new Date().toISOString() },
+          headcount: after,
+          handedBack,
+          // The building can still be looked at and can no longer be given a
+          // goal, which is worth saying at the moment it becomes true.
+          warning: store.floorByRole('manager')
+            ? null
+            : `${building.name} has no manager now, so it cannot be given a goal. Hire one and it can work again.`,
+        }
+      } finally {
+        store.close()
       }
     } finally {
       sky.close()

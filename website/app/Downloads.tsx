@@ -38,8 +38,8 @@ export function Downloads({ version, available }: { version: string | null; avai
   if (available.length === 0) {
     return (
       <p className="fineprint">
-        The first builds are on their way. This page will offer them as soon as they finish —
-        there is nothing to go and find elsewhere.
+        The first builds are still going through. This page offers them the moment they land, so
+        there is nothing to go and find elsewhere in the meantime.
       </p>
     )
   }
@@ -65,22 +65,16 @@ export function Downloads({ version, available }: { version: string | null; avai
           </a>
         ))}
       </div>
-      <p className="fineprint">
-        {version ? `Version ${version}. ` : ''}
-        Free and open source.
-      </p>
+      {/* A version is a thing to compare, not to read, so it is set in the
+          machine voice — the same rule the app uses for ids and branches. */}
+      <p className="fineprint version">{version ? `Version ${version}` : 'The current build'}</p>
       {primary.startsWith('mac') ? (
         <p className="fineprint">
-          <strong>First time on macOS:</strong> macOS will block it and say Apple cannot verify it.
-          Click <em>Done</em>, then open <em>System Settings → Privacy &amp; Security</em>, scroll
-          down and click <em>Open Anyway</em>. Once per version.
-        </p>
-      ) : null}
-      {primary.startsWith('mac') ? (
-        <p className="fineprint">
-          It says that because the app is signed with its own certificate rather than one Apple has
-          certified. On macOS 14 and earlier the same thing is done by right-clicking the app and
-          choosing <em>Open</em> — Apple removed that shortcut in macOS 15.
+          <strong>First time on macOS:</strong> it will be blocked, and macOS will say Apple cannot
+          verify it. Click <em>Done</em>, then open <em>System Settings → Privacy &amp; Security</em>,
+          scroll down and click <em>Open Anyway</em>. Once per version. It says that because the app
+          is signed with its own certificate rather than one Apple has certified — on macOS 14 and
+          earlier, right-clicking and choosing <em>Open</em> did the same job.
         </p>
       ) : null}
     </>

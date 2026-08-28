@@ -127,5 +127,10 @@ export const allTiers = (): readonly Tier[] => TIERS
  */
 export const floorsSaid = (floors: number): string => {
   const n = Math.max(0, Math.floor(Number.isFinite(floors) ? floors : 0))
+  // A tally of nothing is worse than no tally. "0 floors" is the caption on the
+  // one screen where the owner most needs telling what to do, and it spends that
+  // line saying nothing happened. An empty building has nobody in it; say that,
+  // and the sentence next to it can be the one that offers to fix it.
+  if (n === 0) return 'nobody in yet'
   return n === 1 ? '1 floor' : `${n} floors`
 }

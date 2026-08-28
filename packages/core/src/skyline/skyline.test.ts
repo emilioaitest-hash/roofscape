@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BUILDING_WIDTH, allTiers, tierOf, nextTierAt } from './tiers.js'
+import { BUILDING_WIDTH, allTiers, tierOf, nextTierAt, floorsSaid } from './tiers.js'
 import { renderBuilding, renderSkyline } from './render.js'
 import { FOUNDING_ROLES } from '../staff/roster.js'
 
@@ -132,4 +132,14 @@ test('a building is founded able to do something, and small enough to grow', () 
     'and somebody who can actually be given the work',
   )
   assert.equal(tierOf(FOUNDING_ROLES.length).name, 'single-storey', 'and room left to grow')
+})
+
+test('an empty building says nobody is in it, not that it has zero of something', () => {
+  // "0 floors" is the caption under the one building the owner is stuck on, and
+  // it spends that line saying nothing happened. Both renderers read this, so
+  // fixing it here fixes it in the terminal, on the nameplate and in the API.
+  assert.equal(floorsSaid(0), 'nobody in yet')
+  assert.equal(floorsSaid(1), '1 floor')
+  assert.equal(floorsSaid(9), '9 floors')
+  assert.equal(floorsSaid(Number.NaN), 'nobody in yet')
 })

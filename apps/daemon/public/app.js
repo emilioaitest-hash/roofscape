@@ -1,24 +1,47 @@
 /**
  * The dashboard.
  *
- * Two screens: the skyline, and one building. Everything else is a panel inside
- * the second one. No framework — the whole thing is a few hundred lines against
- * a JSON API, and a build step for the page would mean the daemon could no
- * longer serve it straight off disk.
+ * Three screens: the skyline, one building, and the one you land on when this
+ * tab has no token. Everything else is a panel inside the second one. No
+ * framework — the whole thing is a few hundred lines against a JSON API, and a
+ * build step for the page would mean the daemon could no longer serve it
+ * straight off disk.
  *
  * The city is drawn by the daemon and arrives as SVG. This file never invents a
  * building; it puts the drawing on the screen, notices which one was clicked,
  * and turns work on and off inside it by toggling classes. Redrawing is for
  * when a building actually changes shape.
+ *
+ * Two rules this file is responsible for keeping:
+ *
+ *   The strip always names the single next action. Never a row of zeros.
+ *   A failure lands somewhere it can still be read a minute later.
  */
 
 // ── talking to the daemon ──────────────────────────────────────────────────
 
 const params = new URLSearchParams(location.search)
-const token = params.get('token') ?? sessionStorage.getItem('roofscape-token') ?? ''
+/** Not a const: a locked-out tab can be given a new one without a reload. */
+let token = params.get('token') ?? sessionStorage.getItem('roofscape-token') ?? ''
 if (params.get('token')) {
   sessionStorage.setItem('roofscape-token', params.get('token'))
   history.replaceState(null, '', location.pathname)
+}
+
+/**
+ * A failure with the daemon's own advice still attached.
+ *
+ * `main.ts` sends a `remedy` with every 401 — where the token is kept — and the
+ * page used to throw it away and toast "Unauthorized." for three seconds over a
+ * permanently empty city. The remedy is the most useful part of that response,
+ * so it is carried all the way to the screen.
+ */
+class Trouble extends Error {
+  constructor(message, remedy, status) {
+    super(message)
+    this.remedy = remedy
+    this.status = status
+  }
 }
 
 async function api(path, options = {}) {
@@ -27,11 +50,21 @@ async function api(path, options = {}) {
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(options.headers ?? {}) },
   })
   const body = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(body.error ?? response.statusText)
+  if (!response.ok) {
+    const error = new Trouble(body.error ?? response.statusText, body.remedy, response.status)
+    if (response.status === 401) lockedOut(error)
+    throw error
+  }
   return body
 }
 
-const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+const post = async (path, body) => {
+  const result = await api(path, { method: 'POST', body: JSON.stringify(body ?? {}) })
+  // Something the owner asked for has just worked, so whatever failed before it
+  // is now history rather than news.
+  clearNotice()
+  return result
+}
 
 // ── small helpers ──────────────────────────────────────────────────────────
 
@@ -72,7 +105,47 @@ function toast(text, kind = '') {
   setTimeout(() => node.remove(), 3600)
 }
 
+/**
+ * Where a failure lives until somebody has read it.
+ *
+ * A toast is three and a half seconds long and the feed is inside a tab that is
+ * shut most of the time and hidden entirely for a building that has never done
+ * anything — so every error a new owner could hit was gone before they could
+ * act on it. This is under the bar on every screen, it carries the daemon's own
+ * remedy, it counts repeats rather than stacking them, and it stays put until
+ * it is dismissed or until something the owner asked for has worked.
+ */
+let noticeSaid = ''
+let noticeCount = 0
+
+function notice(label, what, fix) {
+  if (what === noticeSaid) noticeCount += 1
+  else { noticeSaid = what; noticeCount = 1 }
+
+  el('noticeLabel').textContent = label
+  el('noticeWhat').textContent = what
+  el('noticeFix').textContent = fix ?? ''
+  el('noticeFix').classList.toggle('hidden', !fix)
+  el('noticeAgain').textContent = noticeCount > 1 ? `${noticeCount} times now.` : ''
+  el('noticeAgain').classList.toggle('hidden', noticeCount < 2)
+  el('notice').classList.remove('hidden')
+}
+
+function clearNotice() {
+  noticeSaid = ''
+  noticeCount = 0
+  el('notice').classList.add('hidden')
+}
+
+el('noticeGo').onclick = clearNotice
+
+/** Anything that threw, said in all three places it is worth saying. */
 const oops = (error) => {
+  // Except when the tab has no token: everything in flight fails at once, and
+  // a stack of "Unauthorized." over a screen that already explains it is noise.
+  if (blocked) return
+  el('notice').classList.remove('quiet')
+  notice('That did not work', error.message, error.remedy)
   toast(error.message, 'bad')
   say(`— ${error.message}`, 'bad')
 }
@@ -118,20 +191,66 @@ const tokens = (n) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` 
 const view = { screen: 'city', building: null, tab: 'floors' }
 /** The last skyline we drew, so we know when it needs drawing again. */
 let drawnShape = ''
+/** True once a 401 has been seen. Everything else stands down while it is. */
+let blocked = false
 
 function show(screen) {
   view.screen = screen
   el('screenCity').classList.toggle('hidden', screen !== 'city')
   el('screenBuilding').classList.toggle('hidden', screen !== 'building')
+  el('screenBlocked').classList.toggle('hidden', screen !== 'blocked')
   window.scrollTo({ top: 0, behavior: 'instant' })
 }
 
-function openBuilding(id) {
+/**
+ * No token, and a designed way out of it.
+ *
+ * The token lives in `sessionStorage` and is stripped from the address bar, so
+ * a bookmark, a second window or a restarted daemon arrives with nothing and
+ * every call 401s. The old page showed an empty city and a toast that had
+ * already gone, while the stream — which will never come back after a 401 —
+ * still claimed to be reconnecting. This says what happened, prints where the
+ * token is kept, and takes it.
+ */
+function lockedOut(error) {
+  if (blocked) return
+  blocked = true
+  stream?.close()
+  live('blocked', 'no token')
+  el('blockedWhere').textContent = error.remedy ?? 'Restart Roofscape and open the address it prints.'
+  clearNotice()
+  show('blocked')
+}
+
+el('blockedForm').onsubmit = (event) => {
+  event.preventDefault()
+  const typed = el('blockedToken').value.trim()
+  if (!typed) return
+  token = typed
+  sessionStorage.setItem('roofscape-token', typed)
+  el('blockedToken').value = ''
+  blocked = false
+  live('', 'connecting')
+  openStream()
+  goHome()
+}
+
+/**
+ * Walk into a building. `then` is what you came in to do — the strip out on the
+ * street offers one specific action, and arriving on the right screen with the
+ * cursor somewhere else would be most of the way to not offering it.
+ */
+function openBuilding(id, then) {
   view.building = id
   view.tab = 'floors'
   selectTab('floors')
   show('building')
-  refreshBuilding().catch(oops)
+  refreshBuilding()
+    .then(() => {
+      if (then === 'hire') el('hRole').focus()
+      if (then === 'goal') { el('goalText').focus(); el('goalText').select() }
+    })
+    .catch(oops)
 }
 
 function goHome() {
@@ -143,10 +262,22 @@ function goHome() {
 
 function crumbs() {
   el('crumbs').innerHTML =
-    view.screen === 'building' && current
-      ? `<span class="sep">/</span><span class="here">${esc(current.name)}</span>`
-      : ''
+    view.screen === 'building' && current ? `<span class="here">${esc(current.name)}</span>` : ''
 }
+
+// ── the ladder of forms, which the page had never once asked for ───────────
+
+/**
+ * Every form a building can take, in order, each with the daemon's own blurb.
+ *
+ * `GET /api/tiers` has been returning "It has a spire. People give directions
+ * by it." since the first commit and nothing ever called it. The ladder is most
+ * of the reason anybody comes back, so a building says what it is and what it
+ * is about to become, rather than "2 more hires".
+ */
+let ladder = []
+const blurbOf = (name) => ladder.find((t) => t.name === name)?.blurb ?? ''
+const afterTier = (name) => ladder[ladder.findIndex((t) => t.name === name) + 1] ?? null
 
 // ── the skyline ────────────────────────────────────────────────────────────
 
@@ -170,6 +301,7 @@ function cityBox() {
 const knownForms = new Map()
 
 async function refreshCity() {
+  if (blocked) return
   const box = cityBox()
   const { svg, buildings, boardedUp } = await api(`/api/skyline/city?width=${box.width}&height=${box.height}`)
   skyline = buildings
@@ -192,25 +324,19 @@ async function refreshCity() {
   }
   paintCityState()
   paintTallies()
+  paintNext()
   for (const building of grew) itGrew(building)
-
-  // Nothing built yet gets a different strip rather than a thinner version of
-  // this one. Four zeros say nothing, and the concierge reads buildings one at
-  // a time — with none to read, asking it anything spends a turn to be told so.
-  const empty = buildings.length === 0
-  el('firstRun').classList.toggle('hidden', !empty)
-  el('stripInner').classList.toggle('hidden', empty)
-  el('cityHint').textContent = 'Click a building to go inside it.'
 }
 
 /**
  * Depth, on mouse move.
  *
- * The backdrop is anonymous city that exists so your buildings have somewhere to
- * stand. Moving it a little behind them — the far layer least, the near layer
- * most, the stars barely at all — is what turns a printed picture into a place
- * you are standing in front of. Your own buildings never move: they are the
- * content, and content that slides under the pointer is a toy.
+ * The backdrop is anonymous city that exists so your buildings have somewhere
+ * to stand. Moving it a little behind them — the far layer least, the near
+ * layer most, the dust in the paper barely at all — is what turns a printed
+ * picture into a place you are standing in front of. Your own buildings never
+ * move: they are the content, and content that slides under the pointer is a
+ * toy.
  */
 function wireParallax() {
   const frame = el('cityScroll')
@@ -225,9 +351,9 @@ function wireParallax() {
       const layer = svg.querySelector(selector)
       if (layer) layer.style.transform = `translate(${(at.x * amount).toFixed(1)}px, ${(at.y * amount * 0.4).toFixed(1)}px)`
     }
-    shift('.rs-stars', -6)
-    shift('.rs-far', -16)
-    shift('.rs-mid', -30)
+    shift('.rs-stars', -5)
+    shift('.rs-far', -14)
+    shift('.rs-mid', -26)
   }
 
   frame.addEventListener('mousemove', (event) => {
@@ -248,20 +374,22 @@ function wireParallax() {
  * A building has changed form. This is the moment the ladder exists for.
  *
  * Watching a shack become a walk-up because the work justified two more hires
- * is, per decision 0009, most of the reason anybody comes back — and until now
- * it happened in a silent repaint you would only notice if you were staring at
- * the right part of the screen. So it gets a beat: the new building is scrolled
- * into view and lit, and it is said out loud what it has become.
+ * is most of the reason anybody comes back — and until now it happened in a
+ * silent repaint you would only notice if you were staring at the right part of
+ * the screen. So it gets a beat: the building is scrolled into view, it settles
+ * onto its new storey, and it is said out loud what it has become and why that
+ * is worth having.
  */
 function itGrew(building) {
   const plot = el('cityArt').querySelector(`[data-building="${CSS.escape(building.id)}"]`)
   if (plot) {
     plot.classList.add('rs-grew')
     plot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-    setTimeout(() => plot.classList.remove('rs-grew'), 2600)
+    setTimeout(() => plot.classList.remove('rs-grew'), 1400)
   }
   const article = /^[aeiou]/i.test(building.tier) ? 'an' : 'a'
-  toast(`${building.name} is ${article} ${building.tier} now.`, 'good')
+  const blurb = blurbOf(building.tier)
+  toast(`${building.name} is ${article} ${building.tier} now.${blurb ? ` ${blurb}` : ''}`, 'good')
 }
 
 function wireCity() {
@@ -299,48 +427,164 @@ function paintCityState() {
   }
 }
 
+/**
+ * The numbers, and only the ones with something to say.
+ *
+ * `BUILDINGS 0 / ON STAFF 0 / IN HAND 0 / WAITING ON YOU 0` was the first thing
+ * a new owner saw. A tally of nothing is worse than no tally: it spends the most
+ * valuable space on the screen saying nothing happened. So a count of zero is
+ * not drawn at all, and the sentence above these is what carries the strip.
+ */
 function paintTallies() {
   const staff = skyline.reduce((n, b) => n + b.headcount, 0)
   const inHand = skyline.reduce((n, b) => n + b.open, 0)
   const waiting = skyline.reduce((n, b) => n + b.pendingApprovals, 0)
+
   const tally = (label, value, kind = '') =>
-    `<div class="${kind}"><dt>${label}</dt><dd>${value}</dd></div>`
+    value ? `<div class="tally ${kind}"><span class="tally-n">${value}</span><span class="tally-l">${label}</span></div>` : ''
 
   // The one tally that is about you is also the only one you can do anything
   // about, so it is the only one that is a control. A number that counts your
   // own unanswered post and cannot be pressed is a number that has told you
   // about a chore and then hidden it in four different lobbies.
   const round = waiting
-    ? `<button type="button" class="warn tallies-round" data-round aria-expanded="false">
-         <dt>Waiting on you</dt><dd>${waiting}</dd>
-         <span class="tallies-open">Answer them</span>
+    ? `<button type="button" class="tallies-round" data-round aria-expanded="false"
+               title="Open every lobby's desk at once">
+         <span class="tally-n">${waiting}</span>
+         <span class="tally-l">Waiting on you</span>
        </button>`
-    : tally('Waiting on you', waiting)
+    : ''
 
   el('tallies').innerHTML =
     tally('Buildings', skyline.length) +
     tally('On staff', staff) +
-    tally('In hand', inHand, inHand ? 'accent' : '') +
+    tally('In hand', inHand, 'lit') +
     round
+  el('tallies').classList.toggle('hidden', skyline.length === 0)
 
   el('tallies').querySelector('[data-round]')?.addEventListener('click', () => toggleRound())
   // Nothing left to answer closes it rather than leaving an empty desk open.
   if (!waiting) el('round').classList.add('hidden')
 }
 
+/**
+ * The single next action, named.
+ *
+ * This is the fault the whole redesign turns on. The welcome panel used to
+ * appear only when there were *no* buildings, so an owner with one empty
+ * building fell through to four zeros and "Click a building to go inside it" —
+ * which is exactly the state this app's owner stopped at, and nothing anywhere
+ * said *hire somebody*, the only thing that makes a building do anything.
+ *
+ * So first-run is a state machine rather than a boolean, and the strip always
+ * lands on exactly one of these. The order is what is blocking the most: a city
+ * where nothing can work at all outranks a queue of decisions, which outranks a
+ * building with nothing to do, which outranks everything being fine.
+ */
+let nextAction = null
+
+function paintNext() {
+  const staff = skyline.reduce((n, b) => n + b.headcount, 0)
+  const inHand = skyline.reduce((n, b) => n + b.open, 0)
+  const waiting = skyline.reduce((n, b) => n + b.pendingApprovals, 0)
+  const nobodyIn = skyline.find((b) => b.headcount === 0)
+  const biggest = [...skyline].sort((a, b) => b.headcount - a.headcount)[0]
+
+  const set = ({ label, say, why = '', act = '', note = '', run = null }) => {
+    el('nextLabel').textContent = label
+    el('nextSay').textContent = say
+    el('nextWhy').textContent = why
+    el('nextWhy').classList.toggle('hidden', !why)
+    el('nextGo').textContent = act
+    el('nextGo').classList.toggle('hidden', !act)
+    el('nextNote').textContent = note
+    nextAction = run
+  }
+
+  // The concierge reads buildings one at a time. With none to read, asking it
+  // anything spends a turn to be told so.
+  el('askForm').classList.toggle('hidden', skyline.length === 0)
+
+  if (skyline.length === 0) {
+    set({
+      label: 'An empty skyline',
+      say: 'Nothing built yet. Break ground and you have a company.',
+      why: 'Every project is its own building — its own staff, its own memory, its own money, its own workspace, and it shares none of them with its neighbours. Take somebody on and it grows a storey. A side project that has quietly reached eleven floors is telling you something a list of project names never would.',
+      act: 'Break ground',
+      note: 'Or press n, or click the empty lot out on the street.',
+      run: breakGround,
+    })
+    return
+  }
+
+  if (staff === 0 || nobodyIn) {
+    const where = nobodyIn ?? skyline[0]
+    set({
+      label: 'Next',
+      say: skyline.length === 1
+        ? 'One building, nobody in it yet. Take somebody on and it grows a storey.'
+        : `Nobody in ${where.name} yet. Take somebody on and it grows a storey.`,
+      why: 'A hire is a floor, and a floor is somebody a goal can be given to. Until there is one, there is nobody to give it to.',
+      act: `Take somebody on in ${where.name}`,
+      note: 'A manager breaks goals into work. A coder does it.',
+      run: () => openBuilding(where.id, 'hire'),
+    })
+    return
+  }
+
+  if (waiting > 0) {
+    set({
+      label: 'Next',
+      say: waiting === 1
+        ? 'Something is waiting on your say-so.'
+        : `${waiting} things are waiting on your say-so.`,
+      why: 'Anything that would reach outside a building stops in its lobby until you answer. Whoever asked is standing still until then.',
+      act: 'Answer them',
+      note: 'Every lobby at once, without walking into each.',
+      run: () => toggleRound(true),
+    })
+    return
+  }
+
+  if (inHand === 0) {
+    set({
+      label: 'Next',
+      say: 'Quiet. Put a goal to it and somebody will pick it up.',
+      why: `${biggest.name} has ${plural(biggest.headcount, 'floor')} and nothing to do.`,
+      act: `Put a goal to ${biggest.name}`,
+      note: 'One sentence, the way you would say it to somebody on their first morning.',
+      run: () => openBuilding(biggest.id, 'goal'),
+    })
+    return
+  }
+
+  set({
+    label: 'On the street',
+    say: 'Nothing needs you. Go and do something else.',
+    why: `${plural(inHand, 'task')} in hand. The lit windows are the floors working on them.`,
+    note: 'Press a number to walk into that building.',
+  })
+}
+
+el('nextGo').onclick = () => nextAction?.()
+
 // ── one building ───────────────────────────────────────────────────────────
 
 let current = null
 
 async function refreshBuilding() {
-  if (!view.building) return
-  const building = await api(`/api/buildings/${encodeURIComponent(view.building)}`)
+  if (!view.building || blocked) return
+  const id = view.building
+  const building = await api(`/api/buildings/${encodeURIComponent(id)}`)
+  // They may have walked back out to the street while this was in the air.
+  if (view.building !== id) return
   current = building
   crumbs()
 
   el('portrait').innerHTML = building.portrait
   el('bName').textContent = building.name
   el('bTier').textContent = building.tier
+  el('bBlurb').textContent = blurbOf(building.tier)
   el('bCharter').textContent = building.charter === building.name ? '' : building.charter
 
   // A vital is shown when it has something to say. A row of pills reading
@@ -355,7 +599,9 @@ async function refreshBuilding() {
   // ground. The label says which number this is.
   const below = building.staff.filter((floor) => floor.role === 'curator').length
   el('bVitals').innerHTML = [
-    vital(plural(building.headcount, 'floor'), below ? 'above ground' : 'on staff'),
+    building.headcount
+      ? vital(plural(building.headcount, 'floor'), below ? 'above ground' : 'on staff')
+      : vital('Nobody in yet', ''),
     below ? vital(String(below), 'below ground') : '',
     inHand ? vital(String(inHand), 'in hand', 'lit') : '',
     waiting ? vital(String(waiting), 'waiting on you', 'warn') : '',
@@ -363,10 +609,13 @@ async function refreshBuilding() {
     building.archives.total ? vital(String(building.archives.total), 'in the archives') : '',
   ].join('')
 
-  el('goalGo').disabled = building.working
-  el('goalGo').textContent = building.working ? 'Working…' : 'Send'
-  el('goalText').disabled = building.working
-  showWorking(building.working)
+  // Not while a goal we are sending is still in the air: the answer to that one
+  // has not come back yet, and this would re-enable the button underneath it.
+  if (!sendingGoal) {
+    el('goalGo').disabled = building.working
+    el('goalText').disabled = building.working
+  }
+  showWorking(building.working, building)
 
   // A badge counts what its tab actually contains, or it is a small lie you
   // notice the moment you click it. `inHand` is the narrower figure — queued
@@ -383,7 +632,7 @@ async function refreshBuilding() {
 }
 
 const vital = (value, label, kind = '') =>
-  `<span class="vital ${kind}"><b>${esc(value)}</b><span>${esc(label)}</span></span>`
+  `<span class="vital ${kind}"><b>${esc(value)}</b>${label ? `<span>${esc(label)}</span>` : ''}</span>`
 
 function badge(id, count, kind = '') {
   const node = el(id)
@@ -407,19 +656,22 @@ function paintCutaway(building) {
   //
   // The curator is the exception, and it is the store's own rule: `headcount()`
   // leaves it out, because a building should not appear to grow because it
-  // started tidying up. Drawing it as a numbered storey anyway made the cutaway
-  // one floor taller than the building outside the window, and put somebody the
-  // caption calls a night worker in the archives up on the fifth floor.
+  // started tidying up.
   const staff = building.staff.filter((floor) => floor.role !== 'curator')
   const nightShift = building.staff.filter((floor) => floor.role === 'curator')
   const top = staff[0]
 
+  // "On a break" was charming once and wrong immediately: with three tasks
+  // queued and every floor idle, nobody is on a break — the building simply is
+  // not running. Which of the two it is depends on whether there is work
+  // waiting, so the word does too.
+  const queued = building.open.some((task) => task.state === 'queued')
   const said = {
     working: 'working',
     next: 'next up',
     review: 'in review',
-    blocked: 'blocked',
-    idle: 'on a break',
+    blocked: 'stuck',
+    idle: queued ? 'waiting for work' : 'nothing assigned',
   }
 
   /**
@@ -460,7 +712,7 @@ function paintCutaway(building) {
 
   const floors = staff.length
     ? staff.map((floor, index) => storey(floor, staff.length - index, floor === top ? 'top-floor' : '')).join('')
-    : `<div class="empty-floors">Nobody upstairs yet. Take somebody on and the building grows a storey.</div>`
+    : `<div class="empty-floors">Nobody in yet. Take somebody on and the building grows a storey.</div>`
 
   // The label is already in the floor's own description — "Anthropic ·
   // claude-opus-5 (via Claude Code)" — so the supply line is that string with
@@ -503,10 +755,35 @@ function paintCutaway(building) {
   }
 }
 
+/**
+ * What a task's state is called out loud.
+ *
+ * The rows used to print the raw enum — `awaiting-review`, `awaiting-approval`,
+ * `escalated` — which are identifiers this code passes between its own
+ * functions. Worse: a building with no reviewer in it cannot mark anything
+ * done, so the *normal successful outcome* reached the owner as a red pill
+ * reading `awaiting-review`.
+ */
+const TASK_SAID = {
+  queued: 'queued',
+  working: 'working',
+  'awaiting-review': 'waiting to be read',
+  'awaiting-approval': 'waiting on you',
+  done: 'it held',
+  escalated: 'stuck',
+  abandoned: 'given up on',
+}
+const TASK_TONE = {
+  working: 'lit',
+  escalated: 'bad',
+  abandoned: 'bad',
+  done: 'good',
+  'awaiting-approval': 'warn',
+}
+const saidState = (state) => TASK_SAID[state] ?? String(state ?? '').replace(/-/g, ' ')
+
 function paintWork(building) {
   const open = building.open
-  const state = { queued: 'queued', working: 'working', 'awaiting-review': 'in review', 'awaiting-approval': 'needs you', escalated: 'blocked' }
-  const kind = { working: 'lit', escalated: 'bad' }
 
   // A building that has never done anything gets the riser instead of two
   // empty columns over a silent feed. The moment there is one real task, the
@@ -522,7 +799,7 @@ function paintWork(building) {
           (task) => `<div class="task ${task.state === 'working' ? 'is-working' : ''}">
             <div class="task-head">
               <div class="task-goal">${esc(task.goal)}</div>
-              <span class="pill ${kind[task.state] ?? ''}">${esc(state[task.state] ?? task.state)}</span>
+              <span class="pill ${TASK_TONE[task.state] ?? ''}">${esc(saidState(task.state))}</span>
             </div>
             <div class="task-who">${who(building, task.assignedTo)} · ${ago(task.createdAt)}</div>
             ${
@@ -538,7 +815,7 @@ function paintWork(building) {
           </div>`,
         )
         .join('')
-    : `<p class="empty">Nothing on. Put a goal to it and the manager will break it into work.</p>`
+    : `<p class="empty">Quiet. Put a goal to it and somebody will pick it up.</p>`
 
   el('workDone').innerHTML = building.recent.length
     ? building.recent.map((task) => settled(building, task)).join('')
@@ -551,16 +828,12 @@ function paintWork(building) {
  *
  * Every result carries a summary in the worker's own words, whatever it
  * produced, and what it spent — and none of it was on any screen. The row said
- * a branch name and a state, which tells you that something happened and
+ * a branch name and a raw state, which tells you that something happened and
  * nothing whatever about what.
  *
  * Shut by default, because the column is for scanning and this is one press
  * away. A <details> rather than a click handler: it opens from the keyboard,
  * announces itself, and survives a redraw without anything remembering it.
- *
- * The acceptance criteria come back too, and they are the same list the task
- * carried out with it — ticked, this time, because that is the question the
- * reviewer was answering.
  */
 function settled(building, task) {
   const artifacts = task.result?.artifacts ?? []
@@ -576,7 +849,7 @@ function settled(building, task) {
       </div>
       <div class="row-right">
         ${branch ? `<span class="pill branch">${esc(branch.slice(7))}</span>` : ''}
-        <span class="pill ${held ? 'good' : 'bad'}">${esc(task.state)}</span>
+        <span class="pill ${TASK_TONE[task.state] ?? ''}">${esc(saidState(task.state))}</span>
       </div>
     </summary>
     <div class="settled-what">
@@ -655,7 +928,7 @@ function paintApprovals(building) {
           docket(approval, `${who(building, approval.requestedBy)} asked ${ago(approval.createdAt)}`))
         .join('')
     : `<div class="desk-clear">
-         <p>The desk is clear.</p>
+         <p>Nothing needs you. Go and do something else.</p>
          <p class="dim">Anything that reaches outside the building — publishing, sending,
             deploying, spending, merging to main, hiring — stops here first.</p>
        </div>`
@@ -669,8 +942,8 @@ function paintApprovals(building) {
  * Each building's desk is in its own lobby, which is right — a building shares
  * nothing with its neighbours, and that includes its post. But the person the
  * dockets are addressed to has all of them, and the skyline was already
- * counting them in terracotta while giving nobody anywhere to answer. You had
- * to guess which buildings and walk into each.
+ * counting them while giving nobody anywhere to answer. You had to guess which
+ * buildings and walk into each.
  *
  * The count on the street is the way in now. This is the same docket as the one
  * in the lobby, decided down the same route — the daemon finds the building the
@@ -683,7 +956,7 @@ async function paintRound() {
     const { pending } = await api('/api/approvals')
     if (pending.length === 0) {
       box.innerHTML = `<div class="desk-clear">
-          <p>Nothing is waiting on you.</p>
+          <p>Nothing needs you. Go and do something else.</p>
           <p class="dim">Anything that would reach outside a building stops in its lobby until
              you say so. This is where all of them stop at once.</p>
         </div>`
@@ -707,9 +980,21 @@ function toggleRound(open) {
   const want = open ?? box.classList.contains('hidden')
   box.classList.toggle('hidden', !want)
   el('tallies').querySelector('[data-round]')?.setAttribute('aria-expanded', String(want))
-  if (want) { box.innerHTML = '<p class="empty">Reading every lobby…</p>'; paintRound() }
+  if (want) {
+    box.innerHTML = '<p class="empty">Reading every lobby…</p>'
+    paintRound()
+    box.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
 }
 
+/**
+ * What it becomes next, and what that is worth.
+ *
+ * "Another 2 hires and it changes form" was true and said nothing. The daemon
+ * has been computing a blurb for every rung of the ladder since the first
+ * commit — "It has a spire. People give directions by it." — and the page never
+ * asked for it. The ladder is the reason to come back.
+ */
 function paintNextForm(building) {
   if (!building.nextTierAt) {
     el('nextForm').textContent = 'It has taken every form there is.'
@@ -718,13 +1003,18 @@ function paintNextForm(building) {
   // `plural` was right for the count and wrong for the sentence: "Another 1
   // hire and it changes form" is a number where a person would use a word.
   const away = building.nextTierAt - building.headcount
-  el('nextForm').textContent =
-    away === 1 ? 'One more hire and it changes form.' : `Another ${away} hires and it changes form.`
+  const many = away === 1 ? 'One more hire' : `Another ${away} hires`
+  const becomes = afterTier(building.tier)
+  el('nextForm').innerHTML = becomes
+    ? `${many} and it becomes a <b>${esc(becomes.name)}</b>. ${esc(becomes.blurb)}`
+    : `${many} and it changes form.`
 }
 
 async function paintSchedules() {
+  const id = view.building
   const { schedules } = await api('/api/schedules')
-  const mine = schedules.filter((s) => s.building === view.building)
+  if (view.building !== id) return
+  const mine = schedules.filter((s) => s.building === id)
   el('schedules').innerHTML = mine.length
     ? mine
         .map(
@@ -758,8 +1048,15 @@ async function paintSchedules() {
 }
 
 async function paintArchives(query) {
-  const path = `/api/buildings/${encodeURIComponent(view.building)}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
+  // Checked before the request and again after it. `goHome()` nulls the
+  // building synchronously, so a fast click out of a building used to build
+  // `/api/buildings/null/archives` and toast a raw 404 at somebody who was
+  // already looking at the street.
+  const id = view.building
+  if (!id) return
+  const path = `/api/buildings/${encodeURIComponent(id)}/archives${query ? `?q=${encodeURIComponent(query)}` : ''}`
   const { stats, notes } = await api(path)
+  if (view.building !== id) return
   el('archives').innerHTML =
     `<div class="archive-shelf">` +
     // Three zeros above "Nothing written down yet" is the same fact told twice,
@@ -776,7 +1073,7 @@ async function paintArchives(query) {
           .slice(0, 20)
           .map((note) => `<div class="note-row"><span class="pill">${esc(note.layer)}</span><p>${esc(clip(note.text, 240))}</p></div>`)
           .join('')
-      : `<p class="empty">${query ? 'Nothing found down here.' : 'Nothing written down yet. Agents record what turned out to be true as they work.'}</p>`) +
+      : `<p class="empty">${query ? 'Nothing down here matches that. Try a shorter word.' : 'Nothing written down yet. Agents record what turned out to be true as they work.'}</p>`) +
     '</div>'
 }
 
@@ -790,8 +1087,10 @@ async function paintArchives(query) {
  * stays visible on every row so that never stops being obvious.
  */
 async function paintMail() {
-  if (!view.building) return
-  const { messages, unread, staff } = await api(`/api/buildings/${encodeURIComponent(view.building)}/mail`)
+  const id = view.building
+  if (!id) return
+  const { messages, unread, staff } = await api(`/api/buildings/${encodeURIComponent(id)}/mail`)
+  if (view.building !== id) return
 
   badge('badgeMail', unread.owner ?? 0)
 
@@ -814,7 +1113,7 @@ async function paintMail() {
           </div>`
         })
         .join('')
-    : `<p class="empty" style="padding:22px 16px">Nothing has been said yet. Write to somebody — it lands in their
+    : `<p class="empty">Nothing has been said yet. Write to somebody — it lands in their
        inbox and they read it the next time they are set to work.</p>`
 
   // Follow the conversation only if they were already at the bottom of it.
@@ -840,12 +1139,14 @@ el('mailForm').onsubmit = async (event) => {
   event.preventDefault()
   const body = el('mailBody').value.trim()
   if (!body || !view.building) return
-  el('mailBody').value = ''
   try {
     const sent = await post(`/api/buildings/${encodeURIComponent(view.building)}/mail`, {
       to: el('mailTo').value,
       body,
     })
+    // Cleared once it is genuinely somewhere else. A refused message that has
+    // also been wiped out of the box is a message you have to write twice.
+    el('mailBody').value = ''
     toast(`Left for ${sent.toName}.`, 'good')
     await paintMail()
     el('thread').scrollTop = el('thread').scrollHeight
@@ -913,7 +1214,7 @@ async function paintBridge() {
     return
   }
   const wired = bridge.wired.find((w) => w.building === view.building)
-  const live = bridge.status.state === 'live' && wired
+  const on = bridge.status.state === 'live' && wired
   const said =
     !bridge.connected ? 'Discord not set up'
     : !wired ? 'not wired to a channel'
@@ -921,7 +1222,7 @@ async function paintBridge() {
     : bridge.status.state === 'refused' ? 'Discord refused the token'
     : bridge.status.detail ?? bridge.status.state
 
-  el('mailBridge').className = `mail-bridge ${live ? 'on' : ''}`
+  el('mailBridge').className = `mail-bridge ${on ? 'on' : ''}`
   el('mailBridge').innerHTML =
     `<span class="dot"></span><span>${esc(said)}</span>
      <button class="ghost" id="bridgeOpen" type="button">${wired ? 'Change' : 'Connect Discord'}</button>`
@@ -1007,29 +1308,61 @@ el('bridgeForm').onsubmit = async (event) => {
 }
 
 /**
- * That something is happening, said where you are looking.
+ * That something is happening, said where you are looking, in somebody's name.
  *
- * A goal takes minutes and the only sign of it used to be a greyed-out button
- * and a feed at the bottom of another tab. This is the one thing on the screen
- * that is genuinely live, so it gets the lamp — the same amber as a lit window,
- * because it means the same thing.
- */
-/**
- * When the goal we are watching started — or null, if we did not see it start.
+ * A goal takes minutes and the only sign of it used to be a greyed-out button,
+ * a feed at the bottom of another tab, and the word "Working…" — which is the
+ * app describing itself rather than saying what is going on. Somebody in this
+ * building is doing it, and they have a name.
  *
- * The daemon does not report when the current goal began, so opening the page
- * midway through one would have counted from the moment you arrived and called
- * it "so far". A blank is honest; a confident wrong number is not.
+ * `workingSince` is null unless we watched it start. The daemon does not report
+ * when the current goal began, so opening the page midway through one would
+ * count from the moment you arrived and call it "so far". A blank is honest; a
+ * confident wrong number is not.
  */
 let workingSince = null
+let workingWho = ''
+let workingDetail = ''
 
-function showWorking(on) {
+/**
+ * Who, and what they are doing, in one line.
+ *
+ * Kept as two pieces rather than one string because they arrive from different
+ * places at different rates: the name comes from a refresh, the detail comes
+ * from the stream several times a second. Writing the whole line from a refresh
+ * would rub out the more specific half a moment after it appeared.
+ */
+function sayWorking() {
+  const said = workingWho || 'Somebody'
+  el('workingLine').textContent = workingDetail ? `${said} — ${workingDetail}` : `${said}'s on it`
+}
+
+function showWorking(on, building) {
   el('working').classList.toggle('hidden', !on)
   if (!on) {
     workingSince = null
-    el('workingLine').textContent = 'Working…'
+    workingWho = ''
+    workingDetail = ''
+    el('workingLine').textContent = ''
+    tickWorking()
+    return
   }
+  const busy = building?.staff.find((floor) => floor.state === 'working')
+  const name = busy?.name ?? ''
+  // Between tasks no floor is flagged; the last person to be working is still
+  // the truest thing we can say, so the name is kept until somebody else takes
+  // over — and only then is their line thrown away with them.
+  if (name && name !== workingWho) { workingWho = name; workingDetail = '' }
+  sayWorking()
   tickWorking()
+}
+
+/** Progress from the stream, kept under the name of whoever is making it. */
+function workingSays(detail) {
+  const said = clip(detail ?? '', 90)
+  if (!said) return
+  workingDetail = said
+  sayWorking()
 }
 
 function tickWorking() {
@@ -1053,7 +1386,7 @@ setInterval(tickWorking, 1000)
 async function decide(id, granted, after = refreshBuilding) {
   try {
     const result = await post(`/api/approvals/${encodeURIComponent(id)}`, { granted })
-    toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Approved.' : 'Refused.', granted ? 'good' : '')
+    toast(result.hired ? `${result.hired.name} joins.` : granted ? 'Allowed.' : 'Refused.', granted ? 'good' : '')
     // A hire is a new storey, so the drawing is now wrong rather than just out
     // of date. Cleared before the redraw, or the redraw reuses the old shape.
     drawnShape = ''
@@ -1177,7 +1510,7 @@ function typing(target) {
 /** Put the cursor where the main thing you write on this screen is written. */
 function focusTheBox() {
   const box = view.screen === 'building' ? el('goalText') : el('askText')
-  if (box.disabled) return
+  if (box.disabled || box.closest('.hidden')) return
   box.focus()
   box.select()
 }
@@ -1203,6 +1536,8 @@ document.addEventListener('keydown', (event) => {
 
   if (open || typing(event.target)) return
   if (event.metaKey || event.ctrlKey || event.altKey) return
+  // Nothing here reaches anything while the app cannot be talked to.
+  if (view.screen === 'blocked') return
 
   // `/` reaches for the box you write in, wherever you are. Prevented, or the
   // slash arrives in the box you just focused.
@@ -1226,7 +1561,6 @@ document.addEventListener('keydown', (event) => {
 })
 
 el('openKeys').onclick = () => el('keysDialog').showModal()
-el('firstGround').onclick = breakGround
 
 /**
  * Boarding a building up, and bringing one back.
@@ -1316,11 +1650,14 @@ el('groundForm').onsubmit = async (event) => {
     })
     el('groundDialog').close()
     el('groundForm').reset()
-    if (building.warning) toast(building.warning, 'bad')
+    // A warning is not a failure, but it is also not something to say for three
+    // and a half seconds and then take away.
+    if (building.warning) { el('notice').classList.add('quiet'); notice('Worth knowing', building.warning) }
     else toast(`${building.name} — ground broken.`, 'good')
     drawnShape = ''
     await refreshCity()
-    openBuilding(building.id)
+    // Straight to the one thing that makes it do anything.
+    openBuilding(building.id, 'hire')
   } catch (error) { oops(error) }
 }
 
@@ -1332,21 +1669,47 @@ el('hireForm').onsubmit = async (event) => {
       name: el('hName').value.trim() || undefined,
     })
     el('hName').value = ''
-    toast(`${floor.name} joins as ${floor.role}.`, 'good')
+    toast(`${floor.name} joins as ${floor.role}. The building grows a storey.`, 'good')
     drawnShape = ''
     await refreshBuilding()
   } catch (error) { oops(error) }
 }
 
+/**
+ * Putting a goal to a building.
+ *
+ * The box used to be cleared and the tab switched *before* the request went
+ * out, so a 409, a 422 or a budget refusal left you on another tab with an
+ * empty box and a toast that vanished in three and a half seconds — the
+ * sentence you had typed was simply gone. There was no `disabled` either, so a
+ * second Enter fired a second POST that 409'd against the first.
+ *
+ * Clear on success only. Disabled while it is in the air.
+ */
+let sendingGoal = false
+
 el('goalForm').onsubmit = async (event) => {
   event.preventDefault()
   const goal = el('goalText').value.trim()
-  if (!goal || !view.building) return
-  el('goalText').value = ''
-  selectTab('work')
+  if (!goal || !view.building || sendingGoal) return
+
+  sendingGoal = true
+  el('goalGo').disabled = true
+  el('goalGo').textContent = 'Sending…'
   try {
     await post(`/api/buildings/${encodeURIComponent(view.building)}/goal`, { goal })
-  } catch (error) { oops(error) }
+    el('goalText').value = ''
+    // It is running now whatever the last refresh thought, so the box stays
+    // shut until one comes back and says otherwise.
+    if (current) current.working = true
+    selectTab('work')
+  } catch (error) {
+    oops(error)
+  } finally {
+    sendingGoal = false
+    el('goalGo').textContent = 'Send'
+    el('goalGo').disabled = Boolean(current?.working)
+  }
 }
 
 /**
@@ -1384,7 +1747,7 @@ el('askForm').onsubmit = async (event) => {
   } catch (error) {
     el('answer').innerHTML = `<p class="asked">${esc(question)}</p>
       <div class="said bad">${esc(error.message)}</div>`
-    toast(error.message, 'bad')
+    oops(error)
   } finally {
     el('askGo').disabled = false
     el('askGo').textContent = 'Ask'
@@ -1435,7 +1798,19 @@ api('/api/roles')
       .map((role) => `<option value="${esc(role.role)}">${esc(role.role)} — ${esc(role.summary)}</option>`)
       .join('')
   })
-  .catch(oops)
+  .catch(() => {})
+
+// The ladder, fetched once. Nothing on the screen waits for it: a blurb that
+// arrives a beat late is better than a building screen that does.
+api('/api/tiers')
+  .then(({ tiers }) => {
+    ladder = tiers
+    if (current) {
+      el('bBlurb').textContent = blurbOf(current.tier)
+      paintNextForm(current)
+    }
+  })
+  .catch(() => {})
 
 // ── the live stream ────────────────────────────────────────────────────────
 
@@ -1481,11 +1856,55 @@ const SAID = {
 /** Events whose detail is already a whole sentence. A prefix would say it twice. */
 const SPEAKS_FOR_ITSELF = new Set(['recovered', 'decided', 'ticker-failed', 'boarded-up', 'reopened'])
 
-const stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
-stream.onopen = () => { el('live').className = 'live on'; el('live').lastElementChild.textContent = 'live' }
-stream.onerror = () => { el('live').className = 'live off'; el('live').lastElementChild.textContent = 'reconnecting' }
+/** The chip in the corner, which should only ever claim what is true. */
+function live(state, said) {
+  el('live').className = `live ${state}`
+  el('live').lastElementChild.textContent = said
+}
 
-stream.onmessage = (message) => {
+let stream = null
+
+function openStream() {
+  stream?.close()
+  stream = new EventSource(`/api/events?token=${encodeURIComponent(token)}`)
+  stream.onopen = () => { if (!blocked) live('on', 'live') }
+  stream.onerror = () => {
+    // A stream that has been refused will never come back on its own, and
+    // saying "reconnecting" about it is the app being wrong out loud.
+    if (!blocked) live('off', 'reconnecting')
+  }
+  stream.onmessage = onEvent
+}
+
+/**
+ * A goal has come back, told honestly.
+ *
+ * This used to be one green toast reading "Finished." whatever happened —
+ * including after a run in which no floor did any work at all, which is the
+ * product lying at its single most important moment. The daemon already sends
+ * how many tasks were worked and how many are outstanding, and that is enough
+ * to tell the cases apart without inventing anything.
+ */
+function cameBack(event) {
+  const did = Number(event.data?.worked ?? 0)
+  const left = Number(event.data?.outstanding ?? 0)
+  const spent = Number(event.data?.tokens ?? 0)
+
+  if (did > 0) {
+    toast(`Came back — ${plural(did, 'task')} worked${spent ? `, ${tokens(spent)} tokens` : ''}.`, 'good')
+    return
+  }
+  // Nothing was done. That is not a success and it is not quite a failure, and
+  // it is the outcome a new owner hits most, so it gets the surface that stays.
+  el('notice').classList.add('quiet')
+  notice(
+    'It came back having done nothing',
+    event.detail ? clip(event.detail, 200) : 'No floor picked anything up.',
+    left ? `${plural(left, 'task')} still queued — the Work tab has them.` : undefined,
+  )
+}
+
+function onEvent(message) {
   const event = JSON.parse(message.data)
 
   const tone = event.kind === 'goal-failed' ? 'bad' : LOUD.has(event.kind) ? 'hi' : 'lit'
@@ -1508,18 +1927,16 @@ stream.onmessage = (message) => {
     if (line) line.innerHTML = `<span class="spin"></span>${esc(looking.slice(-3).join(' · '))}`
   }
 
-  if (event.kind === 'goal-finished') toast('Finished.', 'good')
-  if (event.kind === 'goal-failed') toast(event.detail ?? 'That goal failed.', 'bad')
+  if (event.kind === 'goal-finished') cameBack(event)
+  if (event.kind === 'goal-failed') oops(new Trouble(event.detail ?? 'That goal stopped.'))
   if (event.kind === 'asked') toast('Something needs your say-so.')
 
   // What the building is doing right now, in its own words.
   if (view.screen === 'building' && event.building === view.building) {
-    if (event.kind === 'progress' || event.kind === 'step') {
-      el('workingLine').textContent = clip(event.detail ?? 'Working…', 90)
-    }
-    if (event.kind === 'tool') el('workingLine').textContent = `Using ${clip(event.detail ?? '', 40)}`
+    if (event.kind === 'progress' || event.kind === 'step') workingSays(event.detail)
+    if (event.kind === 'tool') workingSays(`using ${clip(event.detail ?? '', 40)}`)
     // Seeing it start is the only way we can honestly count from it.
-    if (event.kind === 'goal-started') { workingSince = Date.now(); showWorking(true) }
+    if (event.kind === 'goal-started') { workingSince = Date.now(); showWorking(true, current) }
     if (event.kind === 'goal-finished' || event.kind === 'goal-failed') showWorking(false)
   }
 
@@ -1531,7 +1948,9 @@ stream.onmessage = (message) => {
   if (event.kind === 'tool' || event.kind === 'step') return
 
   if (view.screen === 'city') refreshCity().catch(() => {})
-  else if (!event.building || event.building === view.building) refreshBuilding().catch(() => {})
+  else if (view.screen === 'building' && (!event.building || event.building === view.building)) {
+    refreshBuilding().catch(() => {})
+  }
 }
 
 /**
@@ -1541,7 +1960,7 @@ stream.onmessage = (message) => {
  * changes the shape of that hole: the frame takes what is left after the strip
  * below it, so opening the concierge's answer or the round shortens the city
  * without the window moving at all. The drawing stayed the ratio it was cut to
- * and shrank to a postage stamp in the middle of a wide black band.
+ * and shrank to a postage stamp in the middle of a wide band.
  *
  * Watching the frame itself covers the window too, so there is one rule rather
  * than a list of things that happen to resize it. Debounced: a drag fires this
@@ -1569,9 +1988,9 @@ new ResizeObserver(refit).observe(el('cityScroll'))
 // A slow poll behind the stream, because a dropped connection should not leave
 // the numbers frozen until somebody clicks something.
 setInterval(() => {
-  if (document.hidden) return
+  if (document.hidden || blocked) return
   if (view.screen === 'city') refreshCity().catch(() => {})
-  else refreshBuilding().catch(() => {})
+  else if (view.screen === 'building') refreshBuilding().catch(() => {})
 }, 25000)
 
 // ── updates, when this page is inside the desktop app ──────────────────────
@@ -1610,5 +2029,6 @@ if (desktop) {
   button.onclick = () => { if (!button.disabled) act() }
 }
 
+openStream()
 wireParallax()
 goHome()

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildApi } from './api.js'
+import { buildApi, askOwner } from './api.js'
 import { EventStream } from './events.js'
 import { HttpError } from './router.js'
 
@@ -51,7 +51,7 @@ function harness(options: { withProvider?: boolean } = {}) {
   }
 
   return {
-    call, workspace, seen,
+    call, workspace, seen, events,
     cleanup: () => {
       delete process.env.ROOFSCAPE_HOME
       if (hadKey === undefined) delete process.env.OPENAI_API_KEY
@@ -209,6 +209,9 @@ test('a task left mid-flight by a crash goes back in the queue', async () => {
   const h = harness({ withProvider: true })
   try {
     await h.call('POST', '/api/buildings', { name: 'Interrupted', workspace: h.workspace })
+    // With somebody who reads work, so that finished work is genuinely waiting
+    // for a reader rather than for nobody — which recovery now settles.
+    await h.call('POST', '/api/buildings/interrupted/hire', { role: 'reviewer' })
     const before = (await h.call('GET', '/api/buildings/interrupted')) as {
       staff: Array<{ id: string; role: string }>
     }
@@ -489,5 +492,283 @@ test('the bridge never hands back the token it was given', async () => {
     assert.equal(bridge.connected, true, 'it knows a token is set')
     assert.ok(!bridge.token.includes('a-secret-bot-token'), 'but does not repeat it')
     assert.match(bridge.token, /abcd$/, 'only enough of it to recognise which one')
+  } finally { h.cleanup() }
+})
+
+test('finished work waiting for a reader who does not exist is let through', async () => {
+  /*
+   * The state every installation is already full of: nothing ever reached
+   * `done` unless the building had a reviewer, and a building is founded with a
+   * manager and a coder. So every success sat in `awaiting-review` for good,
+   * counted as open and lighting a window that could never go out.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Unread', workspace: h.workspace })
+    const view = (await h.call('GET', '/api/buildings/unread')) as { staff: Array<{ id: string; role: string }> }
+    const manager = view.staff.find((f) => f.role === 'manager')!
+    const coder = view.staff.find((f) => f.role === 'coder')!
+
+    const { BuildingStore } = await import('@app/core')
+    const store = BuildingStore.open('unread' as never)
+    const stuck = store.assign({ by: manager.id as never, to: coder.id as never, goal: 'Was finished long ago' })
+    store.settle(stuck.id, 'awaiting-review', { summary: 'Done it.', artifacts: [], tokensSpent: 10 })
+    assert.equal(store.busyFloors(), 1, 'and until now it kept a window lit')
+    store.close()
+
+    const { recoverInterruptedWork } = await import('./recover.js')
+    assert.equal(recoverInterruptedWork(h.events), 1)
+    assert.ok(h.seen.includes('settled'), 'and it says so rather than tidying up quietly')
+
+    const after = BuildingStore.open('unread' as never)
+    try {
+      assert.equal(after.task(stuck.id)!.state, 'done')
+      assert.equal(after.busyFloors(), 0, 'the window has gone out')
+      assert.equal(recoverInterruptedWork(), 0, 'and running it again finds nothing')
+    } finally { after.close() }
+  } finally { h.cleanup() }
+})
+
+/** Let anything already queued on the microtask loop actually run. */
+const settleQueue = () => new Promise((done) => setImmediate(done))
+
+test('a request the owner has not seen is not refused before they see it', async () => {
+  /*
+   * The daemon recorded a docket and refused it in the same breath, so every
+   * ask resolved false before the flag on the roof could even be drawn. The
+   * agent was told no and moved on; deciding it afterwards resumed nothing.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Desk', workspace: h.workspace })
+    const { SkylineStore, BuildingStore } = await import('@app/core')
+    const sky = SkylineStore.open()
+    const building = sky.get('desk' as never)!
+    sky.close()
+
+    const store = BuildingStore.open('desk' as never)
+    try {
+      let settled: boolean | null = null
+      const answer = askOwner(h.events, building, store, false)('publish', 'Publish the results page')
+        .then((granted) => { settled = granted; return granted })
+
+      await settleQueue()
+      assert.equal(settled, null, 'the run is still standing at the desk')
+
+      const waiting = (await h.call('GET', '/api/approvals')) as {
+        pending: Array<{ id: string; intent: string; waiting: boolean }>
+      }
+      assert.equal(waiting.pending.length, 1)
+      assert.equal(waiting.pending[0]!.intent, 'Publish the results page')
+      assert.equal(waiting.pending[0]!.waiting, true, 'and the desk says somebody is waiting on the answer')
+
+      const decided = (await h.call('POST', `/api/approvals/${waiting.pending[0]!.id}`, { granted: true })) as {
+        decided: boolean; resumed: boolean
+      }
+      assert.equal(decided.resumed, true, 'deciding it resumes the run rather than only recording it')
+      assert.equal(await answer, true, 'and the agent is told what the owner actually said')
+    } finally {
+      store.close()
+    }
+  } finally { h.cleanup() }
+})
+
+test('silence at the desk is a refusal, and says so', async () => {
+  // An approval that waits for ever holds the building; one that assumes yes is
+  // not an approval. It refuses, and the docket is settled rather than left
+  // standing over a question nobody is waiting on any more.
+  const h = harness({ withProvider: true })
+  const had = process.env.ROOFSCAPE_ASK_TIMEOUT_MS
+  process.env.ROOFSCAPE_ASK_TIMEOUT_MS = '20'
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Patient', workspace: h.workspace })
+    const { SkylineStore, BuildingStore } = await import('@app/core')
+    const sky = SkylineStore.open()
+    const building = sky.get('patient' as never)!
+    sky.close()
+
+    const store = BuildingStore.open('patient' as never)
+    try {
+      const granted = await askOwner(h.events, building, store, false)('deploy', 'Deploy to production')
+      assert.equal(granted, false)
+      assert.equal(store.pendingApprovals().length, 0, 'the docket is decided, not left hanging')
+      assert.ok(h.seen.includes('ask-timed-out'), 'and the stream says why it was refused')
+    } finally {
+      store.close()
+    }
+  } finally {
+    if (had === undefined) delete process.env.ROOFSCAPE_ASK_TIMEOUT_MS
+    else process.env.ROOFSCAPE_ASK_TIMEOUT_MS = had
+    h.cleanup()
+  }
+})
+
+test('a docket inside a boarded-up building can still be answered', async () => {
+  // Both approval routes read the skyline, which leaves boarded-up buildings
+  // off it — so boarding one up made its pending dockets un-decidable, for the
+  // one action the product describes as safe and reversible.
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Shuttered', workspace: h.workspace })
+    const detail = (await h.call('GET', '/api/buildings/shuttered')) as { staff: Array<{ id: string; role: string }> }
+    const manager = detail.staff.find((f) => f.role === 'manager')!
+
+    const { BuildingStore } = await import('@app/core')
+    const store = BuildingStore.open('shuttered' as never)
+    const approval = store.requestApproval({ kind: 'publish', by: manager.id as never, intent: 'Send the newsletter' })
+    store.close()
+
+    await h.call('POST', '/api/buildings/shuttered/close')
+
+    const desk = (await h.call('GET', '/api/approvals')) as {
+      pending: Array<{ id: string; boardedUp: boolean }>
+    }
+    assert.equal(desk.pending.length, 1, 'it is still waiting on you')
+    assert.equal(desk.pending[0]!.boardedUp, true, 'and the page can say where it is')
+
+    const decided = (await h.call('POST', `/api/approvals/${approval.id}`, { granted: false })) as { decided: boolean }
+    assert.equal(decided.decided, true, 'and it can be answered')
+  } finally { h.cleanup() }
+})
+
+test('a provider can be connected without going anywhere near a terminal', async () => {
+  /*
+   * There was no POST at all: `putProvider` was reachable only from the CLI,
+   * which the desktop app does not ship. The Models dialog was a read-only list
+   * of remedies the owner had no way to carry out, under a promise that there
+   * is nothing to install first.
+   */
+  const h = harness()
+  try {
+    const { SkylineStore } = await import('@app/core')
+
+    const added = (await h.call('POST', '/api/providers', { name: 'openai', key: 'sk-typed-into-the-page' })) as {
+      ok: boolean; status: { ok: boolean }
+    }
+    assert.equal(added.ok, true)
+
+    const sky = SkylineStore.open()
+    try {
+      assert.equal(sky.credentialFor('openai'), 'sk-typed-into-the-page', 'and the key is where the runtime looks for it')
+    } finally { sky.close() }
+
+    // Naming a variable is preferred, and keeps the secret out of the database.
+    await h.call('POST', '/api/providers', { name: 'openai', env: 'OPENAI_API_KEY' })
+    const after = SkylineStore.open()
+    try {
+      const record = after.providers().find((p) => p.name === 'openai')!
+      assert.equal(record.credentialKind, 'env')
+      assert.equal(record.credential, 'OPENAI_API_KEY', 'the name of the variable, never its value')
+    } finally { after.close() }
+
+    const gone = (await h.call('POST', '/api/providers', { name: 'openai', remove: true })) as { forgotten: boolean }
+    assert.equal(gone.forgotten, true)
+  } finally { h.cleanup() }
+})
+
+test('a provider nobody can reach is refused with the reason, not saved as a stub', async () => {
+  const h = harness()
+  try {
+    await assert.rejects(() => h.call('POST', '/api/providers', { name: 'nowhere' }), (error: unknown) => {
+      assert.ok(error instanceof HttpError)
+      assert.equal(error.status, 400)
+      assert.match(error.message, /nowhere/)
+      return true
+    })
+
+    const hadKey = process.env.ANTHROPIC_API_KEY
+    delete process.env.ANTHROPIC_API_KEY
+    try {
+      await assert.rejects(() => h.call('POST', '/api/providers', { name: 'anthropic' }), (error: unknown) => {
+        assert.ok(error instanceof HttpError)
+        assert.equal(error.status, 422)
+        assert.match(error.message, /ANTHROPIC_API_KEY/, 'and it names the variable that would do it')
+        return true
+      })
+    } finally {
+      if (hadKey !== undefined) process.env.ANTHROPIC_API_KEY = hadKey
+    }
+  } finally { h.cleanup() }
+})
+
+test('somebody can leave, and the building gets shorter', async () => {
+  /*
+   * `vacate` had no caller anywhere — no route, no command — so a building's
+   * height only ever went up and a mis-hire was permanently built into the
+   * skyline. Height is headcount, and it needs a way down as well as up.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    await h.call('POST', '/api/buildings', { name: 'Shrink', workspace: h.workspace })
+    const before = (await h.call('GET', '/api/buildings/shrink')) as {
+      headcount: number; staff: Array<{ id: string; role: string }>
+    }
+    const manager = before.staff.find((f) => f.role === 'manager')!
+    const coder = before.staff.find((f) => f.role === 'coder')!
+
+    const { BuildingStore } = await import('@app/core')
+    const store = BuildingStore.open('shrink' as never)
+    const held = store.assign({ by: manager.id as never, to: coder.id as never, goal: 'Half-done thing' })
+    store.close()
+
+    const left = (await h.call('POST', `/api/buildings/shrink/floors/${coder.id}/vacate`)) as {
+      headcount: number; handedBack: number; warning: string | null
+    }
+    assert.equal(left.headcount, before.headcount - 1, 'the building lost a storey')
+    assert.equal(left.handedBack, 1, 'and what they were holding came back to the desk')
+    assert.equal(left.warning, null, 'there is still a manager')
+    assert.ok(h.seen.includes('vacated'))
+
+    const after = (await h.call('GET', '/api/buildings/shrink')) as { staff: Array<{ id: string }> }
+    assert.ok(!after.staff.some((f) => f.id === coder.id), 'they are off the staff list')
+
+    const check = BuildingStore.open('shrink' as never)
+    try {
+      assert.equal(check.task(held.id)!.state, 'escalated', 'their work is on your desk, not assigned to a ghost')
+      assert.equal(check.staff({ includeVacated: true }).some((f) => f.id === coder.id), true, 'nothing was deleted')
+    } finally { check.close() }
+
+    const alone = (await h.call('POST', `/api/buildings/shrink/floors/${manager.id}/vacate`)) as { warning: string | null }
+    assert.match(String(alone.warning), /no manager/i, 'and losing the last manager is said out loud')
+  } finally { h.cleanup() }
+})
+
+test('the owner can be given a name, and the buildings use it', async () => {
+  // `setOwner` was unreachable, so the name was always empty and the mailroom
+  // called everybody "You".
+  const h = harness()
+  try {
+    const owner = (await h.call('POST', '/api/owner', { name: 'Ada' })) as { name: string }
+    assert.equal(owner.name, 'Ada')
+
+    const sky = (await h.call('GET', '/api/skyline')) as { owner: { name: string } }
+    assert.equal(sky.owner.name, 'Ada')
+  } finally { h.cleanup() }
+})
+
+test('the home screen always names the one next thing to do', async () => {
+  /*
+   * Where the app was actually abandoned: one building with nobody in it fell
+   * through to the ordinary strip, four zeros and "click a building". Nothing
+   * anywhere said hire somebody, which is the only thing that makes a building
+   * do anything. First-run is a state machine, not a boolean.
+   */
+  const h = harness({ withProvider: true })
+  try {
+    const bare = (await h.call('GET', '/api/skyline/city')) as { next: { do: string; say: string } }
+    assert.equal(bare.next.do, 'break-ground')
+
+    await h.call('POST', '/api/buildings', { name: 'Nextly', workspace: h.workspace })
+    const staffed = (await h.call('GET', '/api/skyline/city')) as { next: { do: string; say: string } }
+    assert.equal(staffed.next.do, 'set-goal', 'staffed and never asked for anything')
+    assert.match(staffed.next.say, /Nextly/)
+
+    const detail = (await h.call('GET', '/api/buildings/nextly')) as { staff: Array<{ id: string }> }
+    for (const floor of detail.staff) {
+      await h.call('POST', `/api/buildings/nextly/floors/${floor.id}/vacate`)
+    }
+    const empty = (await h.call('GET', '/api/skyline/city')) as { next: { do: string; say: string } }
+    assert.equal(empty.next.do, 'hire', 'a building with nobody in it asks for somebody')
+    assert.match(empty.next.say, /grows a storey/)
   } finally { h.cleanup() }
 })

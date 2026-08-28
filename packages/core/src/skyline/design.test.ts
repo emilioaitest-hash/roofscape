@@ -1,10 +1,139 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { designFor, seedOf, FLOOR_HEIGHT, TIER_ORDER, PALETTES } from './design.js'
+import {
+  ACCENTS, PALETTES, REGISTER_SLIP, TIER_ORDER,
+  designFor, seedOf, FLOOR_HEIGHT, type Palette,
+} from './design.js'
 import { citySvg, buildingSvg, portraitSvg } from './svg.js'
 import { tierOf, allTiers } from './tiers.js'
 
 const design = (id: string, headcount: number) => designFor({ id, name: id, headcount })
+
+// ---- the material bar -----------------------------------------------------
+
+/*
+ * The rule the whole drawing rests on: marigold means a light is on and
+ * vermilion means something is waiting on you, and *nothing else in the city is
+ * allowed near either.* A single lit window has to carry across a street of
+ * thirty buildings, and it cannot if one of those buildings is painted brass.
+ *
+ * The two bands are written down in the spec as a hue range and a chroma floor.
+ * Hue is the plain HSL angle — marigold `#EFAA22` is 40° and vermilion
+ * `#D2452A` is 10°, which is what puts each inside its own band — and chroma is
+ * OKLCh's, which is the only one of the two whose numbers are on the 0–0.4
+ * scale the thresholds use. Lightness is OKLab's, ×100, so "20 L* darker" is 20
+ * points on the same scale the eye reads as evenly spaced.
+ *
+ * The escape hatch is the last clause and it is the honest one: a colour deep
+ * inside the band is fine if it is far enough *below* the meaning colour that
+ * nobody could mistake one for the other. That is what lets the city keep brick
+ * and bare timber, which are warm and always were.
+ */
+const srgbToLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+
+const channels = (hex: string): [number, number, number] =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number]
+
+/** Plain HSL hue, in degrees. */
+function hueOf(hex: string): number {
+  const [r, g, b] = channels(hex)
+  const max = Math.max(r, g, b)
+  const spread = max - Math.min(r, g, b)
+  if (spread === 0) return 0
+  const sixth = max === r ? (g - b) / spread : max === g ? 2 + (b - r) / spread : 4 + (r - g) / spread
+  return ((sixth * 60) % 360 + 360) % 360
+}
+
+/** OKLab lightness ×100, and OKLCh chroma. */
+function labOf(hex: string): { lightness: number; chroma: number } {
+  const [r, g, b] = channels(hex).map(srgbToLinear) as [number, number, number]
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+  return {
+    lightness: (0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s) * 100,
+    chroma: Math.hypot(
+      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    ),
+  }
+}
+
+const MEANING = [
+  { name: 'marigold', hex: '#EFAA22', from: 20, to: 55, chroma: 0.09 },
+  { name: 'vermilion', hex: '#D2452A', from: 0, to: 20, chroma: 0.1 },
+] as const
+
+/** Which meaning band a colour is inside, near enough to be confused with. */
+function insideMeaning(hex: string): string | null {
+  const hue = hueOf(hex)
+  const { lightness, chroma } = labOf(hex)
+  for (const band of MEANING) {
+    if (hue < band.from || hue > band.to) continue
+    if (chroma <= band.chroma) continue
+    if (lightness <= labOf(band.hex).lightness - 20) continue
+    return `${band.name} (hue ${hue.toFixed(0)}, chroma ${chroma.toFixed(3)}, lightness ${lightness.toFixed(0)})`
+  }
+  return null
+}
+
+test('the bands catch the two colours they are drawn around', () => {
+  // The test is only worth anything if it can see the thing it is looking for,
+  // and both meaning hues are by definition inside their own band.
+  for (const band of MEANING) {
+    assert.equal(insideMeaning(band.hex)?.startsWith(band.name), true, `${band.name} is not in its own band`)
+  }
+  // And this is the colour that was actually in the accent pool: `ACCENTS[0]`
+  // used to be `#d4703a`, byte-identical to `--flag`, so one building in ten
+  // wore the "this needs you" colour as awning paint.
+  assert.ok(insideMeaning('#d4703a'), 'the terracotta that used to be an accent reads as clear')
+})
+
+test('no paint on any building sits inside a meaning hue', () => {
+  const offenders: string[] = []
+  for (const palette of Object.values(PALETTES) as Palette[]) {
+    for (const role of ['wall', 'shade', 'lit', 'trim', 'roof'] as const) {
+      const verdict = insideMeaning(palette[role])
+      if (verdict) offenders.push(`${palette.name}.${role} ${palette[role]} is ${verdict}`)
+    }
+  }
+  assert.deepEqual(offenders, [], offenders.join('\n'))
+})
+
+test('no accent sits inside a meaning hue either', () => {
+  const offenders = ACCENTS.filter((hex) => insideMeaning(hex)).map(
+    (hex) => `${hex} is ${insideMeaning(hex)}`,
+  )
+  assert.deepEqual(offenders, [], offenders.join('\n'))
+  // Byte-identical is the failure this pool was rewritten to fix; check for it
+  // directly as well, because it is the one nobody would look twice at.
+  assert.ok(!(ACCENTS as readonly string[]).includes('#d4703a'))
+})
+
+test('a socket is a recess rather than a hole cut through to nothing', () => {
+  // On a light ground "lit" cannot mean "lighter than the wall" — it means a
+  // hole that has been filled. The hole has to be clearly darker than its wall,
+  // and clearly not black, or the counter inside it has nothing to sit against.
+  for (const palette of Object.values(PALETTES) as Palette[]) {
+    const wall = labOf(palette.wall).lightness
+    const socket = labOf(palette.socket).lightness
+    assert.ok(wall - socket >= 12, `${palette.name}: the socket is barely darker than the wall`)
+    assert.ok(socket >= 15, `${palette.name}: the socket is near-black, not a recess`)
+  }
+})
+
+test('the caught light on a mass is derived from the wall, not chosen beside it', () => {
+  // `lit` is a *relationship* — the wall taken toward warm white — and it only
+  // works if every building does it by the same amount.
+  for (const palette of Object.values(PALETTES) as Palette[]) {
+    const wall = labOf(palette.wall).lightness
+    const lit = labOf(palette.lit).lightness
+    assert.ok(lit > wall, `${palette.name}: the chamfer is not lighter than the wall`)
+    assert.ok(lit - wall < 22, `${palette.name}: the chamfer is a second colour rather than the same wall`)
+  }
+})
+
+// ---- the same building, every time ----------------------------------------
 
 test('a building looks the same every time it is drawn', () => {
   // The whole point of deriving a design rather than storing one: reopening the
@@ -58,7 +187,7 @@ test('a taller building is drawn taller', () => {
 })
 
 test('a building only redecorates when it changes form', () => {
-  // Growing inside a form must not swap the brickwork; growing into a new one
+  // Growing inside a form must not swap the paintwork; growing into a new one
   // is allowed to, because it has become a different kind of building.
   const five = design('steady', 5)
   const seven = design('steady', 7)
@@ -70,17 +199,43 @@ test('a building only redecorates when it changes form', () => {
   assert.notEqual(eight.tier.name, five.tier.name, 'eight staff is a different form')
 })
 
-test('the forms are built out of materials that suit them', () => {
-  const named = new Set<string>(Object.values(PALETTES).map((p) => p.name))
+test('a plate that is out of register stays out of register as the building grows', () => {
+  // The misprint belongs to the press, not to the form. A building that takes
+  // somebody on has not been reprinted; it has had a storey added.
+  const before = design('press', 4).register
+  const after = design('press', 9).register
+  assert.deepEqual(after, before, 'growing into a new form moved the colour plate')
+
+  for (let headcount = 1; headcount <= 12; headcount++) {
+    const { dx, dy } = design(`slip-${headcount}`, headcount).register
+    assert.ok(Math.abs(dx) <= REGISTER_SLIP && Math.abs(dy) <= REGISTER_SLIP, 'the slip ran away')
+    // Never landed perfectly: a building in register has nothing to snap back
+    // to on hover, and next to its neighbours it looks like it failed to draw.
+    assert.ok(Math.abs(dx) > 0.3 && Math.abs(dy) > 0.3, 'a plate landed dead on the ink')
+  }
+
+  // And two buildings are out by different amounts, which is the whole point.
+  const slips = new Set(
+    Array.from({ length: 10 }, (_, i) => JSON.stringify(design(`r-${i}`, 5).register)),
+  )
+  assert.ok(slips.size >= 8, `ten buildings shared ${10 - slips.size} misprints`)
+})
+
+test('the forms are built out of finishes that suit them', () => {
+  const named = new Set<string>((Object.values(PALETTES) as Palette[]).map((p) => p.name))
   for (let headcount = 1; headcount <= 25; headcount++) {
     for (let i = 0; i < 6; i++) {
       const d = design(`m-${i}`, headcount)
-      assert.ok(named.has(d.palette.name), `${d.palette.name} is not a known material`)
+      assert.ok(named.has(d.palette.name), `${d.palette.name} is not a known finish`)
     }
   }
-  // A shack is not made of curtain wall, and a tower is not made of tar paper.
-  const shacks = Array.from({ length: 12 }, (_, i) => design(`s-${i}`, 1).palette.name)
-  assert.ok(!shacks.includes('blue curtain wall'), 'a shack was glazed')
+  // The ladder is a ladder of *finish*, and it only means anything if the bottom
+  // of it cannot reach the top. A shack is never lacquered, exactly as it was
+  // never glazed in curtain wall, and this is the same test that guarded that.
+  const shacks = Array.from({ length: 24 }, (_, i) => design(`s-${i}`, 1).palette.name)
+  for (const shack of shacks) {
+    assert.ok(!/lacquer|anodised|enamel/.test(shack), `a shack was finished in ${shack}`)
+  }
 })
 
 test('a setback never leaves a floor wider than the one below it', () => {
@@ -98,6 +253,8 @@ test('a setback never leaves a floor wider than the one below it', () => {
   }
 })
 
+// ---- the drawing ----------------------------------------------------------
+
 test('the drawn city is well-formed and closes every tag it opens', () => {
   const svg = citySvg([
     { id: 'a', name: 'Help Center', headcount: 1, working: 1 },
@@ -109,6 +266,67 @@ test('the drawn city is well-formed and closes every tag it opens', () => {
   const opens = (svg.match(/<g[\s>]/g) ?? []).length
   const closes = (svg.match(/<\/g>/g) ?? []).length
   assert.equal(opens, closes, 'unbalanced <g> in the drawn city')
+})
+
+test('every building comes off two plates, and the colour one lands off the ink', () => {
+  const svg = citySvg([{ id: 'press', name: 'Press', headcount: 7 }], { width: 1400, height: 800 })
+  const { dx, dy } = design('press', 7).register
+  assert.ok(svg.includes('class="rs-plate-ink"'), 'no ink plate')
+  assert.ok(
+    svg.includes(`class="rs-plate-colour" style="--rs-dx:${dx}px;--rs-dy:${dy}px"`),
+    'the colour plate carries no misregistration for CSS to snap back',
+  )
+  // Snapping into register on hover is the whole hover interaction, and it has
+  // to survive the drawing being handed around on its own.
+  assert.match(svg, /\.rs-plot:hover \.rs-plate-colour[^}]*transform: none/)
+})
+
+test('the night is gone: no sky, no moon, no streetlight', () => {
+  const svg = citySvg([{ id: 'a', name: 'A', headcount: 6, working: 2 }], { width: 1400, height: 800 })
+  for (const gone of ['rs-sky', 'rs-haze', 'rs-moonglow', 'rs-lampglow', 'rs-lamppool', 'rs-lamps']) {
+    assert.ok(!svg.includes(gone), `${gone} survived the daylight`)
+  }
+  // One gradient is left and it is a shadow rather than a material: a plate
+  // prints flat, and every graded fill in the old drawing was a light source.
+  const gradients = [...svg.matchAll(/<(linear|radial)Gradient id="([^"]+)"/g)].map((m) => m[2])
+  assert.deepEqual(gradients, ['rs-shadow'])
+})
+
+test('a window is a socket, a counter, and sometimes somebody sitting at it', () => {
+  const svg = citySvg([{ id: 'w', name: 'W', headcount: 6, working: 3 }], { width: 1400, height: 800 })
+  assert.match(svg, /class="rs-socket"/, 'no hole')
+  assert.match(svg, /class="rs-lip"/, 'no lip inside the hole')
+  assert.match(svg, /class="rs-body"/, 'nobody is ever at a window')
+  // The figure is drawn from its counter by CSS, so it has to be the counter's
+  // next sibling — there is no wrapper around the pair.
+  assert.match(svg, /\.rs-w\.rs-busy \+ \.rs-body/)
+  // Three floors of six are at work, and work lights from the head down.
+  const busy = new Set([...svg.matchAll(/class="rs-w rs-on rs-busy[^"]*" data-floor="(\d)"/g)].map((m) => m[1]))
+  assert.deepEqual([...busy].sort(), ['3', '4', '5'])
+})
+
+test('a lit facade uses all three warmths', () => {
+  // An earlier form of the expression reduced to `index % 3`, so with a bay
+  // count divisible by three every column came out one tone from top to bottom.
+  const svg = citySvg([{ id: 'w', name: 'W', headcount: 6, working: 6 }], { width: 1400, height: 800 })
+  const tones = new Set([...svg.matchAll(/rs-t(\d)/g)].map((m) => m[1]))
+  assert.deepEqual([...tones].sort(), ['0', '1', '2'])
+})
+
+test('what waits on the owner is a pin, and it is the only vermilion in the city', () => {
+  const waiting = citySvg([{ id: 'a', name: 'A', headcount: 5, waiting: 2 }], { width: 1200, height: 700 })
+  const quiet = citySvg([{ id: 'a', name: 'A', headcount: 5 }], { width: 1200, height: 700 })
+  assert.match(waiting, /class="rs-waiting"/)
+  assert.ok(!quiet.includes('class="rs-waiting"'), 'a building with nothing waiting raised a mark anyway')
+  // A post with a ball on top, so shape carries the signal as well as colour
+  // does and a colour-blind owner reads it.
+  for (const part of ['rs-pin-base', 'rs-pin-post', 'rs-pin-ball']) {
+    assert.ok(waiting.includes(part), `the pin has no ${part}`)
+  }
+  // Placed by one group and rocked by another: a CSS transform replaces the
+  // attribute rather than composing with it, and the pin would drop to the
+  // pavement the moment it was animated.
+  assert.match(waiting, /<g transform="translate\(0 -?[\d.]+\)"><g class="rs-waiting">/)
 })
 
 test('a name reaches the screen, and a hostile one does not reach it as markup', () => {
@@ -127,16 +345,50 @@ test('every form draws without throwing, at every size that reaches it', () => {
   }
 })
 
-test('an empty skyline is still a drawing', () => {
+test('every crown and every ornament draws, and none of them draws nothing', () => {
+  // Twenty-five crowns and twenty-three ornaments are the wit in the drawing.
+  // The spec counts twenty-four because `cornice` is shared between the walk-up
+  // and the cast-iron block and gets counted once; the union has twenty-five.
+  // Sweeping a great many ids is how each one actually gets exercised, and a
+  // silently empty `case` is exactly the way one of them would go missing.
+  const crowns = new Set<string>()
+  const ornaments = new Set<string>()
+  for (let i = 0; i < 400; i++) {
+    for (const headcount of [1, 2, 3, 5, 9, 13, 19]) {
+      const d = design(`sweep-${i}`, headcount)
+      crowns.add(d.crown)
+      for (const ornament of d.ornaments) ornaments.add(ornament)
+      const svg = buildingSvg(d)
+      assert.ok(!svg.includes('NaN') && !svg.includes('undefined'), `${d.crown} drew badly`)
+      // An empty group is a `case` that fell through and drew nothing at all.
+      assert.ok(!/<g class="rs-crown[^>]*><\/g>/.test(svg), `the ${d.crown} crown drew nothing`)
+    }
+  }
+  assert.equal(crowns.size, 25, `only ${crowns.size} crowns are reachable`)
+  assert.equal(ornaments.size, 23, `only ${ornaments.size} ornaments are reachable`)
+  // The decorative one is called a pennant now, so the word cannot be mistaken
+  // for the mark that means something is waiting on you.
+  assert.ok(ornaments.has('pennant') && !ornaments.has('flag'))
+})
+
+test('an empty skyline is still a drawing, and it says what to do about it', () => {
   const svg = citySvg([])
   assert.match(svg, /^<svg /)
   assert.match(svg, /Break ground/)
+  assert.match(svg, /Room for another/)
+  // The dash is the meaning: nothing here yet. Hover goes to ink and never to
+  // the lamp, which means a light is on, and here nothing is.
+  assert.match(svg, /\.rs-lot-plot \{[^}]*stroke-dasharray/)
+  assert.ok(!/\.rs-lot:hover[^}]*--lamp/.test(svg), 'an empty lot lights up on hover')
 })
 
 test('a portrait is one building and no empty lot beside it', () => {
   const svg = portraitSvg({ id: 'solo', name: 'Solo', headcount: 7 })
   assert.match(svg, /^<svg /)
   assert.ok(!svg.includes('Break ground'), 'a portrait offered a second plot')
+  // It sits on a card that is already a sheet of paper; a second sheet inside
+  // the first is a visible rectangle.
+  assert.ok(!svg.includes('class="rs-paper"'), 'a portrait brought its own paper')
 })
 
 test('the form a design reports is the form the ladder says it is', () => {
@@ -162,7 +414,7 @@ test('a name made of emoji is cut between characters, not through one', () => {
 })
 
 test('the canvas is bounded, however strange the frame it is given', () => {
-  // `stars()` and `backdrop()` loop across the whole width, so a runaway one is
+  // `dust()` and `backdrop()` loop across the whole width, so a runaway one is
   // megabytes of markup — and an aspect of Infinity was a loop with no end.
   const shapes: Array<Record<string, number>> = [
     { width: 6000, height: 10 },
@@ -178,11 +430,22 @@ test('the canvas is bounded, however strange the frame it is given', () => {
   }
 })
 
+test('a tower of windows stays inside its node budget', () => {
+  // Four shapes per window against one before. Sockets and lips are merged per
+  // storey to pay for it; without that a floor of thirty towers is a page the
+  // browser has to think about.
+  const svg = buildingSvg(design('big', 24), { working: 24 })
+  const d = design('big', 24)
+  const nodes = (svg.match(/<(rect|path|circle|ellipse)[\s>]/g) ?? []).length
+  const budget = d.floors * d.bays * 3 + d.floors * 4 + 220
+  assert.ok(nodes < budget, `a ${d.floors}-storey building drew ${nodes} shapes, over ${budget}`)
+})
+
 test('the drawing fills the frame it was given, in both directions', () => {
   /*
    * An SVG whose ratio does not match its frame is letterboxed by the browser,
    * and the bars are the page's own background — so the failure looks like a
-   * black stripe above the sky and another below the street rather than like a
+   * stripe above the roofline and another below the street rather than like a
    * bug. Widening with pavement covered a frame that was relatively wider; a
    * frame that was relatively *taller* had nothing to give, which is the common
    * case: four shacks on a laptop.
@@ -220,10 +483,10 @@ test('the drawing fills the frame it was given, in both directions', () => {
   }
 })
 
-test('sky is what makes up the difference, not stretched buildings', () => {
+test('air is what makes up the difference, not stretched buildings', () => {
   // The fit must not come out of the drawing itself: the buildings stay the
-  // size they were drawn and the street stays where it is. Only the evening
-  // above them grows.
+  // size they were drawn and the street stays where it is. Only the paper above
+  // them grows.
   const short = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 400 })
   const tall = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 1000 })
   const heightOf = (svg: string) => Number(svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1])
@@ -258,24 +521,15 @@ test('a headcount that is not a number is drawn as a shack, not as nothing', () 
   assert.ok(!svg.includes('NaN'), 'NaN reached the drawing')
 })
 
-test('two buildings never share a gradient id, even when their seeds collide', () => {
-  // The seed is a 32-bit hash and these two really do collide. The first
-  // definition of a duplicated id wins, so one building was painted in the
-  // other's walls while its trim and roof stayed its own.
+test('two buildings whose seeds collide are still two buildings', () => {
+  // The seed is a 32-bit hash and these two really do collide. Nothing in the
+  // drawing may be keyed on it alone.
   assert.equal(seedOf('b2cir:shack'), seedOf('b9kc:single-storey'), 'the collision this guards against')
 
   const svg = citySvg(
     [{ id: 'b2cir', name: 'One', headcount: 1 }, { id: 'b9kc', name: 'Two', headcount: 2 }],
     { width: 1400, height: 800 },
   )
-  const ids = [...svg.matchAll(/<linearGradient id="([^"]+)"/g)].map((m) => m[1])
-  assert.equal(new Set(ids).size, ids.length, 'a gradient id was defined twice in one document')
-})
-
-test('a lit facade uses all three warmths', () => {
-  // The old expression reduced to `index % 3`, so with a bay count divisible by
-  // three every column came out one fixed tone from top to bottom.
-  const svg = citySvg([{ id: 'w', name: 'W', headcount: 6, working: 6 }], { width: 1400, height: 800 })
-  const tones = new Set([...svg.matchAll(/rs-t(\d)/g)].map((m) => m[1]))
-  assert.deepEqual([...tones].sort(), ['0', '1', '2'])
+  const ids = [...svg.matchAll(/ id="([^"]+)"/g)].map((m) => m[1])
+  assert.equal(new Set(ids).size, ids.length, 'an id was defined twice in one document')
 })

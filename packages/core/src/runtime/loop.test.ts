@@ -450,3 +450,187 @@ test('a goal releases the building when it is done, even if it failed', async ()
     assert.equal(s.store.claimHolder(), null, 'still free after a failure')
   } finally { s.cleanup() }
 })
+
+/**
+ * The worst bug the product had. The only transition to `done` sat inside
+ * `if (review)`; review was null whenever nobody in the building reviewed; and
+ * a new building is founded with a manager and a coder — so nothing a new
+ * building did could ever finish. Every success sat in `awaiting-review` for
+ * good, and the windows it lit never went out.
+ */
+test('a building of a manager and a coder alone finishes what it does', async () => {
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: posting('c') })
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'assign_task', input: { to: coder.id, goal: 'Add farewell', acceptance: ['it exists'] } }],
+        [{ tool: 'finish', input: { summary: 'Assigned to Nib.', artifacts: [], succeeded: true } }],
+      ])],
+      ['c', scriptedModel([
+        [{ tool: 'write_file', input: { path: 'bye.js', content: 'export const farewell = () => "Bye"\n' } }],
+        [{ tool: 'finish', input: { summary: 'Wrote bye.js.', artifacts: ['bye.js'], succeeded: true } }],
+      ])],
+    ])
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: (p) => scripts.get(p.model) ?? scripts.get('c')!,
+      },
+      'Add a farewell function',
+    )
+
+    assert.equal(s.store.tasks()[0]!.state, 'done', 'the task actually finished')
+    assert.equal(outcome.worked[0]!.settled, 'done')
+    assert.equal(outcome.verdict, 'did-something')
+    assert.equal(s.store.busyFloors(), 0, 'and the windows it lit have gone out')
+
+    // And it is honest about why nobody read it, rather than quietly founding
+    // the building with a reviewer it never asked for.
+    assert.match(outcome.why, /nobody here reads finished work/i)
+    assert.match(outcome.remedy!, /hire a reviewer/i)
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a goal that never reached a model is not reported as finished', async () => {
+  // The failure that made the product lie: a provider failure is reported, not
+  // raised, so `pursueGoal` resolved happily and the page toasted "Finished."
+  // in green over a goal nothing had even attempted.
+  const s = scratch()
+  try {
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: POSTING })
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: () => {
+          throw Object.assign(new Error('No credential for Anthropic.'), {
+            name: 'ProviderError',
+            remedy: 'Set ANTHROPIC_API_KEY in the environment, or run: roofscape provider add anthropic',
+          })
+        },
+      },
+      'Do something useful',
+    )
+
+    assert.equal(outcome.verdict, 'could-not-start')
+    assert.equal(outcome.worked.length, 0, 'nothing was attempted')
+    assert.match(outcome.why, /No credential/)
+    assert.match(outcome.remedy!, /ANTHROPIC_API_KEY/, 'and the one thing that fixes it survives the trip')
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a manager who assigns nothing says so rather than reporting success', async () => {
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'finish', input: { summary: 'Nobody here designs, so I assigned nothing.', artifacts: [], succeeded: true } }],
+      ])],
+    ])
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {}, resolveModel: (p) => scripts.get(p.model)!,
+      },
+      'Design a logo',
+    )
+
+    assert.equal(outcome.verdict, 'did-nothing')
+    assert.match(outcome.why, /Nobody here designs/, "and the reason is the manager's own")
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('a floor that could not reach a model is a goal that did nothing, with the remedy', async () => {
+  // The likeliest shape of it in real life: the manager runs on an installed
+  // Claude Code and the coder is posted to a provider with no key. The goal is
+  // read, tasks are assigned, and not one of them can start.
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: posting('c') })
+
+    const manager = scriptedModel([
+      [{ tool: 'assign_task', input: { to: coder.id, goal: 'Write it', acceptance: ['it exists'] } }],
+      [{ tool: 'finish', input: { summary: 'Assigned to Nib.', artifacts: [], succeeded: true } }],
+    ])
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: (p) => {
+          if (p.model === 'm') return manager
+          throw Object.assign(new Error('No credential for OpenAI.'), {
+            name: 'ProviderError',
+            remedy: 'Set OPENAI_API_KEY in the environment, or run: roofscape provider add openai',
+          })
+        },
+      },
+      'Write the results page',
+    )
+
+    assert.equal(outcome.verdict, 'did-nothing')
+    assert.match(outcome.why, /No credential for OpenAI/)
+    assert.match(outcome.remedy!, /OPENAI_API_KEY/, 'the fix survives from the floor to the owner')
+    assert.equal(s.store.tasks()[0]!.state, 'escalated', 'and the work is on the desk, not counted as done')
+  } finally {
+    s.cleanup()
+  }
+})
+
+test('the goal you just typed is worked before whatever was left over', async () => {
+  // Tasks were taken oldest-first across the whole building, so leftovers from
+  // an earlier run were worked *instead of* the new goal's own — and "put a
+  // goal to it" could not promise the building would work on that goal.
+  const s = scratch()
+  try {
+    const posting = (model: string): Posting => ({ ...POSTING, model })
+    const manager = s.store.hire({ role: 'manager', name: 'Ada', charter: 'x', posting: posting('m') })
+    const coder = s.store.hire({ role: 'coder', name: 'Nib', charter: 'x', posting: posting('c') })
+    for (let n = 1; n <= 6; n++) {
+      s.store.assign({ by: manager.id, to: coder.id, goal: `Stale ${n}` })
+    }
+
+    const scripts = new Map([
+      ['m', scriptedModel([
+        [{ tool: 'assign_task', input: { to: coder.id, goal: 'The new thing', acceptance: ['it is done'] } }],
+        [{ tool: 'finish', input: { summary: 'Assigned one task.', artifacts: [], succeeded: true } }],
+      ])],
+      ['c', scriptedModel([[{ tool: 'finish', input: { summary: 'Done.', artifacts: [], succeeded: true } }]])],
+    ])
+
+    const outcome = await pursueGoal(
+      {
+        building: s.building, store: s.store, credentials: s.skyline,
+        ask: async () => false, report: () => {},
+        resolveModel: (p) => scripts.get(p.model) ?? scripts.get('c')!,
+      },
+      'Do the new thing',
+      { maxTasks: 2 },
+    )
+
+    assert.equal(outcome.worked[0]!.task.goal, 'The new thing', 'the new goal goes first')
+    assert.equal(outcome.worked.length, 2, 'and the leftovers fill the room that is left')
+    assert.equal(outcome.worked[1]!.task.goal, 'Stale 1')
+    assert.equal(outcome.outstanding, 5, 'the rest are still waiting')
+  } finally {
+    s.cleanup()
+  }
+})

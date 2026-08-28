@@ -39,13 +39,24 @@ export async function goal(text: string | undefined, options: { building?: strin
   )
 
   say('\n')
-  heading('What happened')
-  say(`  ${outcome.managerSummary}`)
+
+  // The one line that has to be true. A goal that never reached a model used to
+  // arrive here indistinguishable from one that worked, because the runtime
+  // reports a provider failure rather than raising it.
+  const mark = outcome.verdict === 'did-something' ? green('✓') : outcome.verdict === 'did-nothing' ? amber('·') : red('✗')
+  say(`${mark} ${bold(outcome.headline)}`)
+  say(dim(`  ${outcome.why}`))
+  if (outcome.remedy) say(dim(`  ${outcome.remedy}`))
+
+  if (outcome.verdict !== 'could-not-start') {
+    heading('What the manager said')
+    say(`  ${outcome.managerSummary}`)
+  }
 
   if (outcome.worked.length > 0) {
     heading('Work done')
     for (const item of outcome.worked) {
-      const mark = item.succeeded ? green('✓') : red('✗')
+      const mark = item.settled === 'done' ? green('✓') : item.succeeded ? amber('·') : red('✗')
       say(`  ${mark} ${bold(item.floor.name)} — ${item.task.goal.slice(0, 70)}`)
       say(dim(`      ${item.summary.slice(0, 160)}`))
       if (item.branch) say(dim(`      branch: ${item.branch}`))
@@ -53,6 +64,8 @@ export async function goal(text: string | undefined, options: { building?: strin
         const mark = item.review.accepted ? green('accepted') : amber('not accepted')
         const again = item.reworks > 0 ? ` after ${item.reworks} rework${item.reworks === 1 ? '' : 's'}` : ''
         say(dim(`      ${mark}${again} by ${item.review.by}: ${item.review.verdict.slice(0, 110)}`))
+      } else if (item.settled === 'done') {
+        say(dim('      nobody here read it, so it went straight through'))
       }
     }
   }
@@ -64,6 +77,10 @@ export async function goal(text: string | undefined, options: { building?: strin
 
   store.close()
   skyline.close()
+
+  // A goal that could not start is a failed command, and a shell has every
+  // right to know that: this runs in scripts and standing orders.
+  if (outcome.verdict === 'could-not-start') process.exitCode = 1
 }
 
 /**
@@ -98,17 +115,23 @@ function askOwner(store: ReturnType<typeof openBuilding>, autoYes: boolean) {
   }
 }
 
-/** The approval desk: everything waiting on you, across every building. */
+/**
+ * The approval desk: everything waiting on you, across every building.
+ *
+ * Boarded-up ones included. They are off the skyline, which is right for a
+ * drawing and wrong here: a docket in a building you have boarded up was
+ * un-answerable, for the one action the product calls safe and reversible.
+ */
 export function lobby(): void {
   const skyline = openSkyline()
-  const buildings = skyline.list()
+  const buildings = skyline.list({ includeClosed: true })
   let total = 0
 
   for (const building of buildings) {
     const store = openBuilding(building.id)
     const pending = store.pendingApprovals()
     if (pending.length > 0) {
-      heading(building.name)
+      heading(building.closedAt ? `${building.name} (boarded up)` : building.name)
       for (const approval of pending) {
         say(`  ${dim(approval.id)}  ${dim(`[${approval.kind}]`)} ${approval.intent}`)
         say(dim(`      asked ${ago(approval.createdAt)}`))
@@ -136,7 +159,7 @@ export function decide(id: string | undefined, granted: boolean): void {
   if (!id) fail('Which one?', 'roofscape lobby  — to see what is waiting')
   const skyline = openSkyline()
 
-  for (const building of skyline.list()) {
+  for (const building of skyline.list({ includeClosed: true })) {
     const store = openBuilding(building.id)
     const match = store.pendingApprovals().find((a) => a.id === id || a.id.startsWith(id))
     if (!match) {

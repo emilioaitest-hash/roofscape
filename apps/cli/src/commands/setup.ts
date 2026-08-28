@@ -102,6 +102,46 @@ export async function providerAdd(name: string | undefined, options: { key?: str
   skyline.close()
 }
 
+/**
+ * Who you are.
+ *
+ * `setOwner` was on the store from the first commit and nothing could reach it,
+ * so the name was always empty and the mailroom addressed every message to
+ * "You". A building writing to somebody with a name is a different product from
+ * one writing to a placeholder.
+ */
+export function owner(name: string | undefined, options: { profile?: string }): void {
+  const skyline = openSkyline()
+  const current = skyline.owner()
+
+  if (!name && options.profile === undefined) {
+    heading('You')
+    if (current.name) {
+      say(`  ${bold(current.name)}`)
+      if (current.profile) say(dim(`  ${current.profile}`))
+    } else {
+      say(dim('  Nobody has said. The buildings will call you "You".'))
+    }
+    say()
+    say(dim('  roofscape owner "Ada Lovelace"'))
+    say(dim('  roofscape owner --profile "Prefers short answers and working code."'))
+    say()
+    skyline.close()
+    return
+  }
+
+  skyline.setOwner({
+    ...(name ? { name } : {}),
+    ...(options.profile !== undefined ? { profile: options.profile } : {}),
+  })
+  const now = skyline.owner()
+  say()
+  tick(`You are ${bold(now.name || 'nobody in particular')}.`)
+  if (now.profile) note(now.profile)
+  say()
+  skyline.close()
+}
+
 /** Read the archives. */
 export function archives(query: string | undefined, options: { building?: string }): void {
   const skyline = openSkyline()

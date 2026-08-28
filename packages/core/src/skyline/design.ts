@@ -4,7 +4,8 @@
  * `tiers.ts` says what *form* a building has taken. That is a function of
  * headcount alone and it is the honest signal — decision 0009. This file says
  * what that form looks like *for this building*: its materials, its window
- * rhythm, what somebody left on its roof.
+ * rhythm, what somebody left on its roof, and how badly its colour plate is
+ * printed over its ink.
  *
  * All of it is drawn from a seed made of the building's id, so a building looks
  * the same every time the app opens, and two buildings the same size look
@@ -78,67 +79,134 @@ export interface Palette {
   wall: string
   /** The same wall turned away from it. */
   shade: string
-  /** Cornices, mullions, frames — the drawn lines of the building. */
+  /** The 3-unit chamfer along the top of a mass: the wall, caught. */
+  lit: string
+  /** Cornices, mullions, sills — the flat washes that are not the wall. */
   trim: string
   /** Roof deck and parapet top. */
   roof: string
-  /** A window nobody is behind. */
-  glass: string
+  /** Inside a window: the hole, before anybody turns a light on in it. */
+  socket: string
+}
+
+/** Mix two hexes. Used once, to derive `lit` from `wall` so it cannot drift. */
+function mix(from: string, to: string, amount: number): string {
+  const channels = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  const a = channels(from)
+  const b = channels(to)
+  return `#${a
+    .map((c, i) => Math.round(c + (b[i]! - c) * amount).toString(16).padStart(2, '0'))
+    .join('')}`
 }
 
 /**
- * Real materials, in the order a district gets built in. The names are the
- * point: a building is "sandstone" or "verdigris", not "#c8a97e", and a palette
- * that cannot be named is usually one that does not go together.
+ * The colour a lit face is: the wall, taken 22% of the way toward warm white.
+ *
+ * Derived rather than written down because it is a *relationship*, not a
+ * choice — twenty-five hand-picked highlights would be twenty-five chances for
+ * one of them to be a shade lighter than it ought to be, and the chamfer only
+ * works when every building does it by the same amount.
+ */
+const CAUGHT_LIGHT = '#FFFAF0'
+
+const paint = (
+  name: string,
+  wall: string,
+  shade: string,
+  trim: string,
+  roof: string,
+  socket: string,
+): Palette => ({ name, wall, shade, lit: mix(wall, CAUGHT_LIGHT, 0.22), trim, roof, socket })
+
+/**
+ * Finishes, in the order a building earns them.
+ *
+ * The ladder used to run on the age of a district, which put a limestone bank
+ * next to a tar-paper shed for reasons only a city planner would feel. It runs
+ * on *finish* now: bare and scuffed at the bottom, then milk paint, then
+ * enamel, then lacquer and anodised metal at the top. That ladder is legible
+ * from across the room — a building that has been painted is doing better than
+ * one that has not — and it is the same claim the drawn height makes.
+ *
+ * Every one of these clears the material bar: no wall, shade, trim, roof or
+ * chamfer sits inside the marigold or vermilion band, so a single lit window
+ * still carries across a street of thirty buildings. `design.test.ts` proves
+ * it, and it is the test to run before adding a colour here.
  */
 export const PALETTES = {
-  timber: { name: 'weathered timber', wall: '#8a7259', shade: '#6b573f', trim: '#5a4632', roof: '#4e4034', glass: '#3a3228' },
-  tin: { name: 'corrugated tin', wall: '#8d9499', shade: '#6c7378', trim: '#565d61', roof: '#5d6469', glass: '#343a3e' },
-  tarpaper: { name: 'tar paper', wall: '#6f6a63', shade: '#544f4a', trim: '#413d39', roof: '#3c3835', glass: '#2e2b28' },
-  clapboard: { name: 'painted clapboard', wall: '#c9c2b2', shade: '#a49d8d', trim: '#7d7768', roof: '#6b5f52', glass: '#3b3a36' },
-  seafoam: { name: 'seafoam board', wall: '#9fb8ac', shade: '#7d968b', trim: '#5f7469', roof: '#5a5f52', glass: '#33403b' },
-  brickRed: { name: 'red brick', wall: '#a8523c', shade: '#853f2e', trim: '#6d3325', roof: '#4a2e26', glass: '#3a2a26' },
-  brickBrown: { name: 'brown brick', wall: '#8a6048', shade: '#6d4b38', trim: '#573c2d', roof: '#443128', glass: '#332a25' },
-  sandstone: { name: 'sandstone', wall: '#c3a173', shade: '#a1835b', trim: '#836a49', roof: '#5f5140', glass: '#3b352c' },
-  bluestone: { name: 'bluestone', wall: '#7c8794', shade: '#616b76', trim: '#4d555e', roof: '#414850', glass: '#2f353b' },
-  oxblood: { name: 'oxblood', wall: '#8e3f42', shade: '#6f3134', trim: '#582629', roof: '#452023', glass: '#331f21' },
-  castCream: { name: 'painted cast iron', wall: '#d8cdb4', shade: '#b5aa92', trim: '#8e836c', roof: '#6a6252', glass: '#3c3a33' },
-  castSage: { name: 'sage cast iron', wall: '#9aa688', shade: '#7c876c', trim: '#5f6952', roof: '#4e5643', glass: '#333829' },
-  verdigris: { name: 'verdigris', wall: '#6f9b8e', shade: '#557a70', trim: '#416058', roof: '#3a534d', glass: '#2b3d39' },
-  castSlate: { name: 'slate cast iron', wall: '#6d6a74', shade: '#54525b', trim: '#413f47', roof: '#38363e', glass: '#2a292f' },
-  limestone: { name: 'limestone', wall: '#cfc4ac', shade: '#aba08a', trim: '#8a806c', roof: '#6b6354', glass: '#3a372f' },
-  bronze: { name: 'bronze', wall: '#9a7a4e', shade: '#7a5f3c', trim: '#5e4a2e', roof: '#4b3c26', glass: '#332b1e' },
-  blacksteel: { name: 'black steel', wall: '#3f434a', shade: '#31343a', trim: '#24272b', roof: '#25282d', glass: '#1e2124' },
-  glassBlue: { name: 'blue curtain wall', wall: '#4e6b86', shade: '#3c536a', trim: '#2f4152', roof: '#2b3a49', glass: '#22303d' },
-  glassTeal: { name: 'teal curtain wall', wall: '#3f7573', shade: '#305a58', trim: '#254745', roof: '#22403f', glass: '#1c3332' },
-  glassBronze: { name: 'bronze curtain wall', wall: '#7a6448', shade: '#5f4e38', trim: '#493c2b', roof: '#413628', glass: '#2c2519' },
-  pearl: { name: 'pearl composite', wall: '#b9c0c8', shade: '#969ea6', trim: '#737b83', roof: '#646c74', glass: '#2f363c' },
-  carbon: { name: 'carbon lattice', wall: '#2f3440', shade: '#242833', trim: '#1a1d25', roof: '#1c1f28', glass: '#171a21' },
-  alabaster: { name: 'alabaster shell', wall: '#d9dbe2', shade: '#b3b6bf', trim: '#8b8e98', roof: '#787c86', glass: '#2b2f38' },
+  // Bare: nobody has painted these.
+  bareTimber: paint('bare timber', '#A08560', '#856C4B', '#6B563B', '#5C4C38', '#3B3125'),
+  tarBoard: paint('tarred board', '#6E6A61', '#57544C', '#46433C', '#3E3B35', '#33302B'),
+  patchTin: paint('patched tin', '#99A0A2', '#7C8386', '#636A6D', '#585F62', '#33383A'),
+  scuffedBoard: paint('scuffed board', '#B2A68E', '#948972', '#776E5A', '#665E4D', '#383327'),
+
+  // Milk paint: chalky, matt, and somebody's own hand.
+  milkSage: paint('sage milk paint', '#A3B29B', '#85947E', '#6B7865', '#5C6754', '#333A31'),
+  milkSky: paint('sky milk paint', '#9DB0BC', '#7F929E', '#667681', '#58656E', '#303840'),
+  milkOat: paint('oat milk paint', '#CFC3A8', '#AEA38A', '#8D8470', '#78705F', '#3A3529'),
+  milkClay: paint('clay milk paint', '#B08A78', '#92705F', '#765A4C', '#644D42', '#3A2C26'),
+
+  // Fired and quarried: the things a walk-up is actually built out of.
+  smokeBrick: paint('smoked brick', '#96604F', '#7B4E40', '#633F34', '#52352C', '#3B2721'),
+  dustBrick: paint('dusty brick', '#A87A63', '#8A6350', '#6F5040', '#5C4335', '#362720'),
+  buffStone: paint('buff stone', '#C6B896', '#A6997B', '#877C63', '#736952', '#3B3529'),
+  greyStone: paint('grey stone', '#A6A79E', '#888982', '#6E6F69', '#5F605B', '#34352F'),
+  blueStone: paint('bluestone', '#8792A0', '#6D7784', '#57606B', '#4B535C', '#2C3239'),
+
+  // Enamel: paint that was bought rather than mixed, and it shows.
+  enamelCream: paint('cream enamel', '#DCD1B4', '#BAAF94', '#978D75', '#7F7663', '#3C3729'),
+  enamelOlive: paint('olive enamel', '#7F8A57', '#667046', '#525A38', '#464D31', '#2B2F1E'),
+  enamelTeal: paint('teal enamel', '#4E8A85', '#3E706C', '#325A57', '#2B4E4B', '#263B39'),
+  enamelPlum: paint('plum enamel', '#7B5A82', '#644969', '#503B55', '#443248', '#322638'),
+  enamelSlate: paint('slate enamel', '#5F6672', '#4C525C', '#3D424B', '#353941', '#2B2F35'),
+  enamelBottle: paint('bottle-green enamel', '#48705A', '#395A48', '#2E483A', '#283E32', '#233229'),
+
+  // Lacquer and anodised metal: finishes you have to send a building away for.
+  lacquerInk: paint('ink lacquer', '#3A3843', '#2E2C36', '#24222B', '#201F26', '#1B1A22'),
+  lacquerCobalt: paint('cobalt lacquer', '#46578F', '#384673', '#2D385C', '#26304F', '#222945'),
+  lacquerPlum: paint('plum lacquer', '#61417A', '#4E3462', '#3E2A4E', '#362444', '#2B1E37'),
+  anodGraphite: paint('anodised graphite', '#52565E', '#42464C', '#34373C', '#2D3034', '#212327'),
+  anodPearl: paint('anodised pearl', '#C3C6C4', '#A2A5A3', '#838685', '#717473', '#343736'),
+  anodChalk: paint('anodised chalk', '#D5D0C4', '#B3AEA2', '#918D82', '#7C786E', '#3A3833'),
 } as const satisfies Record<string, Palette>
 
 export type PaletteName = keyof typeof PALETTES
 
-/** What a district of this age would actually have been built out of. */
+/** Which rung of the finish ladder each form is built on. */
 const MATERIALS: Record<TierName, readonly PaletteName[]> = {
-  shack: ['timber', 'tin', 'tarpaper'],
-  'single-storey': ['clapboard', 'seafoam', 'timber', 'brickRed', 'tin'],
-  'brick walk-up': ['brickRed', 'brickBrown', 'sandstone', 'bluestone', 'oxblood', 'clapboard'],
-  'cast-iron block': ['castCream', 'castSage', 'verdigris', 'castSlate', 'oxblood', 'sandstone'],
-  skyscraper: ['limestone', 'bronze', 'blacksteel', 'bluestone', 'sandstone', 'castSlate'],
-  landmark: ['limestone', 'bronze', 'blacksteel', 'pearl', 'glassBlue', 'glassBronze'],
-  arcology: ['carbon', 'alabaster', 'glassTeal', 'glassBlue', 'pearl', 'blacksteel'],
+  shack: ['bareTimber', 'tarBoard', 'patchTin', 'scuffedBoard'],
+  'single-storey': ['scuffedBoard', 'bareTimber', 'milkSage', 'milkSky', 'milkOat', 'milkClay'],
+  'brick walk-up': ['smokeBrick', 'dustBrick', 'buffStone', 'greyStone', 'blueStone', 'milkOat', 'milkClay'],
+  'cast-iron block': ['enamelCream', 'enamelOlive', 'enamelTeal', 'enamelPlum', 'enamelBottle', 'buffStone', 'greyStone'],
+  skyscraper: ['enamelSlate', 'enamelCream', 'buffStone', 'greyStone', 'blueStone', 'anodGraphite'],
+  landmark: ['lacquerInk', 'lacquerCobalt', 'lacquerPlum', 'anodGraphite', 'anodPearl', 'buffStone'],
+  arcology: ['lacquerInk', 'lacquerCobalt', 'lacquerPlum', 'anodPearl', 'anodChalk', 'anodGraphite', 'enamelTeal'],
 }
 
-/** Awnings, neon, doors. One saturated note against a whole building of stone. */
+/**
+ * Awnings, pennants, doors. One saturated note against a whole building.
+ *
+ * Neither meaning hue is in here, and that is the whole point of the list.
+ * `ACCENTS[0]` used to be `#d4703a`, which is byte-identical to `--flag` — so
+ * one building in ten wore the "this needs you" colour as awning paint, and the
+ * mark on a roof had a rival it could not win against. Nothing in this pool
+ * falls inside either meaning band; `design.test.ts` will not let it.
+ */
 export const ACCENTS = [
-  '#d4703a', '#c2453f', '#3f7fa8', '#4f8a5b', '#b8862f',
-  '#8a4f8f', '#2f8f88', '#c25a7a', '#5b6ec4', '#d19a2e',
+  '#3F7FA8', // signal blue
+  '#4F8A5B', // park green
+  '#7C4B8C', // plum
+  '#2F8F88', // teal
+  '#C25A7A', // rose
+  '#5B6EC4', // cobalt
+  '#6D7F47', // olive
+  '#CFC4B1', // chalk
 ] as const
 
 // ---- the vocabulary of a facade -------------------------------------------
 
-export type WindowShape = 'plank' | 'sash' | 'arched' | 'tall' | 'ribbon' | 'round-top' | 'slit' | 'grid'
+export type WindowShape =
+  | 'plank' | 'sash' | 'arched' | 'tall' | 'ribbon' | 'round-top' | 'slit' | 'grid' | 'porthole'
 export type CrownKind =
   | 'lean-to' | 'patched' | 'tarp'
   | 'gable' | 'hip' | 'false-front'
@@ -149,7 +217,7 @@ export type CrownKind =
   | 'halo' | 'solar-fin' | 'orb' | 'skybridge-crown'
 export type BaseKind = 'stoop' | 'arcade' | 'shopfront' | 'plaza' | 'colonnade' | 'yard'
 export type Ornament =
-  | 'fire-escape' | 'water-tower' | 'ac-units' | 'antenna' | 'satellite' | 'flag'
+  | 'fire-escape' | 'water-tower' | 'ac-units' | 'antenna' | 'satellite' | 'pennant'
   | 'clock' | 'neon-sign' | 'banner' | 'chimney' | 'roof-garden' | 'billboard'
   | 'vent-stack' | 'weathervane' | 'string-lights' | 'solar-panel' | 'ladder'
   | 'planters' | 'pigeons' | 'skybridge' | 'drone-pad' | 'beacon' | 'crane'
@@ -179,7 +247,7 @@ export const FLOOR_HEIGHT = 26
 const LOOKS: Record<TierName, TierLook> = {
   shack: {
     width: 128, baseExtra: 8,
-    windows: ['plank', 'sash'],
+    windows: ['plank', 'sash', 'porthole'],
     crowns: ['lean-to', 'patched', 'tarp'],
     bases: ['yard', 'stoop'],
     bays: [2, 2, 3],
@@ -188,11 +256,11 @@ const LOOKS: Record<TierName, TierLook> = {
   },
   'single-storey': {
     width: 122, baseExtra: 10,
-    windows: ['sash', 'plank', 'grid'],
+    windows: ['sash', 'plank', 'grid', 'porthole'],
     crowns: ['gable', 'hip', 'false-front'],
     bases: ['shopfront', 'stoop', 'yard'],
     bays: [2, 3, 3],
-    ornaments: ['chimney', 'weathervane', 'flag', 'string-lights', 'planters', 'banner', 'pigeons'],
+    ornaments: ['chimney', 'weathervane', 'pennant', 'string-lights', 'planters', 'banner', 'pigeons'],
     clutter: [1, 3],
   },
   'brick walk-up': {
@@ -201,7 +269,7 @@ const LOOKS: Record<TierName, TierLook> = {
     crowns: ['cornice', 'parapet', 'dentil', 'stepped'],
     bases: ['stoop', 'shopfront', 'arcade'],
     bays: [3, 3, 4],
-    ornaments: ['fire-escape', 'water-tower', 'chimney', 'flag', 'banner', 'planters', 'ac-units', 'pigeons', 'ladder'],
+    ornaments: ['fire-escape', 'water-tower', 'chimney', 'pennant', 'banner', 'planters', 'ac-units', 'pigeons', 'ladder'],
     clutter: [2, 3],
   },
   'cast-iron block': {
@@ -210,7 +278,7 @@ const LOOKS: Record<TierName, TierLook> = {
     crowns: ['bracket-cornice', 'pediment', 'balustrade', 'cornice'],
     bases: ['arcade', 'colonnade', 'shopfront'],
     bays: [4, 4, 5],
-    ornaments: ['fire-escape', 'water-tower', 'clock', 'banner', 'neon-sign', 'flag', 'planters', 'pigeons', 'ac-units'],
+    ornaments: ['fire-escape', 'water-tower', 'clock', 'banner', 'neon-sign', 'pennant', 'planters', 'pigeons', 'ac-units'],
     clutter: [2, 4],
   },
   skyscraper: {
@@ -219,7 +287,10 @@ const LOOKS: Record<TierName, TierLook> = {
     crowns: ['setback-crown', 'ziggurat', 'lantern', 'deck'],
     bases: ['colonnade', 'plaza', 'arcade'],
     bays: [4, 5, 5, 6],
-    ornaments: ['water-tower', 'ac-units', 'antenna', 'beacon', 'flag', 'billboard', 'satellite', 'roof-garden'],
+    // The crane is here because a tower is the only thing still going up, and
+    // because it was drawn years ago and then never put on any building's list:
+    // twenty-three ornaments in the type, twenty-two anybody could ever see.
+    ornaments: ['water-tower', 'ac-units', 'antenna', 'beacon', 'pennant', 'billboard', 'satellite', 'roof-garden', 'crane'],
     clutter: [2, 3],
   },
   landmark: {
@@ -228,7 +299,7 @@ const LOOKS: Record<TierName, TierLook> = {
     crowns: ['spire', 'needle', 'dome', 'mast'],
     bases: ['plaza', 'colonnade'],
     bays: [4, 5, 6],
-    ornaments: ['beacon', 'antenna', 'satellite', 'flag', 'roof-garden', 'ac-units', 'billboard'],
+    ornaments: ['beacon', 'antenna', 'satellite', 'pennant', 'roof-garden', 'ac-units', 'billboard'],
     clutter: [2, 3],
   },
   arcology: {
@@ -237,7 +308,7 @@ const LOOKS: Record<TierName, TierLook> = {
     crowns: ['halo', 'solar-fin', 'orb', 'skybridge-crown'],
     bases: ['plaza', 'colonnade'],
     bays: [5, 6, 6],
-    ornaments: ['drone-pad', 'skybridge', 'beacon', 'solar-panel', 'roof-garden', 'satellite', 'antenna'],
+    ornaments: ['drone-pad', 'skybridge', 'beacon', 'solar-panel', 'roof-garden', 'satellite', 'antenna', 'crane'],
     clutter: [2, 4],
   },
 }
@@ -251,6 +322,19 @@ export interface Setback {
   inset: number
 }
 
+/**
+ * How far this building's colour plate landed off its ink.
+ *
+ * A two-colour press never lands the second plate exactly on the first, and
+ * the amount it is out by is a property of that sheet rather than of the
+ * drawing. Seeded per building, so the misprint is *this* building's misprint,
+ * and hovering can snap it back into register.
+ */
+export interface Register {
+  dx: number
+  dy: number
+}
+
 export interface BuildingDesign {
   id: string
   name: string
@@ -262,6 +346,7 @@ export interface BuildingDesign {
 
   palette: Palette
   accent: string
+  register: Register
 
   /** Body width at the base, after jitter. */
   width: number
@@ -284,7 +369,7 @@ export interface BuildingDesign {
   pilasters: boolean
   /** A course line drawn between storeys. */
   bandCourse: boolean
-  /** Windows lit with nobody home, so a city at dusk is never fully dark. */
+  /** Windows with a light left on and nobody behind it. */
   ambientLights: readonly number[]
 }
 
@@ -293,6 +378,9 @@ export interface DesignInput {
   name: string
   headcount: number
 }
+
+/** How far out of register a colour plate is allowed to land, either way. */
+export const REGISTER_SLIP = 1.6
 
 /**
  * The look of one building. Pure, and stable for a given id and form — hiring
@@ -334,6 +422,9 @@ export function designFor(input: DesignInput): BuildingDesign {
     seed,
     palette,
     accent: rng.pick(ACCENTS),
+    // Its own sub-seed, not the form's: a building that grows a storey keeps
+    // the misprint it has always had, because the press did not change.
+    register: registerFor(input.id),
     width,
     floorHeight: FLOOR_HEIGHT,
     baseHeight,
@@ -351,6 +442,24 @@ export function designFor(input: DesignInput): BuildingDesign {
     ambientLights: ambientLights(floors, bays, rng),
   }
 }
+
+/**
+ * The misprint, for one building.
+ *
+ * Never zero on both axes: a plate that landed perfectly is the one thing this
+ * cannot be, because then hovering it does nothing and the building looks
+ * broken next to its neighbours. The smaller nudge is pushed out to a
+ * legible slip rather than allowed to vanish.
+ */
+function registerFor(id: string): Register {
+  const rng = new Chooser(seedOf(`${id}:register`))
+  const slip = () => rng.float(-REGISTER_SLIP, REGISTER_SLIP)
+  const floor = REGISTER_SLIP * 0.45
+  const push = (n: number) => (Math.abs(n) < floor ? (n < 0 ? -floor : floor) : n)
+  return { dx: round2(push(slip())), dy: round2(push(slip())) }
+}
+
+const round2 = (n: number): number => Math.round(n * 100) / 100
 
 function crownHeightOf(crown: CrownKind, width: number): number {
   switch (crown) {
@@ -394,11 +503,17 @@ function setbacksFor(tier: TierName, floors: number, width: number, rng: Chooser
 }
 
 /**
- * A scatter of windows that are lit whether or not anyone is working.
+ * A scatter of windows with a light left on and nobody behind them.
  *
- * Without this an idle city is a black cutout, which reads as broken rather than
- * as quiet. Returned as flat window indices so the renderer does not have to
- * care how the grid is laid out.
+ * These are the state the whole window grammar exists to tell apart. A marigold
+ * counter on its own says a light is on; a counter with a small dark figure in
+ * front of it says somebody is in there working. Without the first, an idle
+ * building is a facade of empty holes and reads as abandoned rather than as
+ * quiet; without the second, the two were indistinguishable, which is where the
+ * old system was weakest against its own rule.
+ *
+ * Returned as flat window indices so the renderer does not have to care how the
+ * grid is laid out.
  */
 function ambientLights(floors: number, bays: number, rng: Chooser): number[] {
   const total = floors * bays
