@@ -1,73 +1,113 @@
 /**
- * Dusk — the visual system, implemented.
+ * Overprint — the visual system, implemented.
  *
- * The reasoning is in docs/DESIGN.md; this file is what it produces. Two rules
- * hold it together:
+ * The reasoning is in the design doc; this file is what it produces. Roofscape
+ * is a sheet of warm oatmeal paper with a drawing on it, printed the way a
+ * cheap and lovely two-colour book is printed: an ink plate carrying every
+ * line, a colour plate carrying every flat wash, and the colour plate landing a
+ * millimetre or two off the ink.
+ *
+ * Two rules hold the whole thing together:
  *
  *   Nothing in here invents a value. Sizes, spaces, radii, durations and
  *   colours all come from the tokens below, so a panel somebody adds next month
  *   lines up with one written today without either of them measuring.
  *
- *   Nothing is decorative. Amber means light — a lit window, work in hand.
- *   Terracotta means you. The moment amber becomes "the brand colour, used on
- *   buttons" the skyline stops meaning anything, because the eye can no longer
- *   tell a lit window from a highlight.
+ *   Nothing is decorative, and so THERE IS NO BRAND COLOUR. Marigold means
+ *   light — a lit window, work in hand. Vermilion means you. A black pill is
+ *   the loudest a control is ever allowed to be. The moment marigold fills a
+ *   button the eye can no longer tell a lit window from a highlight, and the
+ *   city stops meaning anything. `apps/daemon/src/design.test.ts` enforces it.
  */
 
+/* ── the type, carried in the app rather than fetched ────────────────────── */
+
+/* A local app that needs fonts.googleapis.com to look right is not a design
+   language, it is a hope. See scripts/vendor-fonts.mjs. */
+@font-face {
+  font-family: 'Fraunces';
+  src: url('fonts/fraunces.woff2') format('woff2');
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('fonts/instrument-sans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('fonts/plex-mono.woff2') format('woff2');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  /* ── ground: four depths, lit by the same evening as the drawn sky ────── */
-  --sunk:    #0b0a10;
-  --ground:  #100f17;
-  --panel:   #17161f;
-  --raised:  #1e1c28;
-  --line:        #2a2734;
-  --line-strong: #3a3648;
+  /* ── ground: warm paper, four depths ──────────────────────────────────── */
+  --sunk:    #E6DECC;   /* pressed into the page: inputs, insets, a lift plate */
+  --ground:  #F1EBDD;   /* the page — the stock everything is printed on */
+  --card:    #FAF6EC;   /* a card sitting on the page */
+  --raised:  #FFFDF7;   /* something on a card: a hovered row, a dialog */
+  --line:        #DCD3BF;
+  --line-strong: #C0B69E;
+  /* Below ground. Not a fifth depth: the four are heights above a page, and
+     this is the one place the app draws something under it — the archives, and
+     the curator who works down there. */
+  --under: #DFD5C0;
+  /* Behind an open dialog. Also not a depth — the absence of one. */
+  --scrim: #241F17;
 
-  /* ── ink: four weights, named for how loud they are ───────────────────── */
-  --ink:   #efe9df;
-  --ink-2: #b6aea0;
-  --ink-3: #948b7e;
-  --ink-4: #6b6459;
+  /* ── ink: four weights, warm black. A real press never uses pure black ── */
+  --ink:   #1E1B16;   /* what you are meant to read. Also the primary button */
+  --ink-2: #494336;   /* body prose, message bodies */
+  --ink-3: #786F5D;   /* labels, secondary facts */
+  /* Timestamps and hints, and nothing else. It was #A2987F, which is 2.41:1 on
+     the page and 2.14:1 on an inset — under AA at every size in the scale, on
+     a token whose whole job is to be small. This clears the large-text floor
+     on paper, and anything that is a sentence or an identifier moved up. */
+  --ink-4: #8A7F68;
 
-  /* ── light: each of these means one thing and only that ───────────────── */
-  --lamp:     #e8c15a;   /* light — a lit window, work in hand */
-  --lamp-dim: #8a7434;
-  --flag:     #d4703a;   /* you — waiting on your say-so */
-  --good:     #7fb08a;   /* it held */
-  --alarm:    #d16a5a;   /* it did not */
-  --cool:     #7f93c4;   /* in somebody else's hands */
+  /* ── meaning — and nothing else in the product is saturated ───────────── */
+  --lamp:     #EFAA22;   /* light: a lit window, work in hand */
+  --lamp-lit: #F7C556;   /* the same, brighter: running right now */
+  --lamp-ink: #7A4E00;   /* text or a rule belonging to light, on paper */
+  --flag:      #D2452A;  /* you: waiting on your say-so — a shape, never a letter */
+  --flag-deep: #9C2F1B;  /* the shadowed side of a flag mark */
+  /* The same meaning, dark enough to read. #D2452A is 4.21:1 on a card and
+     3.82:1 on the page, and it was setting WAITING ON YOU — the most
+     important label on the home screen — at 11.5px. So the mark and the word
+     part company: --flag draws the pin, the docket's edge and a pill's
+     border, and --flag-ink sets every vermilion glyph. */
+  --flag-ink:  #9C2F1B;
+  --good:  #46704F;      /* it held */
+  --alarm: #9E2C1A;      /* it did not. Only ever ink or a 2px edge */
+  --cool:  #4A6C99;      /* in somebody else's hands */
 
-  /* Ink that reads on a lamp-coloured fill. Not a ground: a foreground. */
-  --on-lamp: #241d07;
-  /* The dark behind a dialog. Not a fifth depth — the absence of one. */
-  --scrim: #06050a;
-  /**
-   * Below ground. Also not a fifth depth: the four are heights above a page,
-   * and this is the one place the app draws something that is under it — the
-   * archives, and the curator who works down there. Darker than `--sunk`
-   * because earth is darker than shadow.
-   */
-  --under: #131118;
+  /* ── type: two voices and a machine ───────────────────────────────────── */
+  --sans:  'Instrument Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --serif: 'Fraunces', ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --mono:  'IBM Plex Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* ── type ──────────────────────────────────────────────────────────────── */
-  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-
-  --t-plate:   11px;
+  /* Seven sizes, nothing between them. */
+  --t-plate:   11.5px;
   --t-micro:   12.5px;
   --t-small:   13.5px;
-  --t-body:    15px;
-  --t-lead:    19px;
-  --t-title:   27px;
-  --t-display: 34px;
+  --t-body:    15.5px;
+  --t-lead:    20px;
+  --t-title:   30px;
+  --t-display: 44px;
 
-  /* ── space: nothing between these ─────────────────────────────────────── */
+  /* ── space: the 96 is the point ───────────────────────────────────────── */
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
-  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px; --s9: 96px;
 
-  /* ── shape ─────────────────────────────────────────────────────────────── */
-  --r-control: 6px;
-  --r-surface: 16px;
+  /* ── shape: three radii and nothing else ──────────────────────────────── */
+  --r-control: 10px;
+  --r-surface: 20px;
   --r-pill:    999px;
 
   /* ── motion: one easing, three speeds, everything rises ───────────────── */
@@ -76,8 +116,16 @@
   --base: .26s var(--ease);
   --slow: .42s var(--ease);
 
-  --topbar-h: 54px;
+  --topbar-h: 58px;
   --page: 1180px;
+
+  /* A card gets an edge, not a shadow. The only shadows in the whole product
+     are under a dialog and under a building. */
+  --lift: 0 26px 60px color-mix(in srgb, var(--scrim) 22%, transparent);
+
+  color-scheme: light;
+  /* Checkboxes and the like are ink, for exactly the reason buttons are. */
+  accent-color: var(--ink);
 }
 
 * { box-sizing: border-box; }
@@ -101,10 +149,22 @@ body {
 main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #screenCity { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 
-h1, h2, h3 { margin: 0; font-weight: 600; letter-spacing: -.01em; }
-h1 { font-size: var(--t-title); line-height: 1.15; }
-h2 { font-size: var(--t-lead); }
-h3 { font-size: var(--t-body); }
+/**
+ * The display voice: Fraunces, softened and let off its leash a little. This is
+ * where the playfulness lives, and it is confined to display sizes so it never
+ * becomes a costume — a building's name, a tally read across the room, and the
+ * one line on a screen with nothing else on it.
+ */
+h1, h2, .display {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 72;
+  font-weight: 600;
+  letter-spacing: -.015em;
+  margin: 0;
+}
+h1 { font-size: var(--t-display); line-height: 1.05; }
+h2 { font-size: var(--t-title); line-height: 1.12; }
+h3 { margin: 0; font-size: var(--t-body); font-weight: 650; letter-spacing: -.005em; }
 p { margin: 0; }
 
 button, input, select, textarea { font: inherit; color: inherit; }
@@ -119,10 +179,10 @@ button { cursor: pointer; }
  * competing with it. Used everywhere a label is a label, which is most of why
  * the app reads as drafted rather than assembled.
  */
-.eyebrow, .pane-title, .ask-label, .tallies dt, .cut-role, .kind {
+.eyebrow, .pane-title, .ask-label, .tally-l, .cut-role, .kind {
   font-size: var(--t-plate);
   text-transform: uppercase;
-  letter-spacing: .11em;
+  letter-spacing: .1em;
   font-weight: 600;
   color: var(--ink-3);
 }
@@ -133,96 +193,209 @@ button { cursor: pointer; }
   position: sticky; top: 0; z-index: 40;
   height: var(--topbar-h);
   display: flex; align-items: center; gap: var(--s3);
-  padding: 0 var(--s4);
-  background: color-mix(in srgb, var(--sunk) 86%, transparent);
-  backdrop-filter: blur(14px);
+  padding: 0 var(--s5);
+  background: var(--ground);
   border-bottom: 1px solid var(--line);
 }
 
 .brand {
   display: flex; align-items: center; gap: var(--s2);
   background: none; border: 0; padding: var(--s1); border-radius: var(--r-control);
-  transition: background var(--fast);
 }
-.brand:hover { background: #ffffff0d; }
-.brand-name { font-weight: 650; letter-spacing: -.01em; }
+.brand-name {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 40;
+  font-weight: 650; font-size: var(--t-lead); letter-spacing: -.02em;
+}
 
-/* A lit window, fifteen pixels wide. The whole product in one mark. */
+/**
+ * The mark is the whole product, and the whole press, at sixteen pixels: an
+ * ink block with one lit window in it, and the window printed off register.
+ * Hovering snaps the plates together — which is exactly what hovering a
+ * building does out on the street, so the interaction is taught by the logo
+ * before anybody has hovered anything.
+ *
+ * Square corners, and the only square corners in the app. A register mark is a
+ * mark, not a control.
+ */
 .brand-mark {
-  width: 15px; height: 17px; border-radius: 2px;
-  background: linear-gradient(#2b2838, #211f2c);
-  border: 1px solid var(--line-strong);
-  position: relative; flex: none;
+  width: 16px; height: 20px; flex: none;
+  position: relative;
+  background: var(--ink);
 }
 .brand-mark::after {
-  content: ""; position: absolute; inset: 3px 3px auto 3px; height: 4px;
-  border-radius: 1px; background: var(--lamp);
-  box-shadow: 0 0 6px #e8c15a99;
+  content: ""; position: absolute; inset: 4px 4px auto 4px; height: 6px;
+  background: var(--lamp);
+  transform: translate(2px, -2px);
+  transition: transform var(--base);
 }
+.brand:hover .brand-mark::after { transform: none; }
 
 .crumbs { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-small); color: var(--ink-3); min-width: 0; }
-.crumbs .sep { color: var(--ink-4); }
-.crumbs .here { color: var(--ink); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crumbs .here { color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s3); }
 
-.live { display: flex; align-items: center; gap: var(--s1); font-size: var(--t-micro); color: var(--ink-4); }
+.live { display: flex; align-items: center; gap: var(--s1); font-size: var(--t-micro); color: var(--ink-3); }
 .live i { width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--ink-4); flex: none; }
-.live.on i { background: var(--good); box-shadow: 0 0 7px #7fb08a99; }
-.live.off i { background: var(--alarm); }
+.live.on i { background: var(--good); }
+.live.off i { background: var(--ink-3); }
+/* Not "reconnecting". Nothing is going to reconnect without a token. */
+.live.blocked i { background: var(--flag); }
 
 /* ── controls ───────────────────────────────────────────────────────────── */
 
+/**
+ * The primary button is ink. Not marigold, not vermilion, not a tint of
+ * either — a black pill on warm paper is the loudest a control gets, and it is
+ * loud enough. The two saturated colours in this product both mean something,
+ * and a button is not one of the things they mean.
+ */
 .solid {
-  background: var(--lamp); color: var(--on-lamp); border: 0;
-  padding: var(--s2) var(--s4); border-radius: var(--r-control);
-  font-weight: 650;
-  transition: filter var(--fast), transform var(--fast);
+  background: var(--ink); color: var(--ground); border: 0;
+  padding: var(--s2) var(--s5); border-radius: var(--r-pill);
+  font-weight: 600; letter-spacing: -.005em;
+  transition: background var(--fast), transform var(--fast);
 }
-.solid:hover:not(:disabled) { filter: brightness(1.09); }
+.solid:hover:not(:disabled) { background: var(--ink-2); }
 .solid:active:not(:disabled) { transform: translateY(1px); }
-.solid:disabled { opacity: .45; cursor: default; }
+.solid:disabled { opacity: .38; cursor: default; }
 
 .ghost {
   background: transparent; color: var(--ink-2);
-  border: 1px solid var(--line-strong); border-radius: var(--r-control);
+  border: 1px solid var(--line-strong); border-radius: var(--r-pill);
   padding: var(--s1) var(--s3); font-size: var(--t-small); font-weight: 550;
   transition: border-color var(--fast), color var(--fast), background var(--fast);
 }
-.ghost:hover:not(:disabled) { border-color: var(--lamp-dim); color: var(--ink); background: #ffffff08; }
+.ghost:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); background: var(--raised); }
 .ghost:disabled { opacity: .5; cursor: default; }
 
-.update { border-color: var(--lamp-dim); color: var(--lamp); }
-.update:hover:not(:disabled) { background: var(--lamp); border-color: var(--lamp); color: var(--on-lamp); }
+/* An offered update is a fact, not an alarm. It takes the ink treatment the
+   moment you point at it and nothing louder before that. */
+.update { border-color: var(--ink); color: var(--ink); }
+.update:hover:not(:disabled) { background: var(--ink); color: var(--ground); }
 
 input[type=text], input[type=password], select, textarea {
   background: var(--sunk); color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: var(--r-control);
   padding: var(--s2) var(--s3);
-  transition: border-color var(--fast), box-shadow var(--fast);
+  transition: border-color var(--fast), box-shadow var(--fast), background var(--fast);
 }
-input::placeholder { color: var(--ink-4); }
-input:focus, select:focus, textarea:focus, button:focus-visible {
-  outline: none; border-color: var(--lamp-dim);
-  box-shadow: 0 0 0 3px #e8c15a26;
+input::placeholder { color: var(--ink-3); }
+
+/* A field you are typing in comes up off the page; a button you have tabbed to
+   only gets the ring. The two were one rule, and it lightened the fill of every
+   focused button — including the one a dialog focuses the moment it opens, so
+   the primary button in every dialog opened pale. */
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--ink);
+  background: var(--raised);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent);
 }
-button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent);
+}
 
 /* ── screens ────────────────────────────────────────────────────────────── */
 
+/* Walking into a building is a change of place, so the keyboard goes with
+   you. Focused from script rather than tabbed to, so it takes no ring. */
 .screen { animation: rise var(--base) both; }
+.screen:focus { outline: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
+
+/* ── something went wrong, and it stays on the screen until it is read ──── */
+
+/**
+ * Errors used to be a 3.6-second toast into a pane that was usually hidden, so
+ * for a brand-new building every failure was gone before it could be acted on.
+ * This is where a failure lives instead: under the bar, on every screen, with
+ * whatever the daemon said to do about it, until somebody dismisses it.
+ *
+ * Alarm is ink and a 2px edge and never a filled area — a red panel would make
+ * a failed hire look like a fire.
+ */
+.notice {
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+.notice-inner {
+  max-width: var(--page); margin: 0 auto; padding: var(--s4) var(--s5);
+  display: grid; grid-template-columns: 1fr auto; gap: var(--s4); align-items: start;
+  border-left: 2px solid var(--alarm);
+}
+/* Not everything that needs to stay on the screen is a failure. A goal that
+   came back having done nothing is worth reading and is not an alarm. */
+.notice.quiet .notice-inner { border-left-color: var(--line-strong); }
+.notice-what { font-size: var(--t-body); color: var(--ink); }
+.notice-fix {
+  font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-2);
+  margin-top: var(--s2);
+  background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control);
+  padding: var(--s1) var(--s2); display: inline-block; overflow-wrap: anywhere;
+}
+.notice-again { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
+
+/* ── no token: a designed dead end with a way out of it ─────────────────── */
+
+/**
+ * The token lives in this tab and nowhere else, so a bookmark, a new tab or a
+ * restarted daemon lands here. It used to land on a permanently empty city and
+ * a toast that had already gone. The daemon sends a remedy with the 401; the
+ * page keeps it, prints it, and takes the token back.
+ */
+#screenBlocked { flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--s9) var(--s5); }
+.blocked-card { max-width: 560px; }
+.blocked-card h2 { margin-bottom: var(--s3); }
+.blocked-card p { color: var(--ink-2); font-size: var(--t-body); }
+.blocked-where {
+  font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-2);
+  background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control);
+  padding: var(--s2) var(--s3); margin-top: var(--s4); overflow-wrap: anywhere;
+}
+.blocked-form { display: flex; gap: var(--s2); margin-top: var(--s5); }
+.blocked-form input { flex: 1; min-width: 0; font-family: var(--mono); font-size: var(--t-small); }
 
 /* ── the skyline ────────────────────────────────────────────────────────── */
 
-/* The floor is what the skyline keeps when something opens underneath it. Below
-   about this, the buildings are too short to tell apart and it stops being a
-   picture of anything. */
+/* The paper shows through and is the sky. There is no sky. */
+
+/**
+ * The hole the drawing fills.
+ *
+ * `flex: 1` plus a floor is what makes this height *definite*, which is what
+ * the SVG's `height: 100%` has to resolve against — without one the drawing
+ * fell back on its intrinsic size and left a band of bare paper under the
+ * pavement. The floor rises on a narrow window because the drawing is scaled
+ * by height: a short frame is a small city, whatever the width does.
+ */
+/**
+ * The city gets the room, because the city is the product.
+ *
+ * The daemon fits the drawing to the box this reports, and height is now one of
+ * the constraints on how big it may draw — so a short band does not merely crop
+ * the picture, it shrinks every building in it. At 380px a street with an
+ * eighteen-storey tower on it came back drawn at 0.72×, where the misprint, the
+ * socket lip and the figure at the desk are all under a pixel and the wit is a
+ * five-pixel speck. Claiming most of the window is what makes them visible.
+ */
 .city-frame {
-  position: relative; flex: 1; min-height: 400px;
+  position: relative; flex: 1 1 auto; min-height: min(46vh, 520px);
   display: flex; flex-direction: column;
-  background: var(--sunk); border-bottom: 1px solid var(--line);
+  background: var(--ground);
 }
+/**
+ * The city may claim more only when there is more to claim.
+ *
+ * A flat `min(62vh, 720px)` looked right on a large display and pushed the
+ * strip off the bottom of the desktop app's own default window — 1180×840 —
+ * so the first screen a new owner ever sees clipped its only button. The city
+ * is the product, but an action you cannot reach is worse than a smaller
+ * drawing, and the strip is where every next action lives.
+ */
+@media (min-height: 940px) { .city-frame { min-height: min(60vh, 700px); } }
+@media (max-width: 900px) { .city-frame { min-height: min(46vh, 420px); } }
 
 .city-scroll {
   flex: 1; min-height: 0;
@@ -236,14 +409,39 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 /* The daemon draws to the shape this box reports; the page scales it by
    height. A city wider than the frame then scrolls at a size you can still
    read, instead of being shrunk until every building looks the same. */
-.city-art { min-width: 100%; height: 100%; display: flex; justify-content: center; }
-.city-art svg { display: block; height: 100%; width: auto; max-width: none; }
+/* `safe` centring: centred while it fits, and flush left the moment it does
+   not. Plain `center` puts half the overflow off the left-hand edge, where no
+   scrollbar can ever reach it — so the first building on the street was
+   unreachable at exactly the widths the scroll exists for. */
+.city-art { min-width: 100%; height: 100%; display: flex; justify-content: safe center; }
+/**
+ * Never shrunk to fit.
+ *
+ * A flex item gives way by default, so on a narrow window the drawing was
+ * squeezed below its own aspect: the viewBox then letterboxed inside it — the
+ * band of bare ground under the pavement — and `scrollWidth` never exceeded
+ * `clientWidth`, so the street could not scroll and the whole scroll machinery
+ * below was dead code. `flex: none` is the difference between a city that
+ * crops and a city that shrinks.
+ */
+.city-art svg { display: block; height: 100%; width: auto; max-width: none; flex: none; }
 
-.loading { padding: var(--s8) 0; text-align: center; color: var(--ink-4); font-size: var(--t-small); }
+.loading { padding: var(--s8) 0; text-align: center; color: var(--ink-3); font-size: var(--t-small); }
 
-/* Under the tallies rather than over the drawing. A hint that has to sit on
-   top of the thing it is describing is a hint in the wrong place. */
-.city-hint { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s3); }
+/**
+ * The press, and the best two rules in the file.
+ *
+ * Every building is printed twice: an ink plate carrying the lines and a colour
+ * plate carrying the flat washes, with the colour landing a millimetre or so
+ * off — by an amount seeded on the building's own id, so no two are off the
+ * same way. Pointing at one snaps it into register.
+ *
+ * That is the whole hover interaction. It costs one transform, it is
+ * deterministic, and it is the moment the language explains itself.
+ */
+.rs-plate-colour { transition: transform var(--base); }
+.rs-plot:hover .rs-plate-colour,
+.rs-plot:focus-visible .rs-plate-colour { transform: none; }
 
 /* The backdrop leans away from the pointer. Eased rather than instant, so it
    trails the cursor slightly — that lag is most of what reads as distance. */
@@ -251,19 +449,61 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 /* ── the strip under the city ───────────────────────────────────────────── */
 
-.strip { border-bottom: 1px solid var(--line); background: var(--ground); }
+/**
+ * The strip always names the single next action.
+ *
+ * It used to show four zeros and "Click a building to go inside it" to somebody
+ * whose one building had nobody in it — which is the exact state this app's
+ * owner stopped at. A tally of nothing spends the most valuable space on the
+ * screen saying nothing happened. So the sentence comes first, at display size,
+ * and the numbers are a footnote under a rule.
+ */
+/**
+ * No rule, and no change of paper.
+ *
+ * A drawing on top, a full-width rule, and a different colour underneath is the
+ * shape of a marketing page: it says the picture is decoration and the real
+ * interface starts here. They are the same screen. So the street's own ground
+ * band runs on behind the top of the strip and the eyebrow is printed on the
+ * pavement — the sentence begins in the city rather than after it.
+ */
+.strip { background: linear-gradient(var(--sunk) 0 var(--s8), var(--ground) var(--s8)); }
 .strip-inner {
-  max-width: var(--page); margin: 0 auto; padding: var(--s5);
-  display: grid; grid-template-columns: 1fr minmax(320px, 460px); gap: var(--s6); align-items: start;
+  max-width: var(--page); margin: 0 auto; padding: var(--s6) var(--s5);
+  display: grid; grid-template-columns: 1fr minmax(300px, 420px); gap: var(--s7); align-items: start;
 }
-@media (max-width: 860px) { .strip-inner { grid-template-columns: 1fr; gap: var(--s5); } }
+@media (max-width: 900px) { .strip-inner { grid-template-columns: 1fr; gap: var(--s5); } }
 
-.tallies { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s6); align-items: start; }
-.tallies div, .tallies button { display: flex; flex-direction: column; gap: 2px; }
-.tallies dd { margin: 0; font-size: var(--t-display); font-weight: 600; line-height: 1.05; letter-spacing: -.02em; }
-/* Amber is work in hand; terracotta is waiting on you. Never the other way. */
-.tallies .accent dd { color: var(--lamp); }
-.tallies .warn dd { color: var(--flag); }
+.next-say {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 72;
+  font-size: var(--t-title); line-height: 1.15; letter-spacing: -.015em;
+  font-weight: 550;
+  margin-top: var(--s2); max-width: 26ch;
+}
+.next-why { font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s3); max-width: 64ch; }
+.next-do { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+.next-do .ask-note { margin-top: 0; }
+.next-do kbd { vertical-align: baseline; }
+
+/* The numbers, under a rule, small. They are context for the sentence above
+   them and never the reason to look at this part of the screen. A count of
+   nothing is not drawn at all. */
+.tallies {
+  max-width: var(--page); margin: 0 auto; padding: var(--s4) var(--s5) var(--s6);
+  display: flex; flex-wrap: wrap; gap: var(--s4) var(--s8); align-items: start;
+  border-top: 1px solid var(--line);
+}
+.tally, .tallies-round { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); }
+.tally-n {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 40;
+  font-size: var(--t-lead); font-weight: 650; line-height: 1;
+}
+/* Marigold is work in hand; vermilion is waiting on you. Never the other way,
+   and never on anything that is merely a control. */
+.tally.lit .tally-n { color: var(--lamp-ink); }
+.tally.warn .tally-n { color: var(--flag-ink); }
 
 /**
  * The only tally you can press.
@@ -271,21 +511,17 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
  * It is also the only one that is about you rather than about work, and those
  * two facts are the same fact: a count of your own unanswered post is a chore,
  * and a chore you cannot start from where you are told about it is worse than
- * one you were not told about. It opens the round.
+ * one you were not told about. It opens the round — the same round the sentence
+ * above offers, which is why it does not repeat the words.
  */
 .tallies-round {
   background: none; border: 0; padding: 0; text-align: left;
   border-bottom: 1px solid transparent;
   transition: border-color var(--fast);
 }
-.tallies-round:hover { border-bottom-color: #d4703a66; }
-.tallies-open {
-  font-size: var(--t-plate); text-transform: uppercase; letter-spacing: .11em;
-  font-weight: 600; color: var(--flag);
-  opacity: .75; transition: opacity var(--fast);
-}
-.tallies-round:hover .tallies-open { opacity: 1; }
-.tallies-round[aria-expanded="true"] .tallies-open { opacity: 1; }
+.tallies-round .tally-n { color: var(--flag-ink); }
+.tallies-round .tally-l { color: var(--flag-ink); }
+.tallies-round:hover { border-bottom-color: var(--flag); }
 
 /**
  * Buildings taken off the skyline.
@@ -301,7 +537,7 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 }
 .boarded-one {
   display: inline-flex; align-items: center; gap: var(--s2);
-  font-size: var(--t-small); color: var(--ink-4);
+  font-size: var(--t-small); color: var(--ink-3);
 }
 
 /* ── the round ──────────────────────────────────────────────────────────── */
@@ -312,53 +548,38 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
  * second copy of them.
  */
 .round {
-  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5);
+  max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s6);
   animation: rise var(--base) both;
 }
 .round .pane-title { margin-bottom: var(--s3); }
 /* Which building left it, since on the street you have not been told. */
-.docket-where { color: var(--ink-2); font-weight: 600; }
-
-/**
- * The strip on a skyline with nothing in it.
- *
- * A row of four zeros over a box for questioning buildings that do not exist
- * is the shape of a dashboard rather than the shape of a beginning. This says
- * what a building is — the one thing worth knowing before you make one — and
- * offers the only action there is.
- */
-.first-run { align-items: center; }
-.first-run-what { font-size: var(--t-small); color: var(--ink-3); max-width: 62ch; margin-top: var(--s2); }
-.first-run-do { text-align: right; }
-.first-run-do .ask-note { margin-top: var(--s2); }
-.first-run-do kbd { vertical-align: baseline; }
-@media (max-width: 860px) { .first-run-do { text-align: left; } }
+.docket-where { color: var(--ink-2); font-weight: 650; }
 
 .ask-row { display: flex; gap: var(--s2); margin-top: var(--s2); }
 .ask-row input { flex: 1; min-width: 0; }
-.ask-note { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.ask-note { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 
-.answer { max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s5); animation: rise var(--base) both; }
+.answer { max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s6); animation: rise var(--base) both; }
 .answer .asked {
   font-size: var(--t-small); color: var(--ink-3);
   padding-left: var(--s3); border-left: 2px solid var(--line-strong);
 }
 .answer .said {
   white-space: pre-wrap; font-size: var(--t-body); color: var(--ink-2);
-  margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--lamp-dim);
+  margin-top: var(--s2); padding-left: var(--s3); border-left: 2px solid var(--ink);
 }
 .answer .said.bad { border-left-color: var(--alarm); color: var(--alarm); }
 .answer .answering {
   display: flex; align-items: center; gap: var(--s2);
-  font-size: var(--t-small); color: var(--ink-4); margin-top: var(--s2); padding-left: var(--s3);
+  font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s2); padding-left: var(--s3);
 }
-.answer .consulted { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s2); padding-left: var(--s3); }
+.answer .consulted { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s2); padding-left: var(--s3); }
 
 /* A ring with a gap in it. Says "working" without a progress bar's promise
    that anybody knows how far along this is. */
 .spin {
   width: 12px; height: 12px; flex: none; border-radius: var(--r-pill);
-  border: 2px solid var(--line-strong); border-top-color: var(--lamp);
+  border: 2px solid var(--line-strong); border-top-color: var(--ink);
   animation: spin .8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -366,131 +587,197 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 /* ── a building ─────────────────────────────────────────────────────────── */
 
 .building-head {
-  max-width: var(--page); margin: 0 auto; padding: var(--s6) var(--s5) var(--s5);
-  display: grid; grid-template-columns: auto 1fr; gap: var(--s6); align-items: end;
+  max-width: var(--page); margin: 0 auto; padding: var(--s7) var(--s5) var(--s6);
+  display: grid; grid-template-columns: auto 1fr; gap: var(--s7); align-items: end;
 }
-@media (max-width: 780px) { .building-head { grid-template-columns: 1fr; gap: var(--s4); } }
+@media (max-width: 820px) { .building-head { grid-template-columns: 1fr; gap: var(--s5); } }
 
+/**
+ * The portrait, cropped to its subject.
+ *
+ * The drawing arrives on a full city canvas, so a single building sat in the
+ * middle of it at about a quarter of the card with the rest empty paper — a
+ * frame around nothing, on the screen whose entire job is to introduce this one
+ * building. The script tightens the viewBox onto what is actually drawn; the
+ * card holds a fixed shape and the building fills whichever dimension it wants,
+ * so a tower fills the height and a shack fills the width.
+ */
 .portrait {
   width: 210px; flex: none;
+  aspect-ratio: 3 / 4;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s3);
   border-radius: var(--r-surface); overflow: hidden;
-  background: var(--sunk); border: 1px solid var(--line);
+  background: var(--ground); border: 1px solid var(--line);
 }
-.portrait svg { display: block; width: 100%; height: auto; }
-@media (max-width: 780px) { .portrait { width: 150px; } }
+.portrait svg { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
+@media (max-width: 820px) { .portrait { width: 150px; } }
 
 .building-meta { min-width: 0; }
-.charter { color: var(--ink-3); margin-top: var(--s1); max-width: 62ch; }
 
-.vitals { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s3); }
+/**
+ * What this building has become, and what that is worth.
+ *
+ * The daemon has always computed a blurb for every form — "It has a spire.
+ * People give directions by it." — and the page had never once asked for it.
+ * The ladder is most of the reason anybody comes back, so it is printed under
+ * the name, where the form is named.
+ */
+.tier { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s2); }
+.tier-blurb { font-size: var(--t-small); color: var(--ink-3); text-transform: none; letter-spacing: normal; font-weight: 400; }
+.charter { color: var(--ink-2); font-size: var(--t-body); margin-top: var(--s2); max-width: 62ch; }
+
+.vitals { display: flex; flex-wrap: wrap; gap: var(--s1); margin-top: var(--s4); }
 .vital {
   display: inline-flex; align-items: baseline; gap: var(--s1);
-  background: var(--panel); border: 1px solid var(--line);
+  background: var(--card); border: 1px solid var(--line);
   border-radius: var(--r-pill); padding: var(--s1) var(--s3); font-size: var(--t-small);
 }
-.vital b { font-weight: 600; }
+.vital b { font-weight: 650; }
 .vital span { color: var(--ink-3); font-size: var(--t-micro); }
-.vital.lit { border-color: var(--lamp-dim); }
-.vital.lit b { color: var(--lamp); }
-.vital.warn { border-color: #d4703a66; }
-.vital.warn b { color: var(--flag); }
+.vital.lit { border-color: var(--lamp); }
+.vital.lit b { color: var(--lamp-ink); }
+.vital.warn { border-color: var(--flag); }
+.vital.warn b { color: var(--flag-ink); }
 
-.goal { display: flex; gap: var(--s2); margin-top: var(--s4); max-width: 640px; }
-.goal input { flex: 1; min-width: 0; }
+.goal { display: flex; gap: var(--s2); margin-top: var(--s5); max-width: 660px; }
+.goal input { flex: 1; min-width: 0; padding: var(--s3) var(--s4); }
 
 /* ── tabs ───────────────────────────────────────────────────────────────── */
 
+/**
+ * The tabs wrap. They used to scroll with the scrollbar suppressed, which at
+ * 620px sliced the bar mid-word and put Archives entirely off-screen with
+ * nothing on the page to suggest it was there — two of six rooms unreachable,
+ * silently. A row that runs out of width goes to a second row instead.
+ */
 .tabs {
   max-width: var(--page); margin: 0 auto; padding: 0 var(--s5);
-  display: flex; gap: 3px; border-bottom: 1px solid var(--line);
-  overflow-x: auto; scrollbar-width: none;
+  display: flex; flex-wrap: wrap; gap: var(--s1); border-bottom: 1px solid var(--line);
 }
-.tabs::-webkit-scrollbar { display: none; }
 .tab {
   background: none; border: 0; border-bottom: 2px solid transparent;
   padding: var(--s3); color: var(--ink-3); font-size: var(--t-small); font-weight: 550;
   white-space: nowrap;
-  display: inline-flex; align-items: center; gap: var(--s1);
+  display: inline-flex; align-items: center; gap: var(--s2);
   transition: color var(--fast), border-color var(--fast);
 }
 .tab:hover { color: var(--ink); }
-.tab.on { color: var(--ink); border-bottom-color: var(--lamp); }
+.tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 
 /**
  * The digit on a tab is the key that reaches it, set as the button you press in
- * a lift. Quiet at rest — it is a hint, not a label — and lit on the tab you
+ * a lift. Quiet at rest — it is a hint, not a label — and inked on the tab you
  * are standing on, the same way the floor you are on is lit in a real one.
  */
 .tab b {
   font-family: var(--mono); font-size: var(--t-plate); font-weight: 500;
   color: var(--ink-4);
   border: 1px solid var(--line); border-radius: var(--r-pill);
-  width: 16px; height: 16px; flex: none;
+  width: 17px; height: 17px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  transition: color var(--fast), border-color var(--fast);
+  transition: color var(--fast), border-color var(--fast), background var(--fast);
 }
 .tab:hover b { border-color: var(--line-strong); color: var(--ink-3); }
-.tab.on b { border-color: var(--lamp-dim); color: var(--lamp); }
+.tab.on b { border-color: var(--ink); background: var(--ink); color: var(--ground); }
 
 /* Square, so it reads as one of a pair with the button beside it. */
-.keys-open { width: 26px; padding: var(--s1) 0; text-align: center; }
+.keys-open { width: 28px; padding: var(--s1) 0; text-align: center; }
 
+/* Vermilion means you, so a count of things waiting on you is allowed to wear
+   it — it is not a control, it is a mark. */
 .badge {
-  background: var(--flag); color: #2a1206; font-size: var(--t-plate); font-weight: 700;
+  background: var(--flag); color: var(--raised); font-size: var(--t-plate); font-weight: 700;
   min-width: 18px; height: 18px; border-radius: var(--r-pill);
   display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--s1);
 }
-.badge.quiet { background: var(--line-strong); color: var(--ink-2); }
+.badge.quiet { background: var(--line-strong); color: var(--ink); }
 
-.panes { max-width: var(--page); margin: 0 auto; padding: var(--s5); }
+.panes { max-width: var(--page); margin: 0 auto; padding: var(--s6) var(--s5) var(--s9); }
 .pane { animation: rise .2s var(--ease) both; }
 .pane-title { display: flex; align-items: center; gap: var(--s2); margin-bottom: var(--s3); }
-.pane-sub { font-size: var(--t-small); margin: calc(-1 * var(--s1)) 0 var(--s3); }
+.pane-sub { font-size: var(--t-small); margin: 0 0 var(--s4); }
 
 /* ── the cutaway: the building in section, one storey per agent ─────────── */
 
-[data-pane="floors"] { display: grid; grid-template-columns: 1fr 280px; gap: var(--s5); align-items: start; }
-@media (max-width: 900px) { [data-pane="floors"] { grid-template-columns: 1fr; } }
+[data-pane="floors"] { display: grid; grid-template-columns: 1fr 300px; gap: var(--s6); align-items: start; }
+@media (max-width: 940px) { [data-pane="floors"] { grid-template-columns: 1fr; } }
 
+/**
+ * The building, cut in half.
+ *
+ * It held the right facts in the wrong drawing: floor numbers running 11 down
+ * to 1 with the archives below ground, rendered as a list of rows. What makes
+ * it a section rather than a table is that you can see the material you cut
+ * through — so both walls are hatched down the full height, exactly as the
+ * roof already was, the storeys are slabs spanning between them, and the street
+ * runs out through the walls because ground does not stop at a building's edge.
+ */
 .cutaway {
+  position: relative;
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  overflow: hidden; background: var(--panel);
+  overflow: hidden; background: var(--card);
+  padding-left: var(--s3); padding-right: var(--s3);
+}
+/* The two cut walls. Same hatch, same weight, same angle as the cut roof. */
+.cutaway::before, .cutaway::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: var(--s3);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--ink) 13%, transparent) 0 1.6px,
+    transparent 1.6px 8px);
+  pointer-events: none;
+}
+.cutaway::before { left: 0; border-right: 1px solid var(--line); }
+.cutaway::after { right: 0; border-left: 1px solid var(--line); }
+
+/* One statement instead of the same word seven times. What every floor is
+   doing belongs above the floors; what one floor is doing belongs on its row. */
+.cut-mood {
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-small); color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
 }
 
-/* A roof, so the stack reads as a building and not as a list. */
+/* A roof, so the stack reads as a building and not as a list. Hatched in ink
+   the way a section drawing hatches anything you have cut through. */
 .cut-roof {
-  height: 26px; position: relative;
-  background: repeating-linear-gradient(-45deg, #24212e 0 7px, #1f1c29 7px 14px);
+  height: 28px; position: relative;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--ink) 13%, transparent) 0 1.6px,
+    transparent 1.6px 8px);
   border-bottom: 1px solid var(--line);
 }
-/* The parapet: a lighter line along the top edge, as on the drawn buildings. */
+/* The parapet: a heavier line along the top edge, as on the drawn buildings. */
 .cut-roof::after {
   content: ""; position: absolute; inset: 0 0 auto 0; height: 2px;
-  background: var(--line-strong);
+  background: var(--ink);
 }
 
 .floor {
-  display: grid; grid-template-columns: 42px 1fr auto; gap: var(--s3); align-items: center;
+  display: grid; grid-template-columns: 44px 1fr auto; gap: var(--s3); align-items: center;
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  background: var(--card);
   transition: background var(--fast);
   position: relative;
 }
 .floor:hover { background: var(--raised); }
 
-/* The storey number, set like the plate beside a lift. */
+/* The storey number, set like the plate beside a lift: pressed into the page. */
 .floor-no {
   font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4);
-  text-align: center; padding: 3px 0; border-radius: var(--r-control);
+  text-align: center; padding: var(--s1) 0; border-radius: var(--r-control);
   background: var(--sunk); border: 1px solid var(--line);
 }
 
 .floor-who { min-width: 0; }
-.floor-name { font-weight: 600; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.floor-name { font-weight: 650; display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
 .cut-role { font-weight: 600; }
 .floor-on {
-  font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px;
+  font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52ch;
 }
 /**
@@ -501,14 +788,14 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
  * stated once on the supply line above; this is usually just a model name, and
  * it only offers itself as a control when the pointer is on the row.
  */
-.floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4); }
+.floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-3); }
 .floor-model button {
   background: none; border: 0; padding: 0; color: inherit; font: inherit;
   text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px;
   transition: color var(--fast), text-decoration-color var(--fast);
 }
 .floor:hover .floor-model button { text-decoration-color: var(--line-strong); }
-.floor-model button:hover { color: var(--ink-2); text-decoration-color: var(--lamp-dim); }
+.floor-model button:hover { color: var(--ink-2); text-decoration-color: var(--ink); }
 
 /**
  * The supply: the grid the whole building is on, named once under the roof.
@@ -532,26 +819,26 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
    something else, which is how `.kind.answer` inherited a panel's margin. */
 .state { display: inline-flex; align-items: center; gap: var(--s1); font-size: var(--t-micro); color: var(--ink-3); white-space: nowrap; }
 .state i { width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--ink-4); flex: none; }
-.state.s-working { color: var(--lamp); }
-.state.s-working i { background: var(--lamp); box-shadow: 0 0 8px #e8c15aaa; animation: throb 2.2s ease-in-out infinite; }
+.state.s-working { color: var(--lamp-ink); }
+.state.s-working i { background: var(--lamp); animation: throb 2.2s ease-in-out infinite; }
 .state.s-blocked { color: var(--alarm); }
 .state.s-blocked i { background: var(--alarm); }
 .state.s-review  { color: var(--cool); }
 .state.s-review i { background: var(--cool); }
-.state.s-next i { background: var(--ink-2); }
-@keyframes throb { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.state.s-next i { background: var(--ink-3); }
+@keyframes throb { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 /**
- * A storey with somebody working on it is lit from inside — the same amber, at
- * the same moment, as that floor's windows out on the skyline. This is the
+ * A storey with somebody working on it is lit from inside — the same marigold,
+ * at the same moment, as that floor's windows out on the skyline. This is the
  * metaphor doing actual work: the two views agree because they mean the same
  * thing, not because they were styled to match.
  */
-.floor.is-working { background: linear-gradient(90deg, #e8c15a14, transparent 62%); }
+.floor.is-working { background: color-mix(in srgb, var(--lamp) 12%, var(--card)); }
 .floor.is-working::before {
-  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--lamp);
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--lamp);
 }
-.floor.top-floor .floor-no { border-color: var(--lamp-dim); color: var(--lamp); }
+.floor.top-floor .floor-no { border-color: var(--ink); color: var(--ink); }
 
 /* The lobby at street level, the archives below it. */
 .cut-band {
@@ -560,35 +847,64 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
   display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
 }
 .cut-band:last-child { border-bottom: 0; }
-.cut-band .cut-role { margin-bottom: 1px; }
+.cut-band .cut-role { margin-bottom: var(--s1); }
 .cut-band-what { font-size: var(--t-small); color: var(--ink-3); }
 /* Below ground, so it is drawn as below ground. */
 .cut-band.below { background: var(--under); }
-/* Street level: a kerb line where the building meets the pavement. */
-.cut-band.street { box-shadow: inset 0 2px 0 var(--line-strong); }
+/**
+ * Street level, and below it.
+ *
+ * The pavement runs out through both walls and keeps going, because the ground
+ * is not part of the building — which is also why the kerb is the heaviest line
+ * in the drawing, and why the archives underneath are drawn as earth rather
+ * than as two more rows of the table.
+ */
+.cut-band.street { box-shadow: inset 0 2px 0 var(--ink); }
+.cut-band.street, .cut-band.below, .floor.below {
+  margin-inline: calc(var(--s3) * -1);
+  padding-inline: calc(var(--s4) + var(--s3));
+}
+.cut-band.below, .floor.below {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--ink) 8%, transparent) 0 1px,
+      transparent 1px 7px),
+    var(--under);
+}
 
 /**
  * The curator's floor is in the basement, because that is where the archives
  * are and where the product has always said it works. It is not counted in the
  * headcount for the same reason — a building should not appear to grow because
  * it started tidying up — so it gets `B` on the lift plate rather than a
- * number, and the earth-dark ground of everything below street level.
+ * number, and the earth ground of everything below street level.
  */
 .floor.below { background: var(--under); border-bottom: 0; }
-.floor.below:hover { background: color-mix(in srgb, var(--under) 92%, var(--ink)); }
+.floor.below:hover { background: color-mix(in srgb, var(--under) 92%, var(--raised)); }
 .floor.below .floor-no {
-  background: var(--scrim); color: var(--ink-4); border-color: var(--line);
-  letter-spacing: .04em;
+  background: color-mix(in srgb, var(--under) 80%, var(--ink));
+  border-color: var(--line-strong); letter-spacing: .04em;
 }
 
-.empty-floors { padding: var(--s6) var(--s5); text-align: center; color: var(--ink-4); font-size: var(--t-small); }
+.empty-floors { padding: var(--s7) var(--s5); text-align: center; color: var(--ink-3); font-size: var(--t-small); }
 
 .side { position: sticky; top: calc(var(--topbar-h) + var(--s4)); display: grid; gap: var(--s3); }
 
 .hire-box {
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s4);
+  background: var(--card); padding: var(--s4);
 }
+.hire-box p { font-size: var(--t-micro); margin: var(--s1) 0 var(--s3); }
+.hire-box form { display: grid; gap: var(--s2); }
+.hire-box select, .hire-box input { width: 100%; }
+
+/**
+ * What it becomes next, and what that is. The daemon has been computing this
+ * blurb since the first commit and nothing ever printed it.
+ */
+.next-form { font-size: var(--t-micro); margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.next-form b { color: var(--ink); font-weight: 650; }
 
 /**
  * The last thing you do to a building, so it is the quietest control on the
@@ -596,40 +912,31 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
  * it does. It is a shutter rather than a demolition, which is why it is allowed
  * to be here at all — the alarm colour would be a lie about what it costs.
  */
-.board-up { justify-self: start; color: var(--ink-4); border-color: var(--line); }
-.board-up:hover:not(:disabled) { color: var(--ink-2); border-color: var(--line-strong); background: transparent; }
-.hire-box p { font-size: var(--t-micro); margin: var(--s1) 0 var(--s3); }
-.hire-box form { display: grid; gap: var(--s2); }
-.hire-box select, .hire-box input { width: 100%; }
-.next-form { font-size: var(--t-micro); margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); }
+.board-up { justify-self: start; color: var(--ink-3); border-color: var(--line); }
+.board-up:hover:not(:disabled) { color: var(--ink); border-color: var(--line-strong); background: transparent; }
 
 /* ── rows ───────────────────────────────────────────────────────────────── */
 
-.work-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s6); margin-bottom: var(--s5); }
-@media (max-width: 780px) { .work-cols { grid-template-columns: 1fr; gap: var(--s4); } }
+.work-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s7); margin-bottom: var(--s6); }
+@media (max-width: 820px) { .work-cols { grid-template-columns: 1fr; gap: var(--s5); } }
 
-.row {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
-}
-.row:last-child { border-bottom: 0; }
 .row-main { min-width: 0; }
 .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-sub { font-size: var(--t-micro); color: var(--ink-4); margin-top: 2px; }
+.row-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 .row-right { display: flex; align-items: center; gap: var(--s1); flex: none; }
 
 .pill {
   font-size: var(--t-plate); letter-spacing: .04em; border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill); padding: 2px var(--s2); color: var(--ink-3); white-space: nowrap;
+  border-radius: var(--r-pill); padding: var(--s1) var(--s2); color: var(--ink-3); white-space: nowrap;
 }
-.pill.lit { border-color: var(--lamp-dim); color: var(--lamp); }
-/* Terracotta, because this one is about you rather than about work. */
-.pill.warn { border-color: #d4703a66; color: var(--flag); }
-.pill.good { border-color: #7fb08a66; color: var(--good); }
-.pill.bad { border-color: #d16a5a66; color: var(--alarm); }
+.pill.lit { border-color: var(--lamp); color: var(--lamp-ink); }
+/* Vermilion, because this one is about you rather than about work. */
+.pill.warn { border-color: var(--flag); color: var(--flag-ink); }
+.pill.good { border-color: var(--good); color: var(--good); }
+.pill.bad { border-color: var(--alarm); color: var(--alarm); }
 .pill.branch { font-family: var(--mono); }
 
-.row-form { display: flex; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s3); }
+.row-form { display: flex; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s4); }
 .row-form input { flex: 1; min-width: 140px; }
 
 /**
@@ -644,20 +951,21 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
   display: grid; grid-template-columns: 1fr 140px 120px auto;
   gap: var(--s3); align-items: start;
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s4);
+  background: var(--card); padding: var(--s4);
   margin-bottom: var(--s4);
 }
-@media (max-width: 780px) { .order-form { grid-template-columns: 1fr; } }
+@media (max-width: 820px) { .order-form { grid-template-columns: 1fr; } }
 .order-form label {
   display: block; font-size: var(--t-plate);
-  text-transform: uppercase; letter-spacing: .11em; font-weight: 600; color: var(--ink-3);
+  text-transform: uppercase; letter-spacing: .1em; font-weight: 600; color: var(--ink-3);
 }
 .order-form input { width: 100%; margin-top: var(--s1); text-transform: none; letter-spacing: normal; }
-.order-form button { align-self: start; margin-top: 20px; }
+.order-form button { align-self: start; margin-top: var(--s5); }
 .order-form .field-note { text-transform: none; letter-spacing: normal; font-weight: 400; }
 
-/* Empty states say what the thing is for, not that it is empty. */
-.empty { color: var(--ink-4); font-size: var(--t-small); padding: var(--s4) 0; font-style: italic; }
+/* An empty state says what the thing is for and what to do about it, not that
+   it is empty. Never a shrug, and never in the hint weight. */
+.empty { color: var(--ink-3); font-size: var(--t-small); padding: var(--s4) 0; max-width: 58ch; }
 
 .note-row { padding: var(--s3) 0; border-bottom: 1px solid var(--line); display: flex; gap: var(--s2); align-items: baseline; }
 .note-row:last-child { border-bottom: 0; }
@@ -672,14 +980,14 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
  * answers the question those columns raise instead, and it is gone the moment
  * there is a real task to put there.
  *
- * The stops that are *you* are terracotta, and they are the first and the last
- * — which is not a flourish, it is the shape of the thing: you say what it is
+ * The stops that are *you* are vermilion, and they are the first and the last —
+ * which is not a flourish, it is the shape of the thing: you say what it is
  * for, and nothing leaves without you.
  */
-.riser { max-width: 680px; }
+.riser { max-width: 700px; }
 .riser-stops {
   list-style: none;
-  margin: 0 0 0 5px; padding: 0;
+  margin: 0 0 0 var(--s1); padding: 0;
   border-left: 1px solid var(--line-strong);
 }
 .riser-stops li {
@@ -688,13 +996,13 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
   font-size: var(--t-small); color: var(--ink-3); line-height: 1.6;
 }
 .riser-stops li:last-child { padding-bottom: 0; }
-.riser-stops b { color: var(--ink); font-weight: 600; }
+.riser-stops b { color: var(--ink); font-weight: 650; }
 
 /* A stop on the shaft, set like the floor indicator beside a lift. */
 .riser-stops li::before {
   content: ""; position: absolute; left: -5px; top: 7px;
   width: 9px; height: 9px; border-radius: var(--r-pill);
-  background: var(--sunk); border: 1px solid var(--line-strong);
+  background: var(--card); border: 1px solid var(--line-strong);
 }
 .riser-stops li.yours::before { background: var(--flag); border-color: var(--flag); }
 
@@ -702,13 +1010,13 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .feed { font-family: var(--mono); font-size: var(--t-micro); max-height: 260px; overflow-y: auto; }
 /* A time, then what happened. Two columns rather than one string, so the second
    wraps under itself instead of under the clock. */
-.feed div { display: flex; gap: var(--s2); padding: 2px 0; color: var(--ink-3); }
-.feed-when { color: var(--ink-4); flex: none; }
+.feed div { display: flex; gap: var(--s2); padding: var(--s1) 0; color: var(--ink-2); }
+.feed-when { color: var(--ink-4); font-size: var(--t-micro); flex: none; }
 .feed .hi { color: var(--ink); }
-.feed .lit { color: var(--lamp); }
+.feed .lit { color: var(--lamp-ink); }
 .feed .bad { color: var(--alarm); }
 /* What a floor did on the way, indented under the line it belongs to. */
-.feed .tool { color: var(--ink-4); }
+.feed .tool { color: var(--ink-3); }
 .feed .tool .feed-when { visibility: hidden; }
 
 /* ── the mailroom ───────────────────────────────────────────────────────── */
@@ -717,7 +1025,7 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 
 .thread {
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s1) 0;
+  background: var(--card); padding: var(--s1) 0;
   max-height: 52vh; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
 }
@@ -725,7 +1033,7 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 .thread::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r-pill); }
 
 .post {
-  display: grid; grid-template-columns: 30px 1fr; gap: var(--s3);
+  display: grid; grid-template-columns: 32px 1fr; gap: var(--s3);
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
 }
@@ -734,83 +1042,141 @@ button:focus-visible { box-shadow: 0 0 0 3px #e8c15a4d; }
 /* Initials rather than a picture: nobody here has a face, and a generated one
    would be a small lie on every row. */
 .post-who {
-  width: 30px; height: 30px; border-radius: var(--r-control);
+  width: 32px; height: 32px; border-radius: var(--r-control);
   display: flex; align-items: center; justify-content: center;
   font-size: var(--t-plate); font-weight: 700;
-  background: var(--raised); border: 1px solid var(--line-strong); color: var(--ink-2);
+  background: var(--sunk); border: 1px solid var(--line-strong); color: var(--ink-2);
 }
-.post.from-owner .post-who { background: #e8c15a1f; border-color: var(--lamp-dim); color: var(--lamp); }
+/* Your own post is inked rather than lit: you are not a light in a window. */
+.post.from-owner .post-who { background: var(--ink); border-color: var(--ink); color: var(--ground); }
 
-.post-top { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: 2px; }
-.post-name { font-weight: 600; font-size: var(--t-body); }
-.post-to { font-size: var(--t-micro); color: var(--ink-4); }
+.post-top { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s1); }
+.post-name { font-weight: 650; font-size: var(--t-body); }
+.post-to { font-size: var(--t-micro); color: var(--ink-3); }
 .post-when { font-size: var(--t-plate); color: var(--ink-4); margin-left: auto; }
 .post-body { font-size: var(--t-small); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
-.post.unread { background: #e8c15a09; }
+.post.unread { background: color-mix(in srgb, var(--lamp) 9%, transparent); }
 .post.unread .post-body { color: var(--ink); }
 
 /* A message type is the whole point of the bus, so it is always on the row.
    Prefixed, because these come from data. */
 .kind {
-  border-radius: 3px; padding: 1px var(--s1);
-  background: var(--raised); border: 1px solid var(--line);
+  border-radius: var(--r-control); padding: 0 var(--s1);
+  background: var(--sunk); border: 1px solid var(--line);
   font-weight: 700; letter-spacing: .08em;
 }
-.kind.k-task { color: var(--lamp); border-color: var(--lamp-dim); }
-.kind.k-question { color: var(--cool); border-color: #7f93c455; }
-.kind.k-answer { color: var(--good); border-color: #7fb08a55; }
-.kind.k-escalation { color: var(--alarm); border-color: #d16a5a55; }
+.kind.k-task { color: var(--lamp-ink); border-color: var(--lamp); }
+.kind.k-question { color: var(--cool); border-color: var(--cool); }
+.kind.k-answer { color: var(--good); border-color: var(--good); }
+.kind.k-escalation { color: var(--alarm); border-color: var(--alarm); }
 .kind.k-note { color: var(--ink-2); }
 
 .composer { display: flex; gap: var(--s2); margin-top: var(--s4); }
 .composer select { flex: none; max-width: 200px; }
 .composer input { flex: 1; min-width: 0; }
 
-.mail-bridge { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-micro); color: var(--ink-4); }
+.mail-bridge { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-micro); color: var(--ink-3); }
 .mail-bridge .dot { width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--ink-4); }
-.mail-bridge.on .dot { background: #5865f2; box-shadow: 0 0 7px #5865f2aa; }
+.mail-bridge.on .dot { background: var(--good); }
 
 /* ── where the models come from ─────────────────────────────────────────── */
 
-dialog#settingsDialog { width: min(560px, calc(100vw - var(--s6))); }
-.provider-list { max-height: 52vh; overflow-y: auto; margin: var(--s1) calc(-1 * var(--s1)) 0; padding: 0 var(--s1); }
+dialog#settingsDialog { width: min(600px, calc(100vw - var(--s6))); }
+.provider-list { max-height: 52vh; overflow-y: auto; margin: var(--s1) 0 0; }
+
+/**
+ * Every provider, and a way to connect it from here.
+ *
+ * This list was read-only. `POST /api/providers` existed, was branched for a
+ * pasted key, a named variable and one already in the environment, and was
+ * tested — and the page called neither of the two. So the only remedy the
+ * dialog could offer was a terminal command, in a desktop app that ships no
+ * terminal command, under a README promising there was nothing to install.
+ * That is the fault this whole job started from.
+ */
 .provider {
-  display: grid; grid-template-columns: 9px 1fr auto; gap: var(--s3); align-items: start;
-  padding: var(--s3) 2px; border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: 9px 1fr; gap: var(--s3); align-items: start;
+  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
 }
 .provider:last-child { border-bottom: 0; }
-.provider .lamp { width: 9px; height: 9px; border-radius: var(--r-pill); background: var(--ink-4); margin-top: 6px; }
-.provider.ok .lamp { background: var(--good); box-shadow: 0 0 8px #7fb08a99; }
-.provider-name { font-weight: 600; font-size: var(--t-body); }
-.provider-why { font-size: var(--t-micro); color: var(--ink-3); margin-top: 2px; }
+.provider-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+
+/**
+ * The fastest possible finish to setup, said before anybody reaches for a key.
+ *
+ * An installed Claude Code reaches Anthropic on the owner's own subscription
+ * and wants no key at all. The daemon now says so per provider, and it is worth
+ * more than a green tick: it is the difference between finishing setup and
+ * going away to buy metered billing first.
+ */
+.provider-free {
+  display: flex; align-items: baseline; gap: var(--s2);
+  border: 1px solid var(--good); border-radius: var(--r-control);
+  padding: var(--s3) var(--s4); margin-bottom: var(--s4);
+  font-size: var(--t-small); color: var(--ink-2);
+}
+.provider-free b { color: var(--good); font-weight: 650; }
+.provider-none { font-size: var(--t-micro); color: var(--good); margin-top: var(--s1); font-weight: 600; }
+
+.provider-connect { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); margin-top: var(--s3); }
+.provider-connect input { min-width: 0; font-family: var(--mono); font-size: var(--t-small); }
+.provider-connect .field-note, .provider-connect .provider-said { grid-column: 1 / -1; margin-top: 0; }
+/* Alarm is ink here, never a panel: a key that has not been pasted yet is not
+   a fire. */
+.provider-said { font-size: var(--t-micro); color: var(--alarm); }
+.provider-said.held { color: var(--good); }
+.provider .lamp { width: 9px; height: 9px; border-radius: var(--r-pill); background: var(--ink-4); margin-top: var(--s1); }
+.provider.ok .lamp { background: var(--good); }
+.provider-name { font-weight: 650; font-size: var(--t-body); }
+.provider-why { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
+/* Kept for people who would rather type it, and demoted to that. */
 .provider-fix {
-  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); margin-top: var(--s1);
+  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-2); margin-top: var(--s3);
   background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control);
   padding: var(--s1) var(--s2); display: inline-block; overflow-wrap: anywhere;
 }
-.provider-models { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); text-align: right; max-width: 190px; }
+.provider-models { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-3); text-align: right; max-width: 190px; }
 
 /* ── dialogs ────────────────────────────────────────────────────────────── */
 
 dialog {
   border: 1px solid var(--line-strong); border-radius: var(--r-surface);
-  background: var(--panel); color: var(--ink);
-  padding: var(--s5); width: min(460px, calc(100vw - var(--s6)));
+  background: var(--raised); color: var(--ink);
+  padding: var(--s6); width: min(480px, calc(100vw - var(--s6)));
   /* A shadow only on something that is genuinely floating. */
-  box-shadow: 0 24px 70px #00000080;
+  box-shadow: var(--lift);
 }
-dialog::backdrop { background: var(--scrim); opacity: .68; backdrop-filter: blur(3px); }
-dialog h2 { margin-bottom: var(--s1); }
+dialog::backdrop { background: var(--scrim); opacity: .46; }
+dialog h2 { margin-bottom: var(--s2); }
 dialog p { font-size: var(--t-small); margin-bottom: var(--s4); }
-dialog label { display: block; font-size: var(--t-micro); color: var(--ink-3); margin-bottom: var(--s3); }
+/* The question is ink and the note under it is not, or the two run together
+   into one grey block and the form stops looking like it was written by
+   somebody who wanted an answer. */
+dialog label { display: block; font-size: var(--t-small); font-weight: 600; color: var(--ink); margin-bottom: var(--s4); }
 dialog label input { width: 100%; margin-top: var(--s1); }
 dialog select { width: 100%; margin-top: var(--s1); }
 dialog code {
   font-family: var(--mono); font-size: var(--t-micro);
-  background: var(--sunk); border: 1px solid var(--line); border-radius: 3px; padding: 0 var(--s1);
+  background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control); padding: 0 var(--s1);
 }
-.dialog-buttons { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s4); }
+.dialog-buttons { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); }
 .dialog-buttons #dUnwire { margin-right: auto; }
+
+/**
+ * Where a refusal goes.
+ *
+ * Breaking ground reported its errors in the notice bar and a toast — both
+ * outside the open dialog and underneath its own scrim — while the field that
+ * caused it said nothing at all. The daemon's message is specific about which
+ * field is wrong, so it is printed under that one.
+ */
+.field-error {
+  display: block; font-size: var(--t-micro); color: var(--alarm);
+  font-weight: 400; text-transform: none; letter-spacing: normal;
+  margin-top: var(--s1); padding-left: var(--s2);
+  border-left: 2px solid var(--alarm);
+}
+dialog label.wrong input { border-color: var(--alarm); }
 
 /* What happens after you press the button, said before you press it. */
 .ground-then {
@@ -825,8 +1191,8 @@ dialog code {
  * does here. An alphabetical list of sixteen bindings would be the same facts
  * and none of the shape.
  */
-dialog#keysDialog { width: min(430px, calc(100vw - var(--s6))); }
-.keys-where { margin-bottom: var(--s4); }
+dialog#keysDialog { width: min(440px, calc(100vw - var(--s6))); }
+.keys-where { margin-bottom: var(--s5); }
 .keys-where:last-of-type { margin-bottom: 0; }
 .keys-where .cut-role { margin-bottom: var(--s2); }
 
@@ -834,7 +1200,7 @@ dialog#keysDialog { width: min(430px, calc(100vw - var(--s6))); }
   display: grid; grid-template-columns: auto 1fr; gap: var(--s2) var(--s3);
   margin: 0; align-items: baseline;
 }
-.keys dt { display: flex; align-items: center; gap: 3px; color: var(--ink-4); font-size: var(--t-micro); }
+.keys dt { display: flex; align-items: center; gap: var(--s1); color: var(--ink-3); font-size: var(--t-micro); }
 .keys dd { margin: 0; font-size: var(--t-small); color: var(--ink-2); }
 
 /* A keycap: the thing under your finger, drawn with an edge you could catch. */
@@ -842,53 +1208,87 @@ kbd {
   font-family: var(--mono); font-size: var(--t-plate); color: var(--ink);
   background: var(--raised); border: 1px solid var(--line-strong);
   border-bottom-width: 2px; border-radius: var(--r-control);
-  padding: 2px var(--s1); min-width: 20px; display: inline-block; text-align: center;
+  padding: var(--s1) var(--s2); min-width: 28px; display: inline-block; text-align: center;
 }
 
-dialog#bridgeDialog { width: min(520px, calc(100vw - var(--s6))); }
+dialog#bridgeDialog { width: min(540px, calc(100vw - var(--s6))); }
 .two-up { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 @media (max-width: 460px) { .two-up { grid-template-columns: 1fr; } }
 .field-note { display: block; font-size: var(--t-micro); margin-top: var(--s1); line-height: 1.45; }
 label.check { display: flex; gap: var(--s2); align-items: flex-start; font-size: var(--t-small); color: var(--ink-2); }
-label.check input { margin-top: 3px; accent-color: var(--lamp); }
+label.check input { margin-top: var(--s1); }
 label.check .dim { display: block; font-size: var(--t-micro); }
 
 /* ── toasts ─────────────────────────────────────────────────────────────── */
 
+/**
+ * A toast says a thing happened. It is never the only place a failure lives —
+ * that is the notice under the bar, which stays until it is read.
+ */
 .toasts {
   position: fixed; bottom: var(--s5); left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column-reverse; gap: var(--s2); z-index: 90; align-items: center;
   pointer-events: none;
 }
+/* No shadow: an ink pill on warm paper is already as separate from the page as
+   anything gets, and the only two shadows in this product are under a dialog
+   and under a building. */
 .toast {
-  background: var(--raised); border: 1px solid var(--line-strong); color: var(--ink);
-  padding: var(--s2) var(--s4); border-radius: var(--r-pill); font-size: var(--t-small);
-  box-shadow: 0 10px 32px #00000066;
+  background: var(--ink); border: 1px solid var(--ink); color: var(--ground);
+  padding: var(--s2) var(--s5); border-radius: var(--r-pill); font-size: var(--t-small);
   animation: pop var(--base) both;
   max-width: min(560px, calc(100vw - var(--s6)));
   text-align: center;
 }
-.toast.bad { border-color: #d16a5a80; }
-.toast.good { border-color: #7fb08a80; }
+.toast.bad { background: var(--raised); border-color: var(--alarm); color: var(--alarm); }
+.toast.good { background: var(--raised); border-color: var(--good); color: var(--good); }
 @keyframes pop { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/**
+ * A building has changed form.
+ *
+ * This is the best joke in the product and it was spent on a three-and-a-half
+ * second toast: "One more hire and it becomes a landmark. It has a spire.
+ * People give directions by it." was 13.5px of grey in a sidebar, and the
+ * moment the promise was kept, nothing on the screen marked it. So it gets the
+ * display voice, on the street, next to the building it is about — and it is
+ * the way into that building, because the first thing anybody wants after
+ * being told is to go and look.
+ */
+.grew {
+  position: absolute; left: var(--s5); bottom: var(--s5); z-index: 20;
+  max-width: 380px; text-align: left;
+  background: var(--raised); border: 2px solid var(--ink);
+  border-radius: var(--r-surface); padding: var(--s5);
+  animation: rise var(--slow) both;
+}
+.grew-name {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 48;
+  font-size: var(--t-title); line-height: 1.1; letter-spacing: -.015em;
+  font-weight: 550; margin-top: var(--s1);
+}
+.grew-blurb { font-size: var(--t-small); color: var(--ink-2); margin-top: var(--s2); }
+.grew-in { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s3); }
+@media (max-width: 620px) { .grew { left: var(--s4); right: var(--s4); max-width: none; } }
 
 /* ── a building changing form ───────────────────────────────────────────── */
 
-/* Applied by the page, not by the renderer: the drawing has no idea a building
-   just grew, and it should not — it draws what is there now. Only the page
-   remembers what was there a moment ago. */
-.rs-grew { animation: grew 2.6s var(--ease) both; transform-box: view-box; }
-.rs-grew .rs-name { animation: grew-name 2.6s var(--ease) both; }
-
-@keyframes grew {
-  0%   { filter: none; }
-  12%  { filter: drop-shadow(0 0 26px #e8c15acc) drop-shadow(0 0 8px #e8c15a); }
-  55%  { filter: drop-shadow(0 0 18px #e8c15a99); }
-  100% { filter: none; }
-}
-@keyframes grew-name {
-  0%, 100% { fill: #f2ece1; }
-  20%, 60% { fill: #ffd98d; }
+/**
+ * The app's one moment of delight, spent on the only event that changes the
+ * shape of the product: a hire is a storey, and the building settles onto it.
+ *
+ * Set on `translate` rather than `transform` on purpose. The plot already
+ * carries a `transform` attribute that puts it on the street, and animating
+ * `transform` would fling it back to the origin; `translate` is its own
+ * property and composes with that one.
+ */
+.rs-grew { animation: settle .9s var(--ease); }
+@keyframes settle {
+  0%   { translate: 0 -14px; }
+  45%  { translate: 0 4px; }
+  72%  { translate: 0 -2px; }
+  100% { translate: 0 0; }
 }
 
 /* ── nothing moves for anybody who asked it not to ──────────────────────── */
@@ -896,7 +1296,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   .rs-stars, .rs-far, .rs-mid { transform: none !important; }
-  .spin, .rs-grew, .rs-grew .rs-name { animation: none; }
+  .spin, .rs-grew { animation: none; }
 }
 
 /* ── the approval desk ──────────────────────────────────────────────────── */
@@ -904,7 +1304,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 /**
  * A docket somebody left for you.
  *
- * The edge is terracotta because this is the one thing on any screen that is
+ * The edge is vermilion because this is the one thing on any screen that is
  * about you rather than about work, and the two answers sit side by side rather
  * than at the end of a row — a decision that cannot be undone should not be one
  * click away from a decision you were only skimming past.
@@ -913,22 +1313,36 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   border: 1px solid var(--line);
   border-left: 3px solid var(--flag);
   border-radius: var(--r-surface);
-  background: var(--panel);
-  padding: var(--s4);
+  background: var(--card);
+  padding: var(--s5);
   margin-bottom: var(--s3);
 }
 .docket:last-child { margin-bottom: 0; }
 
 .docket-head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
-.docket-when { font-size: var(--t-micro); color: var(--ink-4); margin-left: auto; }
+.docket-when { font-size: var(--t-micro); color: var(--ink-3); margin-left: auto; }
 .docket-intent { font-size: var(--t-lead); line-height: 1.35; margin-top: var(--s2); }
 .docket-if { font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s1); }
-.docket-answer { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s4); }
+/**
+ * The thing you are actually deciding about.
+ *
+ * Every docket read "This reaches outside the building." over two thirds of an
+ * empty card, because the commonest kind by far is a shell command and the
+ * consequence table had no entry for one. The command goes in the void, in the
+ * plate this app already uses for anything meant to be copied rather than read.
+ */
+.docket-command {
+  font-family: var(--mono); font-size: var(--t-small); color: var(--ink);
+  background: var(--sunk); border: 1px solid var(--line-strong); border-radius: var(--r-control);
+  padding: var(--s2) var(--s3); margin-top: var(--s3);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.docket-answer { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); }
 
 /* An empty desk says what the desk is for, not that it is empty. */
 .desk-clear {
   border: 1px dashed var(--line-strong); border-radius: var(--r-surface);
-  padding: var(--s6) var(--s5); text-align: center;
+  padding: var(--s7) var(--s5); text-align: center;
 }
 .desk-clear p { font-size: var(--t-body); }
 .desk-clear p.dim { font-size: var(--t-small); margin-top: var(--s2); max-width: 52ch; margin-inline: auto; }
@@ -938,15 +1352,15 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .archive-shelf {
   background: var(--under);
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  padding: var(--s1) var(--s4);
+  padding: var(--s1) var(--s5);
   margin-top: var(--s3);
 }
 .archive-stats {
-  display: flex; gap: var(--s5); flex-wrap: wrap;
+  display: flex; gap: var(--s6); flex-wrap: wrap;
   padding: var(--s3) 0; border-bottom: 1px solid var(--line);
-  font-size: var(--t-micro); color: var(--ink-4);
+  font-size: var(--t-micro); color: var(--ink-3);
 }
-.archive-stats b { color: var(--ink-2); font-weight: 600; }
+.archive-stats b { color: var(--ink-2); font-weight: 650; }
 
 /* ── standing orders ────────────────────────────────────────────────────── */
 
@@ -957,32 +1371,33 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .order:last-child { border-bottom: 0; }
 .order-main { min-width: 0; }
 .order-goal { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.order-when { font-size: var(--t-micro); color: var(--ink-4); margin-top: 2px; }
+.order-when { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 /* A paused order is present but not running, so it is drawn that way. */
-.order.paused .order-goal { color: var(--ink-4); }
+.order.paused .order-goal { color: var(--ink-3); }
 .order-right { display: flex; align-items: center; gap: var(--s1); flex: none; }
 
 /* ── something is happening ─────────────────────────────────────────────── */
 
 /**
- * The only genuinely live thing on the screen, so it gets the lamp.
+ * The only genuinely live thing on the screen, so it gets the lamp — the same
+ * marigold as a lit window, because it means the same thing.
  *
  * Shown only while a goal is running. A permanent strip that says "idle" most
  * of the time is a strip nobody reads on the day it says something else.
  */
 .working {
   display: flex; align-items: center; gap: var(--s3);
-  margin-top: var(--s3); padding: var(--s3) var(--s4);
-  border: 1px solid var(--lamp-dim); border-radius: var(--r-surface);
-  background: linear-gradient(90deg, #e8c15a12, transparent 70%);
-  max-width: 640px;
+  margin-top: var(--s4); padding: var(--s3) var(--s4);
+  border: 1px solid var(--lamp); border-radius: var(--r-surface);
+  background: color-mix(in srgb, var(--lamp) 12%, var(--card));
+  max-width: 660px;
   animation: rise var(--base) both;
 }
 
-/* A lamp with the light spilling off it, the same as a working floor. */
+/* A lamp, the same as a working floor and the same as a lit window. */
 .working-lamp {
-  width: 9px; height: 9px; flex: none; border-radius: var(--r-pill);
-  background: var(--lamp); box-shadow: 0 0 10px #e8c15aaa;
+  width: 10px; height: 10px; flex: none; border-radius: var(--r-pill);
+  background: var(--lamp-lit); border: 1px solid var(--lamp-ink);
   animation: throb 2.2s ease-in-out infinite;
 }
 
@@ -1005,22 +1420,22 @@ label.check .dim { display: block; font-size: var(--t-micro); }
  */
 .task {
   border: 1px solid var(--line); border-radius: var(--r-surface);
-  background: var(--panel); padding: var(--s3) var(--s4);
+  background: var(--card); padding: var(--s3) var(--s4);
   margin-bottom: var(--s2);
-  position: relative;
+  position: relative; overflow: hidden;
 }
 .task:last-child { margin-bottom: 0; }
 
 /* Being worked on lights it, the same as a storey and a window. */
-.task.is-working { background: linear-gradient(90deg, #e8c15a12, transparent 70%); }
+.task.is-working { background: color-mix(in srgb, var(--lamp) 12%, var(--card)); border-color: var(--lamp); }
 .task.is-working::before {
-  content: ""; position: absolute; left: 0; top: var(--s3); bottom: var(--s3); width: 2px;
-  background: var(--lamp); border-radius: var(--r-pill);
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--lamp);
 }
 
 .task-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
 .task-goal { min-width: 0; line-height: 1.35; }
-.task-who { font-size: var(--t-micro); color: var(--ink-4); margin-top: 2px; }
+.task-who { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 
 .task-accept {
   list-style: none; margin: var(--s2) 0 0; padding: 0;
@@ -1034,7 +1449,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 /* A tick outline: the condition is agreed, not yet met. */
 .task-accept li::before {
   content: ""; position: absolute; left: 0; top: 6px;
-  width: 6px; height: 6px; border-radius: 2px;
+  width: 6px; height: 6px;
   border: 1px solid var(--line-strong);
 }
 /* Filled once it came back held: green is "it held" and means nothing else. */
@@ -1058,14 +1473,14 @@ label.check .dim { display: block; font-size: var(--t-micro); }
   transition: color var(--fast);
 }
 .settled > summary::-webkit-details-marker { display: none; }
-.settled > summary:hover .row-title { color: var(--lamp); }
+.settled > summary:hover .row-title { color: var(--ink); }
 .settled[open] > summary .row-title { color: var(--ink); }
 
 /* The caret is on the title rather than in a gutter: it belongs to the line it
    opens, and a gutter would be a column of arrows down an otherwise clean list. */
 .settled > summary .row-title::before {
   content: "›"; display: inline-block; width: 12px;
-  color: var(--ink-4); font-weight: 400;
+  color: var(--ink-3); font-weight: 400;
   transition: transform var(--fast);
 }
 .settled[open] > summary .row-title::before { transform: rotate(90deg); }
@@ -1073,7 +1488,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .settled-what {
   padding: 0 0 var(--s4) var(--s3);
   border-left: 2px solid var(--line);
-  margin: 0 0 var(--s2) 5px;
+  margin: 0 0 var(--s2) var(--s1);
   animation: rise .2s var(--ease) both;
 }
 .settled-said {
@@ -1082,4 +1497,4 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 }
 .settled-what .task-accept { border-top-color: var(--line); }
 .settled-left { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s3); }
-.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); }
+.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-3); }

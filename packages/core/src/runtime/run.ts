@@ -49,6 +49,15 @@ export interface TurnOutcome {
   steps: number
   stoppedBy: GuardState['stoppedBy']
   note: string
+  /**
+   * Why no model answered, when none did.
+   *
+   * Null means a model ran the turn — whatever it then did or did not do. This
+   * is the difference between "the building thought about it and got nowhere"
+   * and "the building never opened its mouth", and without it the two were
+   * reported to the owner identically: as a goal that finished.
+   */
+  failure: Failure | null
 }
 
 /**
@@ -133,6 +142,10 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
       steps: claude.turns,
       stoppedBy: claude.error ? 'timeout' : null,
       note,
+      // Only when nothing ran at all. Claude Code also reports an error for a
+      // turn that hit its own limits after real work, and that is the agent's
+      // story rather than a provider that could not be reached.
+      failure: claude.error && !claude.finished && claude.turns === 0 ? claudeEngineFailure(claude.error) : null,
     }
   }
 
@@ -237,6 +250,7 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
       steps: state.steps,
       stoppedBy: state.stoppedBy,
       note,
+      failure: lastFailure ?? { kind: 'unknown', worthFallingBackTo: false, message: note, remedy: null },
     }
   }
 
@@ -276,7 +290,35 @@ export async function runFloorTurn(request: TurnRequest): Promise<TurnOutcome> {
     steps: result.steps.length,
     stoppedBy: state.stoppedBy,
     note,
+    // A model answered. Anything disappointing about the answer is the agent's,
+    // not the provider's, and must not be reported as a provider being down.
+    failure: null,
   }
+}
+
+/**
+ * The Claude Code engine reports in prose rather than in status codes, so the
+ * two failures a person can actually act on are named here. Anything else keeps
+ * its own words, which are usually better than a category.
+ */
+function claudeEngineFailure(error: string): Failure {
+  if (/not installed|not on the PATH/i.test(error)) {
+    return {
+      kind: 'credential',
+      worthFallingBackTo: true,
+      message: error,
+      remedy: 'Install Claude Code, or post this floor to a provider with an API key: roofscape provider add anthropic',
+    }
+  }
+  if (/not logged in/i.test(error)) {
+    return {
+      kind: 'credential',
+      worthFallingBackTo: true,
+      message: error,
+      remedy: 'Run `claude` once in a terminal and sign in.',
+    }
+  }
+  return { kind: 'unavailable', worthFallingBackTo: true, message: error, remedy: null }
 }
 
 /** The `finish` call, if the agent made one. Its arguments are the result. */

@@ -117,6 +117,61 @@ export async function hire(role: string | undefined, options: { building?: strin
   skyline.close()
 }
 
+/**
+ * Somebody leaves, and the building gets shorter.
+ *
+ * Height is headcount, and until now height only went up: `vacate` existed on
+ * the store from the first commit with no command and no route behind it, so a
+ * mis-hire was permanently built into the skyline.
+ */
+export function vacate(who: string | undefined, options: { building?: string }): void {
+  if (!who) fail('Who is leaving?', 'roofscape vacate Pitch --building my-project')
+
+  const skyline = openSkyline()
+  const building = findBuilding(skyline, options.building)
+  const store = openBuilding(building.id)
+
+  const needle = who.toLowerCase()
+  const staff = store.staff()
+  const floor =
+    staff.find((f) => f.id === who) ??
+    staff.find((f) => f.name.toLowerCase() === needle) ??
+    staff.find((f) => f.role === needle)
+  if (!floor) {
+    store.close(); skyline.close()
+    fail(`Nobody called "${who}" works at ${building.name}.`, `On staff: ${staff.map((f) => f.name).join(', ') || 'nobody'}`)
+  }
+
+  const heldBy = store.claimHolder()
+  if (heldBy !== null) {
+    store.close(); skyline.close()
+    fail(`${building.name} is being worked on (${heldBy}).`, 'Let it finish first — a floor cannot leave mid-task.')
+  }
+
+  const before = store.headcount()
+  const { handedBack } = store.vacate(floor.id)
+  const after = store.headcount()
+
+  say()
+  tick(`${bold(floor.name)} has left ${building.name} — ${after} floor${after === 1 ? '' : 's'}, was ${before}`)
+  note('Nothing was deleted. Their record and their notes stay in the archives.')
+  if (handedBack > 0) {
+    note(`${handedBack} unfinished task${handedBack === 1 ? '' : 's'} came back to the desk.`)
+  }
+  if (before > 0 && after > 0 && tierOf(before).name !== tierOf(after).name) {
+    say(dim(`  ${building.name} is a ${tierOf(after).name} again.`))
+  }
+  if (!store.floorByRole('manager')) {
+    say()
+    say(amber(`  ${building.name} has no manager now, so it cannot be given a goal.`))
+    note(`Hire one:  roofscape hire manager --building ${building.id}`)
+  }
+  say()
+
+  store.close()
+  skyline.close()
+}
+
 /** Set what a building is for. */
 export function setCharter(text: string | undefined, options: { building?: string }): void {
   if (!text) fail('What is this building for?', 'roofscape charter "We build and run the college app."')

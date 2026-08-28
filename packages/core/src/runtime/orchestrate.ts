@@ -6,8 +6,9 @@ import { Workspace } from '../tools/workspace.js'
 import { openWorktree, closeWorktree, summariseWork, commitAll, isRepo, fullDiff } from '../tools/git.js'
 import type { BuildingStore } from '../store/buildingStore.js'
 import type { Credentials } from '../providers/resolve.js'
+import type { Failure } from '../providers/failure.js'
 import type { Building, Floor } from '../domain/building.js'
-import type { Task } from '../domain/work.js'
+import type { Task, TaskState } from '../domain/work.js'
 import type { EscalationKind } from '../tools/context.js'
 
 /** Thrown when somebody else already has the building. */
@@ -31,7 +32,31 @@ export interface OrchestrationDeps {
   holder?: string
 }
 
+/**
+ * Which of three things happened when the building came back.
+ *
+ * There was one outcome before, and it was always "finished": a provider that
+ * could not be reached returns a note rather than raising, so a goal nobody
+ * could even start resolved happily and was announced in green. The owner
+ * pressed Send, waited, and was told it worked. These are the three honest
+ * answers, and every caller must say which one it got.
+ */
+export type GoalVerdict =
+  /** Something was asked for, done, and settled. */
+  | 'did-something'
+  /** The building thought about it and produced nothing. `why` says why. */
+  | 'did-nothing'
+  /** No model would answer, so nothing was even attempted. `remedy` fixes it. */
+  | 'could-not-start'
+
 export interface GoalOutcome {
+  verdict: GoalVerdict
+  /** One line that is true of every verdict, fit to show on its own. */
+  headline: string
+  /** Why it came out that way, in a sentence a person would say. */
+  why: string
+  /** The single thing the owner can do about it, where there is one. */
+  remedy: string | null
   managerSummary: string
   worked: Array<{
     task: Task
@@ -42,6 +67,8 @@ export interface GoalOutcome {
     review: Review | null
     /** How many times it went back. Zero means it was right first time. */
     reworks: number
+    /** Where the task actually ended up. `done` is the only finished one. */
+    settled: TaskState
   }>
   outstanding: number
   tokensSpent: number
@@ -109,6 +136,13 @@ export async function pursueGoal(
   const before = store.spentSince('1970-01-01T00:00:00.000Z')
   const workspace = new Workspace(building.workspace)
 
+  // What was already waiting before the manager read anything. Leftovers from
+  // an earlier goal are still worth doing, but they are not what was just
+  // asked for — and taking the first six by age ran them *instead of* the new
+  // goal's own tasks, so "put a goal to it" could not promise the building
+  // would work on that goal.
+  const carriedOver = new Set(store.tasks({ state: 'queued' }).map((task) => task.id))
+
   // Renewed as the work goes on, so a long goal does not have its claim expire
   // under it — and a goal that dies stops renewing and frees the building.
   const renewal = setInterval(() => store.renewClaim(holder), 60_000)
@@ -143,14 +177,51 @@ export async function pursueGoal(
     }
   }
 
-  const queued = store.tasks({ state: 'queued' }).slice(0, options.maxTasks ?? 6)
-  if (queued.length === 0) {
+  // Nothing below this line has been decided if the manager never got an
+  // answer: the goal was not read, so nothing was assigned, and working
+  // through whatever happened to be queued would be the building doing
+  // something other than what was just asked of it.
+  if (managerTurn.failure) {
+    report(`${manager.name} could not be reached.`)
+    return {
+      verdict: 'could-not-start',
+      headline: `${building.name} could not start.`,
+      why: managerTurn.failure.message,
+      remedy: managerTurn.failure.remedy,
+      managerSummary: managerTurn.note,
+      worked: [],
+      outstanding: store.tasks({ state: 'queued' }).length,
+      tokensSpent: store.spentSince('1970-01-01T00:00:00.000Z') - before,
+    }
+  }
+
+  const ceiling = options.maxTasks ?? 6
+  const stillQueued = store.tasks({ state: 'queued' })
+  const assigned = stillQueued.filter((task) => !carriedOver.has(task.id))
+  const leftOver = stillQueued.filter((task) => carriedOver.has(task.id))
+  // This goal's own work first; older work fills whatever room is left.
+  const queued = [...assigned, ...leftOver].slice(0, ceiling)
+  const alsoRunning = queued.length - Math.min(assigned.length, ceiling)
+
+  if (assigned.length === 0) {
     report('No tasks were assigned.')
   } else {
-    report(`${queued.length} task${queued.length === 1 ? '' : 's'} assigned.`)
+    report(`${assigned.length} task${assigned.length === 1 ? '' : 's'} assigned.`)
+  }
+  if (alsoRunning > 0) {
+    report(`Also picking up ${alsoRunning} task${alsoRunning === 1 ? '' : 's'} left over from before.`)
   }
 
   const worked: GoalOutcome['worked'] = []
+  /** Successes that nobody here could read. Honest, and worth saying once. */
+  let wentStraightThrough = 0
+  /**
+   * The first floor that could not reach a model at all. The manager answered,
+   * so the goal was read — but a coder posted to a provider with no key fails
+   * for a reason the owner can fix, and that reason should not be lost among
+   * the summaries.
+   */
+  let providerTrouble: Failure | null = null
 
   for (const task of queued) {
     const assignee = store.floor(task.assignedTo)
@@ -179,11 +250,26 @@ export async function pursueGoal(
 
       const result = asTaskResult(turn)
       const succeeded = turn.finished?.succeeded ?? false
-      store.settle(task.id, succeeded ? 'awaiting-review' : 'escalated', {
+      if (turn.failure && !providerTrouble) providerTrouble = turn.failure
+
+      // Whether anybody here can read finished work decides where it settles.
+      // Without this, a building with no reviewer parked every success in
+      // `awaiting-review` for ever: nothing in the product ever reached `done`,
+      // the windows stayed lit because the task was still open, and the
+      // nameplate said there was nothing in hand. A building with nobody to
+      // read the work says so and lets it through, rather than pretending a
+      // reader exists.
+      const reviewer = store.floorByRole('reviewer')
+      const settled: TaskState = !succeeded ? 'escalated' : reviewer ? 'awaiting-review' : 'done'
+      store.settle(task.id, settled, {
         ...result,
         artifacts: branch ? [...result.artifacts, `branch:${branch}`] : result.artifacts,
       })
       report(`  ${succeeded ? 'done' : 'stopped'} — ${truncate(result.summary, 90)}`)
+      if (succeeded && !reviewer) {
+        wentStraightThrough += 1
+        report('  nobody here reads finished work, so it went straight through')
+      }
 
       // Work that claims to be finished is read by somebody who could not have
       // written it. Work that already failed is not: there is nothing to judge,
@@ -193,7 +279,7 @@ export async function pursueGoal(
         ...(deps.resolveModel ? { resolveModel: deps.resolveModel } : {}),
       }
 
-      let review = succeeded ? await reviewWork(reviewDeps, task, workplace.cwd, result.summary) : null
+      let review = succeeded && reviewer ? await reviewWork(reviewDeps, reviewer, task, workplace.cwd, result.summary) : null
       let summary = result.summary
       let reworks = 0
 
@@ -235,7 +321,7 @@ export async function pursueGoal(
             branch = workplace.branch
           }
         }
-        review = await reviewWork(reviewDeps, task, workplace.cwd, summary)
+        review = reviewer ? await reviewWork(reviewDeps, reviewer, task, workplace.cwd, summary) : null
       }
 
       if (review) {
@@ -247,15 +333,18 @@ export async function pursueGoal(
         )
       }
 
+      const ended: TaskState = review ? (review.accepted ? 'done' : 'escalated') : settled
       recordWhatHappened(store, { task, assignee, summary, succeeded, branch, review, reworks })
-      worked.push({ task, floor: assignee, summary, succeeded, branch, review, reworks })
+      worked.push({ task, floor: assignee, summary, succeeded, branch, review, reworks, settled: ended })
     } finally {
       if (workplace.branch) await closeWorktree(building.workspace, workplace.cwd, { keepBranch: true })
     }
   }
 
+  const managerSummary = managerTurn.finished?.summary ?? managerTurn.note
   return {
-    managerSummary: managerTurn.finished?.summary ?? managerTurn.note,
+    ...verdictFor({ building, worked, managerSummary, wentStraightThrough, providerTrouble }),
+    managerSummary,
     worked,
     outstanding: store.tasks({ state: 'queued' }).length,
     tokensSpent: store.spentSince('1970-01-01T00:00:00.000Z') - before,
@@ -263,6 +352,69 @@ export async function pursueGoal(
   } finally {
     clearInterval(renewal)
     store.releaseClaim(holder)
+  }
+}
+
+/**
+ * Which of the three things happened, said in one line.
+ *
+ * Read off what the tasks actually settled as rather than off whether the run
+ * threw: a provider that will not answer is reported, not raised, so "did it
+ * finish" and "did it work" are different questions and only the second one is
+ * the owner's. The moment the building comes back is the most important moment
+ * in the product and it used to have exactly one thing to say.
+ */
+function verdictFor(input: {
+  building: Building
+  worked: GoalOutcome['worked']
+  managerSummary: string
+  wentStraightThrough: number
+  providerTrouble: Failure | null
+}): Pick<GoalOutcome, 'verdict' | 'headline' | 'why' | 'remedy'> {
+  const done = input.worked.filter((item) => item.settled === 'done')
+  const unfinished = input.worked.length - done.length
+
+  if (done.length > 0) {
+    const only = done.length === 1 ? done[0]! : null
+    return {
+      verdict: 'did-something',
+      headline: only
+        ? `${only.floor.name} finished: ${truncate(only.task.goal, 60)}`
+        : `${done.length} of ${input.worked.length} tasks finished.`,
+      why:
+        unfinished > 0
+          ? `${unfinished} other task${unfinished === 1 ? '' : 's'} did not finish and ${unfinished === 1 ? 'is' : 'are'} left for you.`
+          : input.wentStraightThrough > 0
+            ? 'Nobody here reads finished work, so it went through unchecked.'
+            : truncate(firstLine(input.managerSummary), 200),
+      remedy:
+        input.wentStraightThrough > 0
+          ? 'Hire a reviewer and finished work is read before it counts: roofscape hire reviewer'
+          : null,
+    }
+  }
+
+  if (input.worked.length === 0) {
+    return {
+      verdict: 'did-nothing',
+      headline: `${input.building.name} did nothing.`,
+      why: `Nothing was assigned. ${truncate(firstLine(input.managerSummary), 200)}`,
+      // The manager has usually just said what is missing — a role nobody
+      // holds, a repository it cannot see. Inventing a second remedy over the
+      // top of that would only argue with it.
+      remedy: null,
+    }
+  }
+
+  return {
+    verdict: 'did-nothing',
+    headline: `${input.building.name} started ${input.worked.length} task${input.worked.length === 1 ? '' : 's'} and finished none.`,
+    why: input.providerTrouble
+      ? input.providerTrouble.message
+      : truncate(firstLine(input.worked[0]!.summary), 200),
+    remedy:
+      input.providerTrouble?.remedy ??
+      'The work is on the desk rather than lost. Open the building to see where it stopped.',
   }
 }
 
@@ -331,21 +483,21 @@ export function recordWhatHappened(
 }
 
 /**
- * Hand the work to the reviewer, if there is one.
+ * Hand the work to the reviewer.
  *
  * The reviewer is given the diff and the acceptance criteria and nothing that
- * can change a file, so its only possible output is a judgement. A building
- * without a reviewer simply skips this — it is not made up by the manager.
+ * can change a file, so its only possible output is a judgement. Whether there
+ * is a reviewer at all is decided by the caller, because that same answer also
+ * decides where the task settles.
  */
 async function reviewWork(
   deps: Pick<OrchestrationDeps, 'building' | 'store' | 'credentials' | 'ask' | 'report' | 'resolveModel'>,
+  reviewer: Floor,
   task: Task,
   where: string,
   summary: string,
-): Promise<Review | null> {
+): Promise<Review> {
   const { building, store, credentials, ask } = deps
-  const reviewer = store.floorByRole('reviewer')
-  if (!reviewer) return null
 
   const diff = await fullDiff(where, 'HEAD')
   const turn = await runFloorTurn({

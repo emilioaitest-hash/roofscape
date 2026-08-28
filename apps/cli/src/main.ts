@@ -2,9 +2,9 @@
 import { parseArgs } from 'node:util'
 import { BRAND } from '@app/core'
 import { showSkyline, showBuilding } from './commands/skyline.js'
-import { breakGround, hire, setCharter } from './commands/manage.js'
+import { breakGround, hire, vacate, setCharter } from './commands/manage.js'
 import { goal, lobby, decide } from './commands/work.js'
-import { doctor, providerAdd, archives, curateArchives } from './commands/setup.js'
+import { doctor, providerAdd, owner, archives, curateArchives } from './commands/setup.js'
 import { post } from './commands/post.js'
 import { serve } from './commands/serve.js'
 import { schedule, schedules, unschedule } from './commands/schedule.js'
@@ -23,6 +23,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('charter')} <text> [--building B]      say what a building is for
 
   ${bold('hire')} [role] [--name N]             take on staff; the building grows a floor
+  ${bold('vacate')} <who>                       somebody leaves; the building gets shorter
   ${bold('post')} [who] [--provider P --model M]  who runs on what, and change it
   ${bold('goal')} <text> [--yes]                put a goal to a building and let it work
 
@@ -32,6 +33,7 @@ ${bold(BRAND.name)} — ${BRAND.tagline}
   ${bold('archives')} [query]                   read what the building remembers
   ${bold('curate')}                             send the curator down to tidy them
   ${bold('provider')} add <name> [--env VAR]    connect a model provider
+  ${bold('owner')} [name] [--profile TEXT]      who you are, so the buildings can say so
   ${bold('budget')} [--monthly N]                what it may spend, and what it has
   ${bold('schedule')} <text> [--every daily]    put a goal on a repeating footing
   ${bold('schedules')} · ${bold('unschedule')} <id>        what recurs, and stopping one
@@ -78,6 +80,7 @@ async function main(): Promise<void> {
       monthly: { type: 'string' },
       'per-task': { type: 'string' },
       key: { type: 'string' },
+      profile: { type: 'string' },
       yes: { type: 'boolean', short: 'y' },
     },
   })
@@ -86,7 +89,7 @@ async function main(): Promise<void> {
   const rest = positionals.join(' ')
   const opts = values as {
     building?: string; workspace?: string; charter?: string
-    name?: string; env?: string; key?: string; yes?: boolean
+    name?: string; env?: string; key?: string; yes?: boolean; profile?: string
     provider?: string; model?: string; engine?: string
     port?: string; host?: string; open?: boolean
     every?: string; at?: string; pause?: boolean
@@ -104,6 +107,9 @@ async function main(): Promise<void> {
       return setCharter(rest || undefined, opts)
     case 'hire':
       return hire(first, opts)
+    case 'vacate':
+    case 'fire':
+      return vacate(rest || undefined, opts)
     case 'goal':
     case 'do':
       return goal(rest || undefined, opts)
@@ -127,6 +133,9 @@ async function main(): Promise<void> {
     case 'post':
     case 'posting':
       return post(first, opts)
+    case 'owner':
+    case 'whoami':
+      return owner(rest || undefined, { ...(opts.profile !== undefined ? { profile: opts.profile } : {}) })
     case 'curate':
       return curateArchives(opts)
     case 'ask':

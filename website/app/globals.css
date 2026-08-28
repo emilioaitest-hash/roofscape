@@ -1,25 +1,120 @@
-/* The palette is the dashboard's, so the page and the app it hands over look
-   like one thing rather than two. */
-:root {
-  --bg: #faf9f7;
-  --panel: #ffffff;
-  --ink: #1b1a18;
-  --dim: #6f6a63;
-  --line: #e3ded6;
-  --accent: #7a5c3e;
-  --lit: #b8860b;
+/**
+ * Overprint, on a web page.
+ *
+ * The tokens are the dashboard's, copied rather than imported — the site is
+ * deliberately outside the npm workspaces and shares no build with the app — so
+ * the page somebody downloads from and the app they end up in are visibly the
+ * same object. `docs/DESIGN.md` is the reasoning; this is the small part of it a
+ * download page needs.
+ *
+ * Two rules carry over intact. Nothing invents a value that is not a token. And
+ * nothing is decorative: marigold means light and appears in exactly one place
+ * on this page, inside the lit windows of the drawing.
+ *
+ * The scales are copied whole — ground, type, space, shape — including rungs this
+ * page has no use for yet. A scale with holes in it stops being a scale, and the
+ * next person to add a section here should find the same steps the app has.
+ */
+
+/* The faces are here rather than on fonts.googleapis.com for the reason in
+   decision 0017: a design language that needs the network to look right is not a
+   design language. The site keeps its own copies because it deploys on its own.
+   Latin subset, so anything outside it falls back — see --mono-draw below. */
+@font-face {
+  font-family: 'Instrument Sans';
+  src: url('/fonts/instrument-sans.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14130f;
-    --panel: #1c1b17;
-    --ink: #eae6df;
-    --dim: #948d82;
-    --line: #2e2c26;
-    --accent: #c9a227;
-    --lit: #e8c15a;
-  }
+@font-face {
+  font-family: 'Fraunces';
+  src: url('/fonts/fraunces.woff2') format('woff2');
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/plex-mono.woff2') format('woff2');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ── ground: warm paper, never white ──────────────────────────────────── */
+  --sunk: #e6decc;
+  --ground: #f1ebdd;
+  --card: #faf6ec;
+  --raised: #fffdf7;
+  --line: #dcd3bf;
+  --line-strong: #c0b69e;
+
+  /* ── ink: warm black, four weights ────────────────────────────────────── */
+  --ink: #1e1b16;
+  --ink-2: #494336;
+  --ink-3: #786f5d;
+  --ink-4: #a2987f;
+
+  /* ── meaning ───────────────────────────────────────────────────────────
+     Marigold means light, and that is all it means. It appears once on this
+     page: the two lit floors of the drawn building.
+
+     The app's other meaning colour, vermilion, means "waiting on your say-so".
+     Nothing on a download page is, so it is not defined here. A colour with
+     nothing to mean is decoration, and decoration is the thing this system is
+     against. */
+  --lamp: #efaa22;
+
+  /* ── type ─────────────────────────────────────────────────────────────── */
+  --sans: 'Instrument Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --serif: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The drawing is box-drawing and geometric shapes, and the vendored subset is
+     latin only — so Plex Mono would hand half the glyphs back to a fallback and
+     the columns would stop lining up. The system's mono has all of them at one
+     cell each, which is the only property the drawing actually needs. */
+  --mono-draw: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  --t-plate: 11.5px;
+  --t-micro: 12.5px;
+  --t-small: 13.5px;
+  --t-body: 15.5px;
+  --t-lead: 20px;
+  --t-title: 30px;
+  --t-display: 44px;
+  /* The one size not on the app's scale. A page is read from further away than
+     a window is, and the headline is the only thing here doing that job. */
+  --t-hero: clamp(38px, 7.5vw, 78px);
+
+  /* ── space: 96 is the point of the list ───────────────────────────────── */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+  --s8: 64px;
+  --s9: 96px;
+
+  /* ── shape ────────────────────────────────────────────────────────────── */
+  --r-control: 10px;
+  --r-surface: 20px;
+  --r-pill: 999px;
+
+  /* ── motion: one easing, everything rises ─────────────────────────────── */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --fast: 0.16s var(--ease);
+  --base: 0.26s var(--ease);
+
+  /* There is no dark Overprint. Saying so stops the browser tinting form
+     controls and scrollbars for a scheme the page does not have. */
+  color-scheme: light;
 }
 
 * {
@@ -28,107 +123,244 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--ground);
   color: var(--ink);
-  font: 16px/1.6 ui-sans-serif, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
 }
 
 main {
-  max-width: 640px;
+  max-width: 760px;
   margin: 0 auto;
-  padding: 72px 24px 96px;
+  padding: var(--s9) var(--s5) var(--s8);
+}
+
+/* ── the headline ─────────────────────────────────────────────────────────
+   Fraunces with SOFT and WONK turned up is the whole of the playfulness, and
+   it is confined to display sizes so that it never becomes a costume. */
+.wordmark {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 60, 'WONK' 1, 'opsz' 24;
+  font-size: var(--t-lead);
+  font-weight: 600;
+  margin: 0 0 var(--s6);
 }
 
 h1 {
-  font-size: 26px;
-  margin: 0 0 6px;
-  letter-spacing: 0.01em;
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 60, 'WONK' 1, 'opsz' 120;
+  font-weight: 600;
+  font-size: var(--t-hero);
+  line-height: 0.98;
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--s5);
+  max-width: 17ch;
+  text-wrap: balance;
 }
 
-.tagline {
-  color: var(--dim);
-  margin: 0 0 34px;
+.lede {
+  font-size: var(--t-lead);
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0 0 var(--s8);
+  max-width: 54ch;
 }
 
-pre.skyline {
-  font: 13px/1.15 ui-monospace, 'SF Mono', Menlo, monospace;
-  margin: 0 0 38px;
-  overflow-x: auto;
+/* ── the press ────────────────────────────────────────────────────────────
+   Two plates, exactly as the app draws a building: the ink plate carries every
+   line, the colour plate carries the lit counters, and the colour lands a
+   millimetre off. Hovering snaps it into register. It is one transform, and it
+   is the whole of the app's hover interaction, told here in text. */
+.press {
+  position: relative;
+  display: inline-block;
+  margin: 0 0 var(--s4);
+}
+
+.plate {
+  font-family: var(--mono-draw);
+  font-size: var(--t-lead);
+  /* One, exactly. The drawing is built on character cells, and any leading at
+     all opens gaps in the walls where the box-drawing verticals should meet. */
+  line-height: 1;
+  margin: 0;
+  white-space: pre;
+}
+
+.plate.ink {
   color: var(--ink);
 }
 
+.plate.colour {
+  position: absolute;
+  inset: 0;
+  color: var(--lamp);
+  transform: translate(1.8px, -1.4px);
+  transition: transform var(--base);
+  pointer-events: none;
+}
+
+.press:hover .plate.colour {
+  transform: none;
+}
+
+.caption {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  margin: 0 0 var(--s7);
+  max-width: 46ch;
+}
+
+/* ── the download row ─────────────────────────────────────────────────────
+   The primary button is ink. There is no brand colour: the moment marigold
+   fills a control, a lit window and a highlight look the same. */
 .downloads {
   display: flex;
-  gap: 12px;
+  gap: var(--s3);
   flex-wrap: wrap;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: var(--s4);
 }
 
 .primary {
-  background: var(--accent);
-  color: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  padding: 11px 24px;
+  background: var(--ink);
+  color: var(--ground);
+  border: 1px solid var(--ink);
+  border-radius: var(--r-pill);
+  padding: var(--s3) var(--s6);
   font: inherit;
   font-weight: 600;
   text-decoration: none;
+  transition: transform var(--fast), background var(--fast);
 }
 
 .primary:hover {
-  opacity: 0.88;
+  background: var(--ink-2);
+  transform: translateY(-1px);
+}
+
+.primary:active {
+  transform: none;
 }
 
 .secondary {
-  color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 10px 17px;
-  font-size: 14px;
+  color: var(--ink-3);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-small);
   text-decoration: none;
+  transition: border-color var(--fast), color var(--fast), background var(--fast);
 }
 
 .secondary:hover {
-  border-color: var(--accent);
+  border-color: var(--ink);
   color: var(--ink);
+  background: var(--raised);
 }
 
 .fineprint {
-  color: var(--dim);
-  font-size: 14px;
+  color: var(--ink-3);
+  font-size: var(--t-small);
+  max-width: 58ch;
+  margin: 0 0 var(--s3);
 }
 
+.fineprint strong {
+  color: var(--ink-2);
+}
+
+.version {
+  font-family: var(--mono);
+  font-size: var(--t-micro);
+}
+
+/* ── sections ─────────────────────────────────────────────────────────────
+   A rule, not a card. A section does not need to hover; it needs an edge. */
 section {
-  margin-top: 44px;
+  margin-top: var(--s8);
   border-top: 1px solid var(--line);
-  padding-top: 26px;
+  padding-top: var(--s5);
 }
 
 h2 {
-  font-size: 12px;
+  font-size: var(--t-plate);
   text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--dim);
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 0 0 var(--s4);
+}
+
+section p {
+  margin: 0 0 var(--s4);
+  max-width: 62ch;
+  color: var(--ink-2);
+}
+
+section p:last-child {
+  margin-bottom: 0;
 }
 
 ul {
   margin: 0;
-  padding-left: 20px;
+  padding-left: var(--s5);
+  color: var(--ink-2);
 }
 
 li {
-  margin-bottom: 7px;
+  margin-bottom: var(--s2);
+}
+
+li::marker {
+  color: var(--ink-4);
+}
+
+b.term {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 a {
-  color: var(--accent);
+  color: var(--ink);
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--fast);
+}
+
+a:hover {
+  text-decoration-color: var(--ink);
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px #1e1b1633;
+  border-radius: var(--r-control);
 }
 
 footer {
-  margin-top: 44px;
-  color: var(--dim);
-  font-size: 13px;
+  margin-top: var(--s8);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--t-small);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+@media (max-width: 620px) {
+  main {
+    padding: var(--s7) var(--s5) var(--s7);
+  }
 }
