@@ -301,6 +301,31 @@ test('the strip always names the next action, and never shows a row of zeros', (
     'the strip can no longer tell an owner to hire, which is the only thing that makes a building work',
   )
   assert.match(script, /value \?[^:]*tally/, 'a tally of zero is drawn again')
+
+  /*
+   * Every state the daemon can hand over must have a branch here, and the
+   * branch must offer a way to act on it.
+   *
+   * `read-work` was computed, tested and shipped on the server, and the page had
+   * no case for it — so it fell to the default, which printed the daemon's
+   * sentence ("finished something nobody read") with no button underneath. The
+   * one screen whose whole rule is that it always names the single next action
+   * was naming one the app gave you no way to take. Read from the source rather
+   * than from a list kept by hand, because a list kept by hand is how it
+   * happened.
+   */
+  // From `dist/`, like every other test here — the daemon's own source, not the
+  // compiled copy beside this file.
+  const server = readFileSync(join(HERE, '..', 'src', 'api.ts'), 'utf8')
+  const states = new Set([...server.matchAll(/\bdo: '([a-z-]+)'/g)].map((m) => m[1]!))
+  assert.ok(states.size >= 5, 'no next-action states found in the daemon at all')
+  // `nothing` is the one state whose whole content is that there is nothing to
+  // do, so the default arm — "Nothing needs you. Go and do something else." —
+  // is where it belongs. Every other state names an action and must offer one.
+  for (const state of states) {
+    if (state === 'nothing') continue
+    assert.ok(script.includes(`case '${state}'`), `the daemon can say "${state}" and the strip cannot answer it`)
+  }
 })
 
 test('nothing shows a person an identifier this code passes between its own functions', () => {

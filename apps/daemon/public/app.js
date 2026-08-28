@@ -267,8 +267,10 @@ el('blockedForm').onsubmit = (event) => {
  */
 function openBuilding(id, then) {
   view.building = id
-  view.tab = 'floors'
-  selectTab('floors')
+  // Walk in at the door unless the reason for walking in is somewhere else.
+  const tab = then === 'work' ? 'work' : then === 'desk' ? 'desk' : 'floors'
+  view.tab = tab
+  selectTab(tab)
   show('building')
   refreshBuilding()
     .then(() => {
@@ -656,6 +658,28 @@ function paintNext(next) {
         act: named ? `Put a goal to ${named}` : 'Put a goal to it',
         note: 'The way you would say it to somebody on their first morning.',
         run: where ? () => openBuilding(where.id, 'goal') : null,
+      })
+
+    /*
+     * Work that came back and nobody has read.
+     *
+     * The daemon has computed this state since the run that made a building of
+     * a manager and a coder able to finish anything at all, and the page had no
+     * branch for it — so it fell to the default below, which printed the
+     * daemon's sentence ("finished something nobody read. Say whether it holds.")
+     * with no button under it and a `why` line about lit windows that had
+     * nothing to do with it. The one screen whose stated rule is that it always
+     * names the single next action was naming an action the app gave you no way
+     * to take.
+     */
+    case 'read-work':
+      return set({
+        label: 'Next',
+        say: named ? `${named} finished something and nobody has read it.` : 'Something finished and nobody has read it.',
+        why: 'Work goes back to whoever asked for it. Until somebody says whether it holds, it is done but not settled.',
+        act: named ? `Read what ${named} sent back` : 'Read what came back',
+        note: 'The branch is waiting; nothing has been merged.',
+        run: where ? () => openBuilding(where.id, 'work') : null,
       })
 
     default:

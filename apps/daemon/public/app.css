@@ -381,11 +381,21 @@ button:focus-visible {
  * five-pixel speck. Claiming most of the window is what makes them visible.
  */
 .city-frame {
-  position: relative; flex: 1 1 auto; min-height: min(62vh, 720px);
+  position: relative; flex: 1 1 auto; min-height: min(46vh, 520px);
   display: flex; flex-direction: column;
   background: var(--ground);
 }
-@media (max-width: 900px) { .city-frame { min-height: min(52vh, 460px); } }
+/**
+ * The city may claim more only when there is more to claim.
+ *
+ * A flat `min(62vh, 720px)` looked right on a large display and pushed the
+ * strip off the bottom of the desktop app's own default window — 1180×840 —
+ * so the first screen a new owner ever sees clipped its only button. The city
+ * is the product, but an action you cannot reach is worse than a smaller
+ * drawing, and the strip is where every next action lives.
+ */
+@media (min-height: 940px) { .city-frame { min-height: min(60vh, 700px); } }
+@media (max-width: 900px) { .city-frame { min-height: min(46vh, 420px); } }
 
 .city-scroll {
   flex: 1; min-height: 0;
