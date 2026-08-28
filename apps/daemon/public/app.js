@@ -384,16 +384,28 @@ async function refreshCity() {
  * Clamped at both ends: a portrait is drawn much larger than a street, and an
  * unclamped slip there would read as a printing fault rather than a print.
  */
-const SLIP_CSS_PX = 2
 function setSlip() {
   const svg = el('cityArt').querySelector('svg')
-  if (!svg || !svg.getScreenCTM) return
-  const ctm = svg.getScreenCTM()
-  // No layout yet, or a detached node: leave the drawing's own fallback alone
-  // rather than dividing by zero and translating everything to nowhere.
+  if (!svg) return
+  /*
+   * Measured on a *plot*, not on the svg.
+   *
+   * The svg's own CTM carries only the page's fit — 0.85 on the screen this was
+   * first measured on. Everything inside a plot is scaled again by that plot's
+   * `scale(zoom)`, which was 0.72, so the real number is 0.61 and using the
+   * svg's put every screen-sized thing out by a third. That is the whole reason
+   * the misprint was still under a pixel after being "fixed" once.
+   */
+  const plot = svg.querySelector('.rs-plot') ?? svg
+  if (!plot.getScreenCTM) return
+  const ctm = plot.getScreenCTM()
+  // No layout yet, or a detached node: leave the drawing's own fallbacks alone
+  // rather than dividing by zero and sending everything to nowhere.
   if (!ctm || !ctm.a) return
-  const units = Math.min(4, Math.max(1.2, SLIP_CSS_PX / ctm.a))
-  svg.style.setProperty('--rs-slip', `${units.toFixed(2)}px`)
+  // Clamped: a portrait is drawn far larger than a street, and an unclamped
+  // slip there reads as a printing fault rather than as a print.
+  const unit = Math.min(2.4, Math.max(0.6, 1 / ctm.a))
+  svg.style.setProperty('--rs-px', `${unit.toFixed(3)}px`)
 }
 
 /**

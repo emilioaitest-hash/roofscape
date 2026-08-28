@@ -378,7 +378,11 @@ test('every building comes off two plates, and the colour one lands off the ink'
     ),
     'the colour plate carries no misregistration for CSS to snap back',
   )
-  assert.match(svg, /--rs-dx, 0\) \* var\(--rs-slip, [\d.]+px\)/, 'the slip has no distance to scale')
+  // The distance comes from one measured screen pixel, which the page sets from
+  // a plot's own transform — so the misprint, and the captions, are the same
+  // size however large or small the city happens to be drawn.
+  assert.match(svg, /--rs-dx, 0\) \* 2 \* var\(--rs-px, [\d.]+px\)/, 'the slip has no distance to scale')
+  assert.match(svg, /\.rs-note \{ font: 400 calc\(12\.5 \* var\(--rs-px/, 'the caption is off the type scale again')
   // Snapping into register on hover is the whole hover interaction, and it has
   // to survive the drawing being handed around on its own.
   assert.match(svg, /\.rs-plot:hover \.rs-plate-colour[^}]*transform: none/)

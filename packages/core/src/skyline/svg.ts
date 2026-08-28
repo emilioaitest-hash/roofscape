@@ -2382,14 +2382,31 @@ const CITY_STYLE = `<style>
   /* One ink, one weight, round caps. Every line in the city is this line. */
   .rs-plate-ink { fill: none; stroke: var(--ink, #1E1B16); stroke-width: 1.6;
                   stroke-linecap: round; stroke-linejoin: round; }
-  .rs-plate-colour { transform: translate(calc(var(--rs-dx, 0) * var(--rs-slip, 1.6px)),
-                                          calc(var(--rs-dy, 0) * var(--rs-slip, 1.6px)));
+  /*
+   * One screen pixel, in this drawing's own units.
+   *
+   * Everything inside a plot is drawn in user units and then multiplied twice —
+   * by the plot's own scale(zoom) and again by the page fitting the whole SVG
+   * to its frame. Anything that should be a *screen* size rather than a drawing
+   * size has to be divided back out by both, and nothing was: measured on a real
+   * home screen the composed scale is 0.61, which put the misprint at half a
+   * pixel and the caption under every building — the only live number on the
+   * screen — at 7.7px, below the floor of the type scale at every viewport.
+   *
+   * The page sets --rs-px from a plot's own transform, so it already carries
+   * both factors. The fallback is what a drawing handed around on its own gets,
+   * which is the size it was authored at.
+   */
+  .rs-plate-colour { transform: translate(calc(var(--rs-dx, 0) * 2 * var(--rs-px, 1px)),
+                                          calc(var(--rs-dy, 0) * 2 * var(--rs-px, 1px)));
                      transition: transform var(--base, .26s) var(--ease, cubic-bezier(.22,1,.36,1)); }
   .rs-plot:hover .rs-plate-colour, .rs-plot:focus-visible .rs-plate-colour { transform: none; }
 
-  .rs-name { font: 600 17px/1 var(--serif, ui-serif, Georgia, "Times New Roman", serif);
+  /* On the type scale, and staying there: --t-small and --t-micro, in screen
+     pixels, however large or small the city happens to be drawn. */
+  .rs-name { font: 600 calc(13.5 * var(--rs-px, 1.26px))/1 var(--serif, ui-serif, Georgia, "Times New Roman", serif);
              fill: var(--ink, #1E1B16); letter-spacing: .005em; }
-  .rs-note { font: 400 12.5px/1 var(--sans, ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif);
+  .rs-note { font: 400 calc(12.5 * var(--rs-px, 1px))/1 var(--sans, ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif);
              fill: var(--ink-3, #786F5D); letter-spacing: .01em; }
   .rs-lot-text { font: 600 15px/1 var(--serif, ui-serif, Georgia, "Times New Roman", serif);
                  fill: var(--ink-3, #786F5D); }
