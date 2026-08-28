@@ -714,7 +714,22 @@ function windowsSvg(pen: Pen, design: BuildingDesign, state: BuildingState): voi
       // form of this reduced to `index % 3`, which with a bay count divisible by
       // three made every column one fixed tone all the way up.
       const warmth = atWork ? ` rs-t${(bay.index + bay.floor * 2) % 3}` : ''
-      const classes = `rs-w${atWork ? ' rs-on rs-busy' : ''}${warmth}`
+      /*
+       * Two classes, two different facts — they used to be emitted together,
+       * always, which quietly cost the drawing its third state.
+       *
+       * `rs-on` is *a light is on*: this floor has work in hand. `rs-busy` is
+       * *somebody is at that desk*: the building is running right now. With
+       * both stamped on at once the middle state was unreachable, so every lit
+       * window in the city claimed somebody was working in it — on a screen
+       * whose own task list said the work had not been picked up yet.
+       *
+       * The page owns both from here on (`paintCityState`). It used to toggle
+       * only `rs-busy`, and `rs-on` fills marigold on its own, so a building
+       * that stopped working kept its lights on until something forced a
+       * redraw the page never asked for.
+       */
+      const classes = `rs-w${atWork ? ' rs-on' : ''}${atWork && state.busy ? ' rs-busy' : ''}${warmth}`
       const inset = counterInset(bay)
       // The stroke width is what the third state is *made of*. A counter that
       // is merely lit sits inset in its hole; one with somebody at it is
@@ -1981,8 +1996,31 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   const skyAbove = baseSky + extraSky
   const groundY = skyAbove + tallest
   const height = groundY + belowGround
-  // Spare width becomes pavement on both sides rather than a hole on one.
-  const spare = Math.max(0, (width - natural) / 2)
+  /*
+   * Spare width goes into the street, not into the margins.
+   *
+   * Six buildings are tall and narrow; a home screen is wide and short. Even
+   * drawn as large as the height allows, the bodies come to about forty per
+   * cent of the frame, and every earlier attempt to fix that by scaling ran
+   * into the ceiling the height imposes. Pushed out to the sides instead, the
+   * leftover was dead paper and the row read as a huddle in the middle of a
+   * field.
+   *
+   * Widening the gaps spends it on the one thing that wants it: the street.
+   * The buildings stay the size they were drawn, the row spreads across the
+   * frame, and the hydrants, trees and subway entrances that live between the
+   * plots get somewhere to stand. Capped, because a street is not a car park —
+   * past about three times the drawn gap the buildings stop reading as
+   * neighbours.
+   */
+  const MOST_GAP = gap * 3
+  const gapSlots = Math.max(1, gapCount)
+  const stretch = Math.min(
+    Math.max(0, width - natural) * 0.82,
+    gapSlots * (MOST_GAP - gap) * zoom,
+  )
+  const gapPx = gap * zoom + stretch / gapSlots
+  const spare = Math.max(0, (width - (natural + stretch)) / 2)
 
   const parts: string[] = []
   parts.push(
@@ -2016,7 +2054,7 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
    */
   const gaps: Array<{ from: number; to: number }> = []
   let x = margin + spare
-  gaps.push({ from: Math.max(4, x - gap * zoom), to: x })
+  gaps.push({ from: Math.max(4, x - gapPx), to: x })
   for (const { design, state, note } of designs) {
     const slot = Math.max(design.width, 96)
     const centre = x + (slot * zoom) / 2
@@ -2049,8 +2087,8 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
     )
     parts.push('</g>')
     x += slot * zoom
-    gaps.push({ from: x, to: x + gap * zoom })
-    x += gap * zoom
+    gaps.push({ from: x, to: x + gapPx })
+    x += gapPx
   }
 
   // The street itself, furnished. Drawn after the buildings so a tree stands in

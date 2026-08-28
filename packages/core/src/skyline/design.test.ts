@@ -387,8 +387,28 @@ test('a window is a socket, a counter, and sometimes somebody sitting at it', ()
   // next sibling — there is no wrapper around the pair.
   assert.match(svg, /\.rs-w\.rs-busy \+ \.rs-body/)
   // Three floors of six are at work, and work lights from the head down.
-  const busy = new Set([...svg.matchAll(/class="rs-w rs-on rs-busy[^"]*" data-floor="(\d)"/g)].map((m) => m[1]))
-  assert.deepEqual([...busy].sort(), ['3', '4', '5'])
+  const lit = new Set([...svg.matchAll(/class="rs-w rs-on[^"]*" data-floor="(\d)"/g)].map((m) => m[1]))
+  assert.deepEqual([...lit].sort(), ['3', '4', '5'])
+
+  /*
+   * And the two classes are two different facts, which they were not.
+   *
+   * `rs-on` and `rs-busy` used to be stamped on together, always, so the middle
+   * state was unreachable and every lit window in the city claimed somebody was
+   * sitting at it — on a screen whose own task list said the work had not been
+   * picked up. A light on is work in hand; a figure at the window is the
+   * building actually running.
+   */
+  assert.ok(!svg.includes('rs-busy"'), 'a building that is not running claimed somebody was at the desk')
+
+  const running = citySvg([{ id: 'w', name: 'W', headcount: 6, working: 3, busy: true }], {
+    width: 1400,
+    height: 800,
+  })
+  const atDesk = new Set(
+    [...running.matchAll(/class="rs-w rs-on rs-busy[^"]*" data-floor="(\d)"/g)].map((m) => m[1]),
+  )
+  assert.deepEqual([...atDesk].sort(), ['3', '4', '5'], 'a running building sat nobody at its lit windows')
 })
 
 test('a lit facade uses all three warmths', () => {

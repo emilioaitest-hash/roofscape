@@ -480,9 +480,17 @@ function paintCityState() {
     if (!plot) continue
     const floors = building.headcount || 1
     const firstLit = floors - Math.min(floors, building.working)
+    // Both classes, from live data. Toggling only `rs-busy` left `rs-on` where
+    // it was baked, and `rs-on` fills marigold by itself — so a building that
+    // finished its work kept its lights on until a redraw the page never asked
+    // for. A light that cannot go out is not a light, it is a painted window.
     for (const window of plot.querySelectorAll('.rs-w[data-floor]')) {
       const floor = Number(window.getAttribute('data-floor'))
-      window.classList.toggle('rs-busy', floor >= firstLit && building.working > 0)
+      const lit = floor >= firstLit && building.working > 0
+      window.classList.toggle('rs-on', lit)
+      // Somebody actually at the desk, rather than a light left on for work
+      // that is waiting to be picked up.
+      window.classList.toggle('rs-busy', lit && Boolean(building.busy))
     }
   }
 }
