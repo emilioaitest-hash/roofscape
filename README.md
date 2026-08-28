@@ -26,10 +26,14 @@ A filled window is a lit one: somebody on that floor has work in hand. In a
 terminal and in the app that is marigold; markdown has no colour, so here the
 window is simply filled in.
 
-A building starts as a shack and grows: single storey, brick walk-up, cast-iron
-block, skyscraper, landmark, arcology. Nobody chooses the form — it follows the
-headcount, because a home screen should tell you something true from across the
-room.
+The city is New York, and the ladder is made of real buildings. One pair of
+hands is a **newsstand**; then a **bodega**, a **brownstone** with a stoop, a
+**cast-iron loft** with the fire escape down its front the way SoHo has them, a
+**setback tower**, a **landmark** with a spire, and at the top a **supertall**
+with the crane still on it.
+
+Nobody chooses the form — it follows the headcount, because a home screen should
+tell you something true from across the room.
 
 ## What it does
 

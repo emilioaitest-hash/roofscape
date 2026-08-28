@@ -73,9 +73,11 @@ export default async function Home() {
         <h2>What it is</h2>
         <p>
           You break ground on a building for each company or project you run, and staff it with
-          agents. A building starts as a shack and grows — single storey, brick walk-up, cast-iron
-          block, skyscraper, landmark. Nobody chooses the form. It follows the headcount, because a
-          home screen should tell you something true at a glance.
+          agents. The city is New York: one pair of hands is a newsstand, and it grows into a
+          bodega, a brownstone with a stoop, a cast-iron loft with the fire escape down its front,
+          a setback tower, a landmark with a spire, and a supertall with the crane still on it.
+          Nobody chooses the form. It follows the headcount, because a home screen should tell you
+          something true at a glance.
         </p>
         <ul>
           <li>A manager on the top floor breaks your goals into tasks and assigns them.</li>

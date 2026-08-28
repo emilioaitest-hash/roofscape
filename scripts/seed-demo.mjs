@@ -1,7 +1,7 @@
 /**
  * Build a city worth looking at, in a data directory of its own.
  *
- * A design cannot be judged against one empty shack. This writes a skyline that
+ * A design cannot be judged against one empty newsstand. This writes a skyline that
  * exercises every state the drawing and the screens have to survive: buildings
  * at every form, floors with work in hand and floors idle, approvals waiting on
  * the owner, finished work with branches behind it, mail in the mailroom, and

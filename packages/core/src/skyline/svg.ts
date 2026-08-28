@@ -365,7 +365,7 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
   // Two nested groups on purpose. A CSS transform replaces an element's
   // `transform` attribute outright rather than composing with it, so the lean
   // and the hover lift cannot live on the same node — put them together and a
-  // hovered shack stands up straight, which it should never do.
+  // hovered newsstand stands up straight, which it should never do.
   return [
     groundShadow(design),
     '<g class="rs-building">',
@@ -857,7 +857,7 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
 
   // Everything in the lobby hangs below the sign band, and is measured from
   // what the sign leaves behind rather than from the lobby's full height. Left
-  // to their own proportions, a shack's door and an awning both landed straight
+  // to their own proportions, a newsstand's door and an awning both landed straight
   // through the lettering.
   const signBottom = top + Math.min(15, design.baseHeight * 0.38)
   const room = -signBottom
@@ -1811,7 +1811,7 @@ function waitingPin(design: BuildingDesign): string {
 /**
  * The whole skyline, as one self-contained `<svg>`.
  *
- * Sized to its contents: a city of shacks is not given the headroom of a city of
+ * Sized to its contents: a city of newsstands is not given the headroom of a city of
  * towers, because a great deal of empty paper above a row of sheds looks like a
  * bug rather than like restraint.
  */
@@ -1971,7 +1971,7 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
    * own proportions could not be matched by adding pavement, so the ratios
    * stayed apart, and an SVG whose `preserveAspectRatio` is the default centres
    * that difference — a bar above the roofline and another below the street, on
-   * every screen wider than it was tall. Four shacks in a large frame is the
+   * every screen wider than it was tall. Four newsstands in a large frame is the
    * common case, not the corner one.
    */
   const MAX_HEIGHT = 3000
@@ -2256,7 +2256,7 @@ function backdrop(width: number, groundY: number): string {
  * The name, and what the building is doing. Set like a museum label.
  *
  * The *form* is deliberately not written here. A building that has to caption
- * itself "cast-iron block" is one whose drawing has failed, and the whole claim
+ * itself "cast-iron loft" is one whose drawing has failed, and the whole claim
  * of decision 0009 is that the drawing does not fail. It is on the hover title
  * for anyone who wants the word.
  */

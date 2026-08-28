@@ -381,9 +381,9 @@ Ambient warmth still picks between three flat marigolds by `(index + floor*2) %
 painted stripe.
 
 The eight window shapes become eight socket outlines sharing that grammar, and a
-ninth is added: **porthole**, a circular socket and counter, for the shack and
-the single-storey. A drilled round hole is the most characterful opening there
-is, and those two forms had the least character to spare.
+ninth is added: **porthole**, a circular socket and counter, for the newsstand
+and the bodega. A drilled round hole is the most characterful opening there is,
+and those two forms had the least character to spare.
 
 ### The waiting mark — a pin, not a badge
 
@@ -407,10 +407,11 @@ Six roles per palette: `wall`, `shade`, `lit`, `trim`, `roof`, `socket`. `lit` i
 the wall mixed about 22% toward `#FFFAF0` and used as a 3-unit chamfer along the
 top of each mass — light on paper is where the paper is least covered.
 
-The palette ladder changes from *age of district* to **finish**: bare and scuffed
-at the bottom, then milk paint, then enamel, then lacquer and anodised metal at
-the top. A shack is never lacquer, exactly as it is never curtain wall today, and
-the same test guards it.
+The palette ladder is New York's own stock, and it is **geological**: masonry low
+down — brownstone, tenement brick, buff brick, limestone, glazed terracotta — then
+painted cast iron for the lofts, and metal and glass at the top. A brownstone is
+never black steel and a supertall is never red brick. That is true outside, it is
+what makes a skyline legible, and the same test guards it.
 
 **All 24 crowns and all 23 ornaments are kept.** They are the wit, and the
 same-size-different-buildings test proves the variety works. Each is redrawn as
