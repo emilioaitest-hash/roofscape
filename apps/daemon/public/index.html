@@ -42,7 +42,7 @@
 <main id="main">
 
   <!-- ───────────────────────────── the skyline ───────────────────────────── -->
-  <section class="screen" id="screenCity" data-screen="city">
+  <section class="screen" id="screenCity" data-screen="city" tabindex="-1">
     <div class="city-frame">
       <div class="city-scroll" id="cityScroll">
         <div class="city-art" id="cityArt"><div class="loading">Drawing your skyline…</div></div>
@@ -66,14 +66,20 @@
           </div>
         </div>
 
+        <!-- "Ask the concierge" was the one luxury-hotel word in a vocabulary of
+             breaking ground, boarding up, the mailroom and the approval desk. It
+             walks the street and opens every building, so that is what it is
+             called — and the note under it says what it does for you rather than
+             apologising in advance for what it will not do. -->
         <form class="ask hidden" id="askForm">
-          <label class="ask-label" for="askText">Ask the concierge</label>
+          <label class="ask-label" for="askText">Ask the street</label>
           <div class="ask-row">
             <input type="text" id="askText" autocomplete="off"
                    placeholder="What is everyone working on?">
             <button class="solid" type="submit" id="askGo">Ask</button>
           </div>
-          <p class="ask-note">Sees every building. Changes nothing.</p>
+          <p class="ask-note">It walks into every building and reads what is there, one at a
+            time, which is why it takes a moment. It only ever looks.</p>
         </form>
       </div>
 
@@ -91,7 +97,7 @@
   </section>
 
   <!-- ──────────────────────────── one building ───────────────────────────── -->
-  <section class="screen hidden" id="screenBuilding" data-screen="building">
+  <section class="screen hidden" id="screenBuilding" data-screen="building" tabindex="-1">
     <div class="building-head">
       <div class="portrait" id="portrait"></div>
       <div class="building-meta">
@@ -126,18 +132,30 @@
 
     <!-- The digit on each tab is the key that reaches it. They are set as lift
          buttons because that is what they are: the row of numbers you press to
-         get to a floor, in a product whose floors are the point. -->
-    <nav class="tabs" id="tabs" role="tablist">
-      <button role="tab" class="tab on" data-tab="floors"><b>1</b>The building</button>
-      <button role="tab" class="tab" data-tab="work"><b>2</b>Work<span class="badge hidden" id="badgeWork"></span></button>
-      <button role="tab" class="tab" data-tab="desk"><b>3</b>Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
-      <button role="tab" class="tab" data-tab="mail"><b>4</b>Mailroom<span class="badge hidden" id="badgeMail"></span></button>
-      <button role="tab" class="tab" data-tab="orders"><b>5</b>Standing orders</button>
-      <button role="tab" class="tab" data-tab="archives"><b>6</b>Archives</button>
+         get to a floor, in a product whose floors are the point.
+
+         Six buttons carried role="tab" and nothing else: no aria-selected
+         anywhere, no panel that claimed to belong to one, and no arrow keys —
+         so to a screen reader this was six identical unlabelled buttons and
+         which room you were standing in was not stated at all. The roving
+         tabindex is set from the script, which is the one place that knows. -->
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Rooms in this building">
+      <button role="tab" id="tabFloors" class="tab on" data-tab="floors"
+              aria-selected="true" aria-controls="paneFloors" tabindex="0"><b>1</b>The building</button>
+      <button role="tab" id="tabWork" class="tab" data-tab="work"
+              aria-selected="false" aria-controls="paneWork" tabindex="-1"><b>2</b>Work<span class="badge hidden" id="badgeWork"></span></button>
+      <button role="tab" id="tabDesk" class="tab" data-tab="desk"
+              aria-selected="false" aria-controls="paneDesk" tabindex="-1"><b>3</b>Waiting on you<span class="badge hidden" id="badgeDesk"></span></button>
+      <button role="tab" id="tabMail" class="tab" data-tab="mail"
+              aria-selected="false" aria-controls="paneMail" tabindex="-1"><b>4</b>Mailroom<span class="badge hidden" id="badgeMail"></span></button>
+      <button role="tab" id="tabOrders" class="tab" data-tab="orders"
+              aria-selected="false" aria-controls="paneOrders" tabindex="-1"><b>5</b>Standing orders</button>
+      <button role="tab" id="tabArchives" class="tab" data-tab="archives"
+              aria-selected="false" aria-controls="paneArchives" tabindex="-1"><b>6</b>Archives</button>
     </nav>
 
     <div class="panes">
-      <div class="pane" data-pane="floors">
+      <div class="pane" data-pane="floors" id="paneFloors" role="tabpanel" aria-labelledby="tabFloors" tabindex="0">
         <div class="cutaway" id="cutaway"></div>
         <aside class="side">
           <div class="hire-box">
@@ -158,7 +176,7 @@
         </aside>
       </div>
 
-      <div class="pane hidden" data-pane="work">
+      <div class="pane hidden" data-pane="work" id="paneWork" role="tabpanel" aria-labelledby="tabWork" tabindex="0">
         <!-- Until a building has ever done anything, two empty columns and a
              silent feed raise a question they do not answer: what happens when
              I press Send? The riser answers it, and stands aside the moment
@@ -194,13 +212,13 @@
         </div>
       </div>
 
-      <div class="pane hidden" data-pane="desk">
+      <div class="pane hidden" data-pane="desk" id="paneDesk" role="tabpanel" aria-labelledby="tabDesk" tabindex="0">
         <h3 class="pane-title">The approval desk</h3>
         <p class="dim pane-sub">Anything that reaches the world outside the building stops here.</p>
         <div id="approvals"></div>
       </div>
 
-      <div class="pane hidden" data-pane="mail">
+      <div class="pane hidden" data-pane="mail" id="paneMail" role="tabpanel" aria-labelledby="tabMail" tabindex="0">
         <div class="mail-head">
           <div>
             <h3 class="pane-title">The mailroom</h3>
@@ -217,7 +235,7 @@
         </form>
       </div>
 
-      <div class="pane hidden" data-pane="orders">
+      <div class="pane hidden" data-pane="orders" id="paneOrders" role="tabpanel" aria-labelledby="tabOrders" tabindex="0">
         <h3 class="pane-title">Standing orders <button class="ghost" id="showSchedule" type="button">Add one</button></h3>
         <!-- Three bare boxes, one of them wanting a syntax nobody could guess.
              The interval accepts 30m, 4h, daily, weekly — which the error
@@ -240,7 +258,7 @@
         <div id="schedules"></div>
       </div>
 
-      <div class="pane hidden" data-pane="archives">
+      <div class="pane hidden" data-pane="archives" id="paneArchives" role="tabpanel" aria-labelledby="tabArchives" tabindex="0">
         <h3 class="pane-title">The archives
           <button class="ghost" id="curateGo" type="button">Send the curator down</button>
         </h3>
@@ -257,7 +275,7 @@
   <!-- The token lives in the tab it arrived in, so a bookmark, a second window
        or a restarted daemon lands here. It used to land on an empty city and a
        toast that had already gone. -->
-  <section class="screen hidden" id="screenBlocked" data-screen="blocked">
+  <section class="screen hidden" id="screenBlocked" data-screen="blocked" tabindex="-1">
     <div class="blocked-card">
       <h2>This tab has no token.</h2>
       <p>Roofscape keeps its token in the tab it was opened from, so a bookmark, a second
@@ -281,14 +299,16 @@
     <p class="dim">One building is one company. Its own staff, its own memory, its own money, its
       own workspace — and it shares none of them with its neighbours.</p>
 
-    <label>What is it called?
+    <label id="gNameField">What is it called?
       <input type="text" id="gName" autocomplete="off" required placeholder="Help Center">
-      <span class="field-note dim">Goes on the sign over the door.</span></label>
+      <span class="field-note dim">Goes on the sign over the door.</span>
+      <span class="field-error hidden" id="gNameError"></span></label>
 
-    <label>Where does it work?
+    <label id="gPathField">Where does it work?
       <input type="text" id="gPath" autocomplete="off" required placeholder="~/code/help-center">
       <span class="field-note dim">A directory that already exists. Everyone you hire reads and
-        writes here and nowhere else — paths outside it are refused.</span></label>
+        writes here and nowhere else — paths outside it are refused.</span>
+      <span class="field-error hidden" id="gPathError"></span></label>
 
     <label>What is it for?
       <input type="text" id="gCharter" autocomplete="off"
@@ -298,6 +318,8 @@
 
     <p class="ground-then">It opens as a shack with a manager and a coder in it. Hire, and it
       grows a storey.</p>
+
+    <p class="field-error hidden" id="gFormError"></p>
 
     <div class="dialog-buttons">
       <button type="button" class="ghost" id="groundCancel">Never mind</button>
@@ -312,7 +334,8 @@
   <form method="dialog" id="settingsForm">
     <h2>Where the models come from</h2>
     <p class="dim">Roofscape holds no subscription on your behalf. It uses credentials you already
-      own, and any floor can be moved between them.</p>
+      own, and any floor can be moved between them. Connect one here — a key, the name of an
+      environment variable that holds one, or nothing at all if Claude Code is installed.</p>
     <div id="providerList" class="provider-list"></div>
     <div class="dialog-buttons">
       <button type="button" class="ghost" id="settingsRefresh">Look again</button>
@@ -415,7 +438,7 @@
       <div class="cut-role">On the street</div>
       <dl class="keys">
         <dt><kbd>1</kbd>…<kbd>9</kbd></dt><dd>Go into that building, left to right</dd>
-        <dt><kbd>/</kbd></dt><dd>Ask the concierge</dd>
+        <dt><kbd>/</kbd></dt><dd>Ask the street</dd>
         <dt><kbd>n</kbd></dt><dd>Break ground on a new one</dd>
       </dl>
     </div>

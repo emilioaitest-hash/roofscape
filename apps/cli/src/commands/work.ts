@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline/promises'
 import {
   pursueGoal, rosterFor, defaultPosting, availableProviders, TOOLS_FOR_ROLE, tierOf,
+  saidKind, commandIn,
   type EscalationKind, type FloorRole,
 } from '@app/core'
 import { openSkyline, openBuilding, findBuilding } from '../context.js'
@@ -92,7 +93,7 @@ export async function goal(text: string | undefined, options: { building?: strin
 function askOwner(store: ReturnType<typeof openBuilding>, autoYes: boolean) {
   return async (kind: EscalationKind, intent: string): Promise<boolean> => {
     const manager = store.floorByRole('manager')
-    if (manager) store.requestApproval({ kind: kind as 'publish', by: manager.id, intent })
+    if (manager) store.requestApproval({ kind, by: manager.id, intent })
 
     if (autoYes) {
       say(`\n  ${amber('→')} ${intent} ${dim('(approved by --yes)')}`)
@@ -121,6 +122,12 @@ function askOwner(store: ReturnType<typeof openBuilding>, autoYes: boolean) {
  * Boarded-up ones included. They are off the skyline, which is right for a
  * drawing and wrong here: a docket in a building you have boarded up was
  * un-answerable, for the one action the product calls safe and reversible.
+ *
+ * Two kinds of thing wait on a person, so both are here. A docket is a request
+ * to do something; unread work is something already done that nobody in the
+ * building can judge, because the run that would have read it ended. Sending
+ * somebody to two screens to find out what is waiting on them is how one of the
+ * two gets forgotten.
  */
 export function lobby(): void {
   const skyline = openSkyline()
@@ -130,13 +137,24 @@ export function lobby(): void {
   for (const building of buildings) {
     const store = openBuilding(building.id)
     const pending = store.pendingApprovals()
-    if (pending.length > 0) {
+    const unread = store.tasks({ state: 'unread' })
+    if (pending.length + unread.length > 0) {
       heading(building.closedAt ? `${building.name} (boarded up)` : building.name)
       for (const approval of pending) {
-        say(`  ${dim(approval.id)}  ${dim(`[${approval.kind}]`)} ${approval.intent}`)
+        // The kind said rather than printed, and for a command the command
+        // itself: `[shell] Run: git push --force` is three words of scaffolding
+        // around the only part that decides the answer.
+        say(`  ${dim(approval.id)}  ${amber(saidKind(approval.kind))}`)
+        say(`      ${commandIn(approval) ?? approval.intent}`)
         say(dim(`      asked ${ago(approval.createdAt)}`))
       }
-      total += pending.length
+      for (const task of unread) {
+        say(`  ${dim(task.id)}  ${amber('finished, and nobody read it')}`)
+        say(`      ${task.goal}`)
+        if (task.result) say(dim(`      ${task.result.summary.slice(0, 160)}`))
+        if (task.settledAt) say(dim(`      finished ${ago(task.settledAt)}`))
+      }
+      total += pending.length + unread.length
     }
     store.close()
   }
@@ -152,8 +170,13 @@ export function lobby(): void {
 }
 
 /**
- * Decide one request. Granting it does the thing rather than merely recording
- * that you said yes — an approval nobody acts on is a note, not a decision.
+ * Decide one thing that is waiting on you. Granting it does the thing rather
+ * than merely recording that you said yes — an approval nobody acts on is a
+ * note, not a decision.
+ *
+ * Two things can be waiting, and the same two words answer both: a docket, and
+ * a piece of finished work nobody read. The id says which, so the owner does
+ * not have to.
  */
 export function decide(id: string | undefined, granted: boolean): void {
   if (!id) fail('Which one?', 'roofscape lobby  — to see what is waiting')
@@ -204,6 +227,30 @@ export function decide(id: string | undefined, granted: boolean): void {
     return
   }
 
+  // No docket by that id, so it may be work waiting to be read. Accepting it is
+  // an acceptance somebody actually gave, which is the thing nobody could give
+  // it inside the building; sending it back leaves it as unfinished business,
+  // exactly where a reviewer's last word would have left it.
+  for (const building of skyline.list({ includeClosed: true })) {
+    const store = openBuilding(building.id)
+    const task = store.tasks({ state: 'unread' }).find((t) => t.id === id || t.id.startsWith(id))
+    if (!task) {
+      store.close()
+      continue
+    }
+
+    store.setTaskState(task.id, granted ? 'done' : 'escalated')
+    if (granted) {
+      tick(`Read and accepted: ${task.goal}`)
+      say(dim('  You read it, so it counts.'))
+    } else {
+      tick(`Sent back: ${task.goal}`)
+      say(dim(`  Left as unfinished business. Put a goal to ${building.name} to have another go at it.`))
+    }
+    store.close(); skyline.close()
+    return
+  }
+
   skyline.close()
-  fail(`Nothing pending with id "${id}".`)
+  fail(`Nothing waiting on you with id "${id}".`)
 }

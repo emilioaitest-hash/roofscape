@@ -65,14 +65,24 @@
   --ink:   #1E1B16;   /* what you are meant to read. Also the primary button */
   --ink-2: #494336;   /* body prose, message bodies */
   --ink-3: #786F5D;   /* labels, secondary facts */
-  --ink-4: #A2987F;   /* timestamps, hints. Forbidden from carrying a sentence */
+  /* Timestamps and hints, and nothing else. It was #A2987F, which is 2.41:1 on
+     the page and 2.14:1 on an inset — under AA at every size in the scale, on
+     a token whose whole job is to be small. This clears the large-text floor
+     on paper, and anything that is a sentence or an identifier moved up. */
+  --ink-4: #8A7F68;
 
   /* ── meaning — and nothing else in the product is saturated ───────────── */
   --lamp:     #EFAA22;   /* light: a lit window, work in hand */
   --lamp-lit: #F7C556;   /* the same, brighter: running right now */
   --lamp-ink: #7A4E00;   /* text or a rule belonging to light, on paper */
-  --flag:      #D2452A;  /* you: waiting on your say-so */
+  --flag:      #D2452A;  /* you: waiting on your say-so — a shape, never a letter */
   --flag-deep: #9C2F1B;  /* the shadowed side of a flag mark */
+  /* The same meaning, dark enough to read. #D2452A is 4.21:1 on a card and
+     3.82:1 on the page, and it was setting WAITING ON YOU — the most
+     important label on the home screen — at 11.5px. So the mark and the word
+     part company: --flag draws the pin, the docket's edge and a pill's
+     border, and --flag-ink sets every vermilion glyph. */
+  --flag-ink:  #9C2F1B;
   --good:  #46704F;      /* it held */
   --alarm: #9E2C1A;      /* it did not. Only ever ink or a 2px edge */
   --cool:  #4A6C99;      /* in somebody else's hands */
@@ -226,7 +236,7 @@ button { cursor: pointer; }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--s3); }
 
-.live { display: flex; align-items: center; gap: var(--s1); font-size: var(--t-micro); color: var(--ink-4); }
+.live { display: flex; align-items: center; gap: var(--s1); font-size: var(--t-micro); color: var(--ink-3); }
 .live i { width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--ink-4); flex: none; }
 .live.on i { background: var(--good); }
 .live.off i { background: var(--ink-3); }
@@ -289,7 +299,10 @@ button:focus-visible {
 
 /* ── screens ────────────────────────────────────────────────────────────── */
 
+/* Walking into a building is a change of place, so the keyboard goes with
+   you. Focused from script rather than tabbed to, so it takes no ring. */
 .screen { animation: rise var(--base) both; }
+.screen:focus { outline: none; }
 @keyframes rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 
 /* ── something went wrong, and it stays on the screen until it is read ──── */
@@ -322,7 +335,7 @@ button:focus-visible {
   background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control);
   padding: var(--s1) var(--s2); display: inline-block; overflow-wrap: anywhere;
 }
-.notice-again { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.notice-again { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 
 /* ── no token: a designed dead end with a way out of it ─────────────────── */
 
@@ -347,11 +360,32 @@ button:focus-visible {
 /* ── the skyline ────────────────────────────────────────────────────────── */
 
 /* The paper shows through and is the sky. There is no sky. */
+
+/**
+ * The hole the drawing fills.
+ *
+ * `flex: 1` plus a floor is what makes this height *definite*, which is what
+ * the SVG's `height: 100%` has to resolve against — without one the drawing
+ * fell back on its intrinsic size and left a band of bare paper under the
+ * pavement. The floor rises on a narrow window because the drawing is scaled
+ * by height: a short frame is a small city, whatever the width does.
+ */
+/**
+ * The city gets the room, because the city is the product.
+ *
+ * The daemon fits the drawing to the box this reports, and height is now one of
+ * the constraints on how big it may draw — so a short band does not merely crop
+ * the picture, it shrinks every building in it. At 380px a street with an
+ * eighteen-storey tower on it came back drawn at 0.72×, where the misprint, the
+ * socket lip and the figure at the desk are all under a pixel and the wit is a
+ * five-pixel speck. Claiming most of the window is what makes them visible.
+ */
 .city-frame {
-  position: relative; flex: 1; min-height: 360px;
+  position: relative; flex: 1 1 auto; min-height: min(62vh, 720px);
   display: flex; flex-direction: column;
   background: var(--ground);
 }
+@media (max-width: 900px) { .city-frame { min-height: min(52vh, 460px); } }
 
 .city-scroll {
   flex: 1; min-height: 0;
@@ -365,8 +399,22 @@ button:focus-visible {
 /* The daemon draws to the shape this box reports; the page scales it by
    height. A city wider than the frame then scrolls at a size you can still
    read, instead of being shrunk until every building looks the same. */
-.city-art { min-width: 100%; height: 100%; display: flex; justify-content: center; }
-.city-art svg { display: block; height: 100%; width: auto; max-width: none; }
+/* `safe` centring: centred while it fits, and flush left the moment it does
+   not. Plain `center` puts half the overflow off the left-hand edge, where no
+   scrollbar can ever reach it — so the first building on the street was
+   unreachable at exactly the widths the scroll exists for. */
+.city-art { min-width: 100%; height: 100%; display: flex; justify-content: safe center; }
+/**
+ * Never shrunk to fit.
+ *
+ * A flex item gives way by default, so on a narrow window the drawing was
+ * squeezed below its own aspect: the viewBox then letterboxed inside it — the
+ * band of bare ground under the pavement — and `scrollWidth` never exceeded
+ * `clientWidth`, so the street could not scroll and the whole scroll machinery
+ * below was dead code. `flex: none` is the difference between a city that
+ * crops and a city that shrinks.
+ */
+.city-art svg { display: block; height: 100%; width: auto; max-width: none; flex: none; }
 
 .loading { padding: var(--s8) 0; text-align: center; color: var(--ink-3); font-size: var(--t-small); }
 
@@ -400,7 +448,16 @@ button:focus-visible {
  * screen saying nothing happened. So the sentence comes first, at display size,
  * and the numbers are a footnote under a rule.
  */
-.strip { border-top: 1px solid var(--line); background: var(--card); }
+/**
+ * No rule, and no change of paper.
+ *
+ * A drawing on top, a full-width rule, and a different colour underneath is the
+ * shape of a marketing page: it says the picture is decoration and the real
+ * interface starts here. They are the same screen. So the street's own ground
+ * band runs on behind the top of the strip and the eyebrow is printed on the
+ * pavement — the sentence begins in the city rather than after it.
+ */
+.strip { background: linear-gradient(var(--sunk) 0 var(--s8), var(--ground) var(--s8)); }
 .strip-inner {
   max-width: var(--page); margin: 0 auto; padding: var(--s6) var(--s5);
   display: grid; grid-template-columns: 1fr minmax(300px, 420px); gap: var(--s7); align-items: start;
@@ -436,7 +493,7 @@ button:focus-visible {
 /* Marigold is work in hand; vermilion is waiting on you. Never the other way,
    and never on anything that is merely a control. */
 .tally.lit .tally-n { color: var(--lamp-ink); }
-.tally.warn .tally-n { color: var(--flag); }
+.tally.warn .tally-n { color: var(--flag-ink); }
 
 /**
  * The only tally you can press.
@@ -452,8 +509,8 @@ button:focus-visible {
   border-bottom: 1px solid transparent;
   transition: border-color var(--fast);
 }
-.tallies-round .tally-n { color: var(--flag); }
-.tallies-round .tally-l { color: var(--flag); }
+.tallies-round .tally-n { color: var(--flag-ink); }
+.tallies-round .tally-l { color: var(--flag-ink); }
 .tallies-round:hover { border-bottom-color: var(--flag); }
 
 /**
@@ -490,7 +547,7 @@ button:focus-visible {
 
 .ask-row { display: flex; gap: var(--s2); margin-top: var(--s2); }
 .ask-row input { flex: 1; min-width: 0; }
-.ask-note { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.ask-note { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 
 .answer { max-width: var(--page); margin: 0 auto; padding: 0 var(--s5) var(--s6); animation: rise var(--base) both; }
 .answer .asked {
@@ -506,7 +563,7 @@ button:focus-visible {
   display: flex; align-items: center; gap: var(--s2);
   font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s2); padding-left: var(--s3);
 }
-.answer .consulted { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s2); padding-left: var(--s3); }
+.answer .consulted { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s2); padding-left: var(--s3); }
 
 /* A ring with a gap in it. Says "working" without a progress bar's promise
    that anybody knows how far along this is. */
@@ -525,12 +582,25 @@ button:focus-visible {
 }
 @media (max-width: 820px) { .building-head { grid-template-columns: 1fr; gap: var(--s5); } }
 
+/**
+ * The portrait, cropped to its subject.
+ *
+ * The drawing arrives on a full city canvas, so a single building sat in the
+ * middle of it at about a quarter of the card with the rest empty paper — a
+ * frame around nothing, on the screen whose entire job is to introduce this one
+ * building. The script tightens the viewBox onto what is actually drawn; the
+ * card holds a fixed shape and the building fills whichever dimension it wants,
+ * so a tower fills the height and a shack fills the width.
+ */
 .portrait {
   width: 210px; flex: none;
+  aspect-ratio: 3 / 4;
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--s3);
   border-radius: var(--r-surface); overflow: hidden;
   background: var(--ground); border: 1px solid var(--line);
 }
-.portrait svg { display: block; width: 100%; height: auto; }
+.portrait svg { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
 @media (max-width: 820px) { .portrait { width: 150px; } }
 
 .building-meta { min-width: 0; }
@@ -558,19 +628,23 @@ button:focus-visible {
 .vital.lit { border-color: var(--lamp); }
 .vital.lit b { color: var(--lamp-ink); }
 .vital.warn { border-color: var(--flag); }
-.vital.warn b { color: var(--flag); }
+.vital.warn b { color: var(--flag-ink); }
 
 .goal { display: flex; gap: var(--s2); margin-top: var(--s5); max-width: 660px; }
 .goal input { flex: 1; min-width: 0; padding: var(--s3) var(--s4); }
 
 /* ── tabs ───────────────────────────────────────────────────────────────── */
 
+/**
+ * The tabs wrap. They used to scroll with the scrollbar suppressed, which at
+ * 620px sliced the bar mid-word and put Archives entirely off-screen with
+ * nothing on the page to suggest it was there — two of six rooms unreachable,
+ * silently. A row that runs out of width goes to a second row instead.
+ */
 .tabs {
   max-width: var(--page); margin: 0 auto; padding: 0 var(--s5);
-  display: flex; gap: var(--s1); border-bottom: 1px solid var(--line);
-  overflow-x: auto; scrollbar-width: none;
+  display: flex; flex-wrap: wrap; gap: var(--s1); border-bottom: 1px solid var(--line);
 }
-.tabs::-webkit-scrollbar { display: none; }
 .tab {
   background: none; border: 0; border-bottom: 2px solid transparent;
   padding: var(--s3); color: var(--ink-3); font-size: var(--t-small); font-weight: 550;
@@ -619,9 +693,41 @@ button:focus-visible {
 [data-pane="floors"] { display: grid; grid-template-columns: 1fr 300px; gap: var(--s6); align-items: start; }
 @media (max-width: 940px) { [data-pane="floors"] { grid-template-columns: 1fr; } }
 
+/**
+ * The building, cut in half.
+ *
+ * It held the right facts in the wrong drawing: floor numbers running 11 down
+ * to 1 with the archives below ground, rendered as a list of rows. What makes
+ * it a section rather than a table is that you can see the material you cut
+ * through — so both walls are hatched down the full height, exactly as the
+ * roof already was, the storeys are slabs spanning between them, and the street
+ * runs out through the walls because ground does not stop at a building's edge.
+ */
 .cutaway {
+  position: relative;
   border: 1px solid var(--line); border-radius: var(--r-surface);
   overflow: hidden; background: var(--card);
+  padding-left: var(--s3); padding-right: var(--s3);
+}
+/* The two cut walls. Same hatch, same weight, same angle as the cut roof. */
+.cutaway::before, .cutaway::after {
+  content: ""; position: absolute; top: 0; bottom: 0; width: var(--s3);
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--ink) 13%, transparent) 0 1.6px,
+    transparent 1.6px 8px);
+  pointer-events: none;
+}
+.cutaway::before { left: 0; border-right: 1px solid var(--line); }
+.cutaway::after { right: 0; border-left: 1px solid var(--line); }
+
+/* One statement instead of the same word seven times. What every floor is
+   doing belongs above the floors; what one floor is doing belongs on its row. */
+.cut-mood {
+  padding: var(--s2) var(--s4);
+  font-size: var(--t-small); color: var(--ink-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
 }
 
 /* A roof, so the stack reads as a building and not as a list. Hatched in ink
@@ -672,7 +778,7 @@ button:focus-visible {
  * stated once on the supply line above; this is usually just a model name, and
  * it only offers itself as a control when the pointer is on the row.
  */
-.floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-4); }
+.floor-model { font-family: var(--mono); font-size: var(--t-micro); color: var(--ink-3); }
 .floor-model button {
   background: none; border: 0; padding: 0; color: inherit; font: inherit;
   text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px;
@@ -735,8 +841,27 @@ button:focus-visible {
 .cut-band-what { font-size: var(--t-small); color: var(--ink-3); }
 /* Below ground, so it is drawn as below ground. */
 .cut-band.below { background: var(--under); }
-/* Street level: a kerb line where the building meets the pavement. */
+/**
+ * Street level, and below it.
+ *
+ * The pavement runs out through both walls and keeps going, because the ground
+ * is not part of the building — which is also why the kerb is the heaviest line
+ * in the drawing, and why the archives underneath are drawn as earth rather
+ * than as two more rows of the table.
+ */
 .cut-band.street { box-shadow: inset 0 2px 0 var(--ink); }
+.cut-band.street, .cut-band.below, .floor.below {
+  margin-inline: calc(var(--s3) * -1);
+  padding-inline: calc(var(--s4) + var(--s3));
+}
+.cut-band.below, .floor.below {
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      color-mix(in srgb, var(--ink) 8%, transparent) 0 1px,
+      transparent 1px 7px),
+    var(--under);
+}
 
 /**
  * The curator's floor is in the basement, because that is where the archives
@@ -787,7 +912,7 @@ button:focus-visible {
 
 .row-main { min-width: 0; }
 .row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-sub { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.row-sub { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 .row-right { display: flex; align-items: center; gap: var(--s1); flex: none; }
 
 .pill {
@@ -796,7 +921,7 @@ button:focus-visible {
 }
 .pill.lit { border-color: var(--lamp); color: var(--lamp-ink); }
 /* Vermilion, because this one is about you rather than about work. */
-.pill.warn { border-color: var(--flag); color: var(--flag); }
+.pill.warn { border-color: var(--flag); color: var(--flag-ink); }
 .pill.good { border-color: var(--good); color: var(--good); }
 .pill.bad { border-color: var(--alarm); color: var(--alarm); }
 .pill.branch { font-family: var(--mono); }
@@ -917,7 +1042,7 @@ button:focus-visible {
 
 .post-top { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; margin-bottom: var(--s1); }
 .post-name { font-weight: 650; font-size: var(--t-body); }
-.post-to { font-size: var(--t-micro); color: var(--ink-4); }
+.post-to { font-size: var(--t-micro); color: var(--ink-3); }
 .post-when { font-size: var(--t-plate); color: var(--ink-4); margin-left: auto; }
 .post-body { font-size: var(--t-small); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .post.unread { background: color-mix(in srgb, var(--lamp) 9%, transparent); }
@@ -940,29 +1065,67 @@ button:focus-visible {
 .composer select { flex: none; max-width: 200px; }
 .composer input { flex: 1; min-width: 0; }
 
-.mail-bridge { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-micro); color: var(--ink-4); }
+.mail-bridge { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-micro); color: var(--ink-3); }
 .mail-bridge .dot { width: 7px; height: 7px; border-radius: var(--r-pill); background: var(--ink-4); }
 .mail-bridge.on .dot { background: var(--good); }
 
 /* ── where the models come from ─────────────────────────────────────────── */
 
-dialog#settingsDialog { width: min(560px, calc(100vw - var(--s6))); }
+dialog#settingsDialog { width: min(600px, calc(100vw - var(--s6))); }
 .provider-list { max-height: 52vh; overflow-y: auto; margin: var(--s1) 0 0; }
+
+/**
+ * Every provider, and a way to connect it from here.
+ *
+ * This list was read-only. `POST /api/providers` existed, was branched for a
+ * pasted key, a named variable and one already in the environment, and was
+ * tested — and the page called neither of the two. So the only remedy the
+ * dialog could offer was a terminal command, in a desktop app that ships no
+ * terminal command, under a README promising there was nothing to install.
+ * That is the fault this whole job started from.
+ */
 .provider {
-  display: grid; grid-template-columns: 9px 1fr auto; gap: var(--s3); align-items: start;
-  padding: var(--s3) 0; border-bottom: 1px solid var(--line);
+  display: grid; grid-template-columns: 9px 1fr; gap: var(--s3); align-items: start;
+  padding: var(--s4) 0; border-bottom: 1px solid var(--line);
 }
 .provider:last-child { border-bottom: 0; }
+.provider-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+
+/**
+ * The fastest possible finish to setup, said before anybody reaches for a key.
+ *
+ * An installed Claude Code reaches Anthropic on the owner's own subscription
+ * and wants no key at all. The daemon now says so per provider, and it is worth
+ * more than a green tick: it is the difference between finishing setup and
+ * going away to buy metered billing first.
+ */
+.provider-free {
+  display: flex; align-items: baseline; gap: var(--s2);
+  border: 1px solid var(--good); border-radius: var(--r-control);
+  padding: var(--s3) var(--s4); margin-bottom: var(--s4);
+  font-size: var(--t-small); color: var(--ink-2);
+}
+.provider-free b { color: var(--good); font-weight: 650; }
+.provider-none { font-size: var(--t-micro); color: var(--good); margin-top: var(--s1); font-weight: 600; }
+
+.provider-connect { display: grid; grid-template-columns: 1fr auto; gap: var(--s2); margin-top: var(--s3); }
+.provider-connect input { min-width: 0; font-family: var(--mono); font-size: var(--t-small); }
+.provider-connect .field-note, .provider-connect .provider-said { grid-column: 1 / -1; margin-top: 0; }
+/* Alarm is ink here, never a panel: a key that has not been pasted yet is not
+   a fire. */
+.provider-said { font-size: var(--t-micro); color: var(--alarm); }
+.provider-said.held { color: var(--good); }
 .provider .lamp { width: 9px; height: 9px; border-radius: var(--r-pill); background: var(--ink-4); margin-top: var(--s1); }
 .provider.ok .lamp { background: var(--good); }
 .provider-name { font-weight: 650; font-size: var(--t-body); }
 .provider-why { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
+/* Kept for people who would rather type it, and demoted to that. */
 .provider-fix {
-  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); margin-top: var(--s1);
+  font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-2); margin-top: var(--s3);
   background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-control);
   padding: var(--s1) var(--s2); display: inline-block; overflow-wrap: anywhere;
 }
-.provider-models { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); text-align: right; max-width: 190px; }
+.provider-models { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-3); text-align: right; max-width: 190px; }
 
 /* ── dialogs ────────────────────────────────────────────────────────────── */
 
@@ -989,6 +1152,22 @@ dialog code {
 .dialog-buttons { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); }
 .dialog-buttons #dUnwire { margin-right: auto; }
 
+/**
+ * Where a refusal goes.
+ *
+ * Breaking ground reported its errors in the notice bar and a toast — both
+ * outside the open dialog and underneath its own scrim — while the field that
+ * caused it said nothing at all. The daemon's message is specific about which
+ * field is wrong, so it is printed under that one.
+ */
+.field-error {
+  display: block; font-size: var(--t-micro); color: var(--alarm);
+  font-weight: 400; text-transform: none; letter-spacing: normal;
+  margin-top: var(--s1); padding-left: var(--s2);
+  border-left: 2px solid var(--alarm);
+}
+dialog label.wrong input { border-color: var(--alarm); }
+
 /* What happens after you press the button, said before you press it. */
 .ground-then {
   font-size: var(--t-small); color: var(--ink-3);
@@ -1011,7 +1190,7 @@ dialog#keysDialog { width: min(440px, calc(100vw - var(--s6))); }
   display: grid; grid-template-columns: auto 1fr; gap: var(--s2) var(--s3);
   margin: 0; align-items: baseline;
 }
-.keys dt { display: flex; align-items: center; gap: var(--s1); color: var(--ink-4); font-size: var(--t-micro); }
+.keys dt { display: flex; align-items: center; gap: var(--s1); color: var(--ink-3); font-size: var(--t-micro); }
 .keys dd { margin: 0; font-size: var(--t-small); color: var(--ink-2); }
 
 /* A keycap: the thing under your finger, drawn with an edge you could catch. */
@@ -1054,6 +1233,34 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .toast.bad { background: var(--raised); border-color: var(--alarm); color: var(--alarm); }
 .toast.good { background: var(--raised); border-color: var(--good); color: var(--good); }
 @keyframes pop { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
+
+/**
+ * A building has changed form.
+ *
+ * This is the best joke in the product and it was spent on a three-and-a-half
+ * second toast: "One more hire and it becomes a landmark. It has a spire.
+ * People give directions by it." was 13.5px of grey in a sidebar, and the
+ * moment the promise was kept, nothing on the screen marked it. So it gets the
+ * display voice, on the street, next to the building it is about — and it is
+ * the way into that building, because the first thing anybody wants after
+ * being told is to go and look.
+ */
+.grew {
+  position: absolute; left: var(--s5); bottom: var(--s5); z-index: 20;
+  max-width: 380px; text-align: left;
+  background: var(--raised); border: 2px solid var(--ink);
+  border-radius: var(--r-surface); padding: var(--s5);
+  animation: rise var(--slow) both;
+}
+.grew-name {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 45, 'WONK' 1, 'opsz' 48;
+  font-size: var(--t-title); line-height: 1.1; letter-spacing: -.015em;
+  font-weight: 550; margin-top: var(--s1);
+}
+.grew-blurb { font-size: var(--t-small); color: var(--ink-2); margin-top: var(--s2); }
+.grew-in { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s3); }
+@media (max-width: 620px) { .grew { left: var(--s4); right: var(--s4); max-width: none; } }
 
 /* ── a building changing form ───────────────────────────────────────────── */
 
@@ -1103,9 +1310,23 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .docket:last-child { margin-bottom: 0; }
 
 .docket-head { display: flex; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
-.docket-when { font-size: var(--t-micro); color: var(--ink-4); margin-left: auto; }
+.docket-when { font-size: var(--t-micro); color: var(--ink-3); margin-left: auto; }
 .docket-intent { font-size: var(--t-lead); line-height: 1.35; margin-top: var(--s2); }
 .docket-if { font-size: var(--t-small); color: var(--ink-3); margin-top: var(--s1); }
+/**
+ * The thing you are actually deciding about.
+ *
+ * Every docket read "This reaches outside the building." over two thirds of an
+ * empty card, because the commonest kind by far is a shell command and the
+ * consequence table had no entry for one. The command goes in the void, in the
+ * plate this app already uses for anything meant to be copied rather than read.
+ */
+.docket-command {
+  font-family: var(--mono); font-size: var(--t-small); color: var(--ink);
+  background: var(--sunk); border: 1px solid var(--line-strong); border-radius: var(--r-control);
+  padding: var(--s2) var(--s3); margin-top: var(--s3);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
 .docket-answer { display: flex; justify-content: flex-end; gap: var(--s2); margin-top: var(--s5); }
 
 /* An empty desk says what the desk is for, not that it is empty. */
@@ -1127,7 +1348,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .archive-stats {
   display: flex; gap: var(--s6); flex-wrap: wrap;
   padding: var(--s3) 0; border-bottom: 1px solid var(--line);
-  font-size: var(--t-micro); color: var(--ink-4);
+  font-size: var(--t-micro); color: var(--ink-3);
 }
 .archive-stats b { color: var(--ink-2); font-weight: 650; }
 
@@ -1140,7 +1361,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 .order:last-child { border-bottom: 0; }
 .order-main { min-width: 0; }
 .order-goal { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.order-when { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.order-when { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 /* A paused order is present but not running, so it is drawn that way. */
 .order.paused .order-goal { color: var(--ink-3); }
 .order-right { display: flex; align-items: center; gap: var(--s1); flex: none; }
@@ -1204,7 +1425,7 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 
 .task-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
 .task-goal { min-width: 0; line-height: 1.35; }
-.task-who { font-size: var(--t-micro); color: var(--ink-4); margin-top: var(--s1); }
+.task-who { font-size: var(--t-micro); color: var(--ink-3); margin-top: var(--s1); }
 
 .task-accept {
   list-style: none; margin: var(--s2) 0 0; padding: 0;
@@ -1266,4 +1487,4 @@ label.check .dim { display: block; font-size: var(--t-micro); }
 }
 .settled-what .task-accept { border-top-color: var(--line); }
 .settled-left { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s3); }
-.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-4); }
+.settled-cost { font-family: var(--mono); font-size: var(--t-plate); color: var(--ink-3); }

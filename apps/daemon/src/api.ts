@@ -5,8 +5,9 @@ import {
   citySvg, portraitSvg, designFor, floorsSaid,
   readBridgeConfig, writeBridgeConfig, describeToken, listGuilds, listChannels,
   PROVIDERS, TOOLS_FOR_ROLE, claudeExecutable, isRepo, providerSpec, availableProviders,
+  KIND_SAID, saidKind, commandIn, asMessageKind,
   type Building, type BuildingId, type FloorRole, type ApprovalId, type FloorId,
-  type Floor, type Task, type MessageId, type EscalationKind,
+  type Floor, type Task, type Approval, type MessageId, type EscalationKind,
 } from '@app/core'
 import { existsSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -46,11 +47,60 @@ function floorStates(staff: readonly Floor[], open: readonly Task[]): Map<string
   return out
 }
 
+/**
+ * Finished work whose reader never came.
+ *
+ * A review only ever happens inside a run: the orchestrator settles a task to
+ * `awaiting-review` and asks the reviewer in the next breath. If the run dies
+ * in between — a crash, a closed lid, a killed daemon — nothing outside a run
+ * will ever ask them again, and the task sits there for good, counted as open
+ * and lighting a window nobody is behind.
+ *
+ * Neither obvious answer is honest. Putting it back in the queue redoes work
+ * that was done and paid for; marking it `done` claims an acceptance nobody
+ * gave. So it stops being the building's problem and becomes the owner's: it is
+ * left for them, and they accept it or send it back. Either way somebody
+ * decided, which is the whole point of having a reader.
+ *
+ * "Nobody will read it" is read off the claim rather than off a clock. A run
+ * holds the building for as long as it works and renews the hold every minute,
+ * so a building nobody holds has no run alive to finish the review — which is
+ * why this is safe to do on a plain read of the skyline. The only tasks it can
+ * catch are ones no process is working on.
+ *
+ * A building with no reviewer at all is somebody else's case and is left alone:
+ * `recover.ts` lets that work straight through, because the orchestrator would
+ * have done the same, and two rules for one state is how they drift apart.
+ */
+function handBackUnreadWork(
+  store: BuildingStore,
+  building: { id: string; name: string },
+  events?: EventStream,
+): number {
+  const waiting = store.tasks({ state: 'awaiting-review' })
+  if (waiting.length === 0) return 0
+  if (working.has(building.id) || store.claimHolder() !== null) return 0
+  if (!store.floorByRole('reviewer')) return 0
+
+  for (const task of waiting) store.setTaskState(task.id, 'unread')
+  events?.emit({
+    kind: 'left-unread',
+    building: building.id,
+    detail:
+      waiting.length === 1
+        ? `One finished task at ${building.name} was never read, so it is on your desk.`
+        : `${waiting.length} finished tasks at ${building.name} were never read, so they are on your desk.`,
+    data: { tasks: waiting.length, remedy: 'Read it and say whether it holds; nothing else will.' },
+  })
+  return waiting.length
+}
+
 /** The buildings, with everything the skyline needs to draw itself. */
-function skylineViews(sky: SkylineStore) {
+function skylineViews(sky: SkylineStore, events?: EventStream) {
   return sky.list().map((building) => {
     const store = BuildingStore.open(building.id)
     try {
+      handBackUnreadWork(store, building, events)
       const headcount = store.headcount()
       const open = store.openTasks()
       const pending = store.pendingApprovals().length
@@ -68,6 +118,8 @@ function skylineViews(sky: SkylineStore) {
         pendingApprovals: pending,
         /** Has anybody ever put a goal to it? Not the same as being idle. */
         everGivenWork: store.taskCount() > 0,
+        /** Finished work nobody read. It waits on the owner, not on the building. */
+        unread: store.tasks({ state: 'unread' }).length,
         note: inHand > 0 ? `${inHand} in hand` : floorsSaid(headcount),
       }
     } finally {
@@ -153,7 +205,7 @@ export function askOwner(
         return
       }
 
-      const approval = store.requestApproval({ kind: kind as 'publish', by: asker.id, intent })
+      const approval = store.requestApproval({ kind, by: asker.id, intent })
       events.emit({
         kind: 'asked', building: building.id, floor: asker.id, detail: intent,
         data: { approval: approval.id, kind, waiting: !approveEverything },
@@ -254,6 +306,17 @@ function nextAction(
     }
   }
 
+  // After the desk, not before it: a docket has a run standing at it, and this
+  // has nobody waiting — the work is done, it is only unread.
+  const unread = views.find((view) => view.unread > 0)
+  if (unread) {
+    return {
+      do: 'read-work',
+      say: `${unread.name} finished something nobody read. Say whether it holds.`,
+      building: unread.id,
+    }
+  }
+
   const idle = views.find((view) => !view.everGivenWork)
   if (idle) {
     return {
@@ -329,9 +392,38 @@ export function startGoal(
     .finally(() => {
       abandonAsks(events, building.id)
       working.delete(building.id)
+      // A run that fell over between finishing a task and reading it leaves the
+      // work waiting for a review that will never be asked for. This is the
+      // first moment it is knowable, so it is said here rather than at the next
+      // restart.
+      handBackUnreadWork(store, building, events)
       store.close()
       sky.close()
     })
+}
+
+/**
+ * One docket, as the owner has to read it.
+ *
+ * What is stored is a kind, a sentence and an id, and a card built out of that
+ * is mostly empty and says the same thing every time — the approval desk showed
+ * three requests, all captioned "this reaches outside the building", all
+ * labelled SHELL. So the kind goes out said rather than printed, and the thing
+ * being decided goes out beside it: for a shell docket that is the command
+ * itself, which is the only part anybody actually needs to read.
+ *
+ * Done here rather than on the page, because the terminal shows the same
+ * dockets and two tables of adjectives drift apart within a week.
+ */
+function docketView<T extends object>(approval: Approval, extra: T) {
+  return {
+    ...approval,
+    /** The kind, in words: "runs a command", "lands on main". */
+    said: saidKind(approval.kind),
+    /** The literal thing, where there is one to show. Null otherwise. */
+    command: commandIn(approval),
+    ...extra,
+  }
 }
 
 /** What the daemon's Discord bridge exposes to the API, and nothing more. */
@@ -389,7 +481,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
     const sky = skyline()
     try {
       return {
-        buildings: skylineViews(sky).map((view) => ({
+        buildings: skylineViews(sky, events).map((view) => ({
           ...view,
           // This endpoint predates the drawn city and named things the other
           // way round: `busy` was the count of floors with work, `working` the
@@ -418,7 +510,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   router.get('/api/skyline/city', (ctx) => {
     const sky = skyline()
     try {
-      const views = skylineViews(sky)
+      const views = skylineViews(sky, events)
       // The page says how much room it has; a drawing that does not fill it
       // reads as one that failed to load. Clamped so a nonsense query string
       // cannot ask for a canvas nothing can render.
@@ -452,6 +544,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
       const building = buildingOr404(sky, ctx.params.id!)
       const store = BuildingStore.open(building.id)
       try {
+        handBackUnreadWork(store, building, events)
         const headcount = store.headcount()
         const staff = store.staff()
         const open = store.openTasks()
@@ -484,11 +577,19 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
             }
           }),
           open,
+          /**
+           * Finished work nobody read, which is not open — nobody in the
+           * building is going to touch it again — and is not settled either.
+           * It is on the owner's desk, so it is handed over separately rather
+           * than buried in the last dozen things that happened.
+           */
+          unread: store.tasks({ state: 'unread' }),
           recent,
           // The old field, still the last forty in creation order, because the
           // CLI reads it and a screen is not a reason to break a terminal.
           tasks: store.tasks().slice(-40),
-          approvals: store.pendingApprovals(),
+          approvals: store.pendingApprovals().map((approval) =>
+            docketView(approval, { waiting: desk.has(approval.id) })),
           archives: store.archiveStats(),
           spent: store.spentSince('1970-01-01T00:00:00.000Z'),
           spentThisMonth: store.spentThisMonth(),
@@ -858,7 +959,7 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
         if (to.vacatedAt) throw badRequest(`${to.name} no longer works here.`)
 
         const message = store.post({
-          kind: (input.kind as 'note') ?? 'note',
+          kind: asMessageKind(input.kind),
           from: null,
           to: to.id,
           body: input.body.trim().slice(0, 4000),
@@ -1027,7 +1128,8 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   })
 
   /**
-   * Everything waiting on the owner.
+   * Everything waiting on the owner: dockets to decide, and finished work
+   * nobody read.
    *
    * Boarded-up buildings included, deliberately. `list()` leaves them off the
    * skyline, which is right for a drawing and wrong here: boarding one up with
@@ -1037,21 +1139,48 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
   router.get('/api/approvals', () => {
     const sky = skyline()
     try {
-      return {
-        pending: sky.list({ includeClosed: true }).flatMap((building) => {
-          const store = BuildingStore.open(building.id)
-          try {
-            return store.pendingApprovals().map((approval) => ({
-              ...approval,
-              buildingName: building.name,
-              boardedUp: building.closedAt !== null,
-              /** Whether a run is actually standing there waiting for the answer. */
-              waiting: desk.has(approval.id),
-            }))
-          } finally {
-            store.close()
+      const desks = sky.list({ includeClosed: true }).map((building) => {
+        const store = BuildingStore.open(building.id)
+        try {
+          // The only place a boarded-up building is looked at, and so the only
+          // place its unread work can be handed over: the home screen never
+          // draws one.
+          handBackUnreadWork(store, building, events)
+          const where = { buildingName: building.name, boardedUp: building.closedAt !== null }
+          return {
+            pending: store.pendingApprovals().map((approval) =>
+              docketView(approval, {
+                ...where,
+                /** Whether a run is actually standing there waiting for the answer. */
+                waiting: desk.has(approval.id),
+              })),
+            /**
+             * The other thing that waits on a person: work that was finished
+             * and never read. It is not a docket and is not decided like one,
+             * but it is on the same desk, and a screen that shows half of what
+             * is waiting is how the other half gets forgotten.
+             */
+            unread: store.tasks({ state: 'unread' }).map((task) => ({
+              ...where,
+              id: task.id,
+              building: building.id,
+              goal: task.goal,
+              summary: task.result?.summary ?? null,
+              finishedAt: task.settledAt,
+            })),
           }
-        }),
+        } finally {
+          store.close()
+        }
+      })
+
+      return {
+        // Every kind there is, said, so a screen listing what stops at a lobby
+        // desk reads it off the product rather than writing its own list —
+        // which is how the commonest kind of all came to be missing from it.
+        said: KIND_SAID,
+        pending: desks.flatMap((one) => one.pending),
+        unread: desks.flatMap((one) => one.unread),
       }
     } finally {
       sky.close()
@@ -1103,6 +1232,54 @@ export function buildApi(events: EventStream, bridge?: BridgeHandle): Router {
         }
       }
       throw notFound(`approval "${ctx.params.id}"`)
+    } finally {
+      sky.close()
+    }
+  })
+
+  /**
+   * The owner reads what nobody else could.
+   *
+   * The other end of `handBackUnreadWork`. A task left unread is finished work
+   * with nobody to judge it, and the only judge left is the person who asked for
+   * it — so there are two answers and both are honest: it holds, or it does not.
+   * Accepting it is an acceptance somebody actually gave, which is the thing
+   * marking it `done` behind their back would have faked.
+   *
+   * Sending it back settles it `escalated` — the same place a reviewer's last
+   * word puts it — rather than queueing it again. A task that runs a second time
+   * is the building doing work it was never asked for twice; if the owner wants
+   * another go at it, that is a goal.
+   */
+  router.post('/api/tasks/:id/read', async (ctx) => {
+    const input = await ctx.body<{ accepted?: boolean }>()
+    const sky = skyline()
+    try {
+      for (const building of sky.list({ includeClosed: true })) {
+        const store = BuildingStore.open(building.id)
+        try {
+          const match = store.tasks({ state: 'unread' }).find((task) => task.id === ctx.params.id)
+          if (!match) continue
+          const accepted = input.accepted === true
+          store.setTaskState(match.id, accepted ? 'done' : 'escalated')
+          events.emit({
+            kind: 'work-read',
+            building: building.id,
+            detail: `${accepted ? 'It holds' : 'Sent back'}: ${match.goal}`,
+            data: { task: match.id, accepted },
+          })
+          return {
+            read: true,
+            state: accepted ? 'done' : 'escalated',
+            note: accepted
+              ? 'Marked done. You read it, so it counts.'
+              : 'Left as unfinished business. Put a goal to the building to have another go at it.',
+          }
+        } finally {
+          store.close()
+        }
+      }
+      throw notFound(`unread task "${ctx.params.id}"`)
     } finally {
       sky.close()
     }

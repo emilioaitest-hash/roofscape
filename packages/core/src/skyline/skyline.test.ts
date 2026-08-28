@@ -27,28 +27,52 @@ test('a building is drawn one storey per head', () => {
   }
 })
 
+test('the ladder is seven New York buildings, in order', () => {
+  // Named types, because New York's stock is the most legible in the world and
+  // a city made of things everybody can already picture reads instantly. The
+  // arcology that used to be at the top was the one rung that was not a place
+  // you could point at; a supertall is the same idea and is on Fifty-Seventh
+  // Street. Renaming half a ladder is worse than renaming none of it, so the
+  // whole list is asserted at once.
+  assert.deepEqual(
+    allTiers().map((t) => t.name),
+    ['newsstand', 'bodega', 'brownstone', 'cast-iron loft', 'setback tower', 'landmark', 'supertall'],
+  )
+})
+
+test('every form says something of its own when a building becomes it', () => {
+  // The blurb is read out the one time it matters — the building just changed
+  // shape — so a duplicated or empty one is a moment spent saying nothing.
+  const blurbs = allTiers().map((t) => t.blurb)
+  for (const [i, blurb] of blurbs.entries()) {
+    assert.ok(blurb.length > 20, `${allTiers()[i]!.name} has nothing to say for itself`)
+    assert.ok(/[.!?]$/.test(blurb), `${allTiers()[i]!.name}'s blurb is not a sentence`)
+  }
+  assert.equal(new Set(blurbs).size, blurbs.length, 'two forms are announced the same way')
+})
+
 test('form follows headcount at the documented thresholds', () => {
   const expected: Array<[number, string]> = [
-    [1, 'shack'],
-    [2, 'single-storey'],
-    [3, 'brick walk-up'],
-    [4, 'brick walk-up'],
-    [5, 'cast-iron block'],
-    [7, 'cast-iron block'],
-    [8, 'skyscraper'],
-    [11, 'skyscraper'],
+    [1, 'newsstand'],
+    [2, 'bodega'],
+    [3, 'brownstone'],
+    [4, 'brownstone'],
+    [5, 'cast-iron loft'],
+    [7, 'cast-iron loft'],
+    [8, 'setback tower'],
+    [11, 'setback tower'],
     [12, 'landmark'],
     [17, 'landmark'],
-    [18, 'arcology'],
-    [40, 'arcology'],
+    [18, 'supertall'],
+    [40, 'supertall'],
   ]
   for (const [headcount, name] of expected) {
     assert.equal(tierOf(headcount).name, name, `${headcount} staff should be a ${name}`)
   }
 })
 
-test('a headcount below one is still drawn as a shack rather than nothing', () => {
-  assert.equal(tierOf(0).name, 'shack')
+test('a headcount below one is still drawn as a newsstand rather than nothing', () => {
+  assert.equal(tierOf(0).name, 'newsstand')
   assert.equal(renderBuilding({ name: 'x', headcount: 0 }).length, renderBuilding({ name: 'x', headcount: 1 }).length)
 })
 
@@ -122,16 +146,16 @@ test('every building has exactly one way in', () => {
 
 test('a building is founded able to do something, and small enough to grow', () => {
   // It founded with a manager and a hiring manager, so the very first goal had
-  // nobody to give work to. Four would fix that and open the building as a brick
-  // walk-up, skipping the part where it grows — which is most of the reason to
-  // come back to it.
+  // nobody to give work to. Four would fix that and open the building as a
+  // brownstone, skipping the part where it grows — which is most of the reason
+  // to come back to it.
   assert.equal(FOUNDING_ROLES.length, 2)
   assert.ok(FOUNDING_ROLES.includes('manager'), 'somebody to decide')
   assert.ok(
     FOUNDING_ROLES.some((role) => role !== 'manager' && role !== 'hiring'),
     'and somebody who can actually be given the work',
   )
-  assert.equal(tierOf(FOUNDING_ROLES.length).name, 'single-storey', 'and room left to grow')
+  assert.equal(tierOf(FOUNDING_ROLES.length).name, 'bodega', 'and room left to grow')
 })
 
 test('an empty building says nobody is in it, not that it has zero of something', () => {

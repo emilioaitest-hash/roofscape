@@ -3,7 +3,16 @@ import type { Building } from '../domain/building.js'
 import type { FloorId, TaskId } from '../domain/ids.js'
 import type { Workspace } from './workspace.js'
 
-/** What an agent is allowed to ask a person about, mid-task. */
+/**
+ * What an agent is allowed to ask a person about, mid-task.
+ *
+ * This is also what a docket at the approval desk can be about — `ApprovalKind`
+ * in the domain is this type and nothing else. There used to be a second list
+ * over there, six of these seven, and the two were bridged by a cast: `shell`
+ * reached the database anyway and the owner read `SHELL` on every docket. One
+ * list means an added kind is added once, and the compiler finds the places
+ * that have to say it.
+ */
 export type EscalationKind = 'shell' | 'publish' | 'send' | 'deploy' | 'spend' | 'merge' | 'hire'
 
 /**

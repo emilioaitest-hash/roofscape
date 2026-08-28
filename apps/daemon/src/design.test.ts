@@ -225,7 +225,11 @@ test('the number printed on a tab is the key that reaches it', () => {
   // the header are a <nav> too, and they close before this one opens.
   const from = html.indexOf('<nav class="tabs"')
   const bar = html.slice(from, html.indexOf('</nav>', from))
-  const tabs = [...bar.matchAll(/data-tab="([a-z]+)"><b>(\d)<\/b>/g)].map((m) => ({
+  // `data-tab` is no longer the last attribute on the button — aria-selected,
+  // aria-controls and tabindex now follow it — so the number is not necessarily
+  // the next thing after the closing bracket. Anything but a bracket may sit
+  // between them.
+  const tabs = [...bar.matchAll(/data-tab="([a-z]+)"[^>]*><b>(\d)<\/b>/g)].map((m) => ({
     tab: m[1]!,
     plate: Number(m[2]),
   }))
@@ -274,8 +278,23 @@ test('the strip always names the next action, and never shows a row of zeros', (
    * state machine with a branch for an empty building, and a tally of nothing
    * is not drawn.
    */
-  assert.ok(script.includes('function paintNext()'), 'the strip no longer decides what comes next')
-  assert.match(script, /nobodyIn/, 'nothing notices a building with nobody in it')
+  assert.match(script, /function paintNext\(/, 'the strip no longer decides what comes next')
+
+  // The strip is driven by the daemon's own `next`, computed in the one place
+  // that can see every building at once, rather than re-derived here from a
+  // partial view. The page's job is the wording; the state machine is not its
+  // to reimplement, and the copy that used to live here was missing the branch
+  // a fresh install is actually in.
+  assert.match(script, /next\?\.do/, 'the strip is no longer driven by the daemon it asked')
+
+  for (const [branch, why] of [
+    ['connect-provider', 'a fresh install, with no credential anywhere, is not recognised'],
+    ['break-ground', 'an empty skyline is not recognised'],
+    ['hire', 'a building with nobody in it is not recognised — the fault this test exists for'],
+  ] as const) {
+    assert.ok(script.includes(`case '${branch}'`), why)
+  }
+
   assert.match(
     script,
     /Take somebody on/,

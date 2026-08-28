@@ -5,19 +5,25 @@
  * ground floor, and the storeys are generated from the staff list. So a building
  * with nine floors really is drawn nine storeys tall, and growing by one hire
  * visibly adds a storey rather than swapping a picture.
+ *
+ * The seven forms are New York's, by name. They used to be half New York and
+ * would not say so — a "brick walk-up" and a "cast-iron block" are New York
+ * words wearing a coat — and the one rung that was not a place you could point
+ * at was the arcology, which was science fiction. A supertall on Billionaires'
+ * Row is the same top of the same ladder and you can see it from the park.
  */
 
 /** Every form is drawn to this width so a skyline lines up. */
 export const BUILDING_WIDTH = 11
 
 export type TierName =
-  | 'shack'
-  | 'single-storey'
-  | 'brick walk-up'
-  | 'cast-iron block'
-  | 'skyscraper'
+  | 'newsstand'
+  | 'bodega'
+  | 'brownstone'
+  | 'cast-iron loft'
+  | 'setback tower'
   | 'landmark'
-  | 'arcology'
+  | 'supertall'
 
 export interface Tier {
   name: TierName
@@ -35,60 +41,66 @@ export interface Tier {
 
 const TIERS: readonly Tier[] = [
   {
-    name: 'shack',
-    blurb: 'One pair of hands and a roof that mostly works.',
-    cap: ['   ,---.   ', '  /     \\  '],
-    storey: '  |  \u25ab  |  ',
-    ground: ['  |  \u25af  |  ', "  '-----'  "],
-    window: '\u25ab',
+    name: 'newsstand',
+    // A corner kiosk with an awning over the papers.
+    blurb: 'Plywood, a roll-down shutter and one bare bulb. It opens early.',
+    cap: ['  ▗▄▄▄▄▄▖  ', '   ┌───┐   '],
+    storey: '   │▫ ▫│   ',
+    ground: ['   │▫ ▯│   ', '   └───┘   '],
+    window: '▫',
   },
   {
-    name: 'single-storey',
-    blurb: 'Squared up, properly roofed, and open for business.',
-    cap: ['    ___    ', '   /   \\   ', '  /_____\\  '],
-    storey: '  | \u25ab \u25ab |  ',
-    ground: ['  | \u25af \u25ab |  ', '  \u2514\u2500\u2500\u2500\u2500\u2500\u2518  '],
-    window: '\u25ab',
+    name: 'bodega',
+    blurb: 'An awning, a neon OPEN and a cat in the window. Somebody is always in.',
+    // The sign board on the parapet, then the striped awning over the shopfront.
+    cap: [' ▗▄▄▄▄▄▄▄▖ ', '  │ OPEN│  '],
+    storey: '  │▫ ▫ ▫│  ',
+    ground: ['  ╱▨▨▨▨▨╲  ', '  │▫ ▯ ▫│  ', '  ╘═════╛  '],
+    window: '▫',
   },
   {
-    name: 'brick walk-up',
-    blurb: 'Four solid walls and a cornice. People work here.',
-    cap: [' \u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584\u2584 ', '  \u250c\u2500\u2500\u2500\u2500\u2500\u2510  '],
-    storey: '  \u2502\u25ab \u25ab \u25ab\u2502  ',
-    ground: ['  \u2502\u25ab \u25af \u25ab\u2502  ', '  \u2558\u2550\u2550\u2550\u2550\u2550\u255b  '],
-    window: '\u25ab',
+    name: 'brownstone',
+    blurb: 'A high stoop, tall windows and a proper cornice. People work here.',
+    // A water tower on the roof, the cornice under it, and the stoop coming
+    // down to the pavement on the right of the parlour door.
+    cap: ['    ▟█▙    ', '    ║ ║    ', ' ▄▄▄▄▄▄▄▄▄ ', '  ┌─────┐  '],
+    storey: '  │▫ ▫ ▫│  ',
+    ground: ['  │▫ ▯ ▫│  ', '  ╘═▃▂▁═╛  '],
+    window: '▫',
   },
   {
-    name: 'cast-iron block',
-    blurb: 'Arched bays and ornament. The good part of town.',
-    cap: [' \u2552\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2555 ', ' \u2502\u2581\u2581\u2581\u2581\u2581\u2581\u2581\u2502 '],
-    storey: ' \u2502 \u2229 \u2229 \u2229 \u2502 ',
-    ground: [' \u2502 \u2229 \u25af \u2229 \u2502 ', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b '],
-    window: '\u2229',
+    name: 'cast-iron loft',
+    blurb: 'Painted iron, arched bays, a fire escape down the front. The good part of town.',
+    cap: [' ╒═══════╕ ', ' │▁▁▁▁▁▁▁│ '],
+    // The left edge of every storey is the fire-escape landing sticking out.
+    storey: ' ╞ ∩ ∩ ∩ │ ',
+    ground: [' │ ∩ ▯ ∩ │ ', ' ╘═══════╛ '],
+    window: '∩',
   },
   {
-    name: 'skyscraper',
-    blurb: 'Steel frame, setbacks, and a crown you can see from the bridge.',
-    cap: ['   \u2584\u2584\u2584\u2584\u2584   ', '   \u2502\u25aa\u25aa\u25aa\u2502   ', ' \u2584\u2584\u2534\u2500\u2500\u2500\u2500\u2500\u2534\u2584', ' \u2502\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2502'],
-    storey: ' \u2502\u25aa\u25aa \u25aa\u25aa \u25aa\u25aa\u2502',
-    ground: [' \u2502\u25aa\u25aa \u25af\u25af \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
-    window: '\u25aa',
+    name: 'setback tower',
+    blurb: 'It steps back as it rises, because the code said so. You can see the crown from the bridge.',
+    cap: ['   ▄▄▄▄▄   ', '   │▪▪▪│   ', ' ▄▄┴─────┴▄', ' │▪▪▪▪▪▪▪▪│'],
+    storey: ' │▪▪ ▪▪ ▪▪│',
+    ground: [' │▪▪ ▯▯ ▪▪│', ' ╘════════╛'],
+    window: '▪',
   },
   {
     name: 'landmark',
-    blurb: 'It has a spire. People give directions by it.',
-    cap: ['     \u2577     ', '    \u2571\u25b2\u2572    ', '   \u2571\u2500\u2500\u2500\u2572   ', '   \u2502\u25aa\u25aa\u25aa\u2502   ', ' \u2584\u2584\u2534\u2500\u2500\u2500\u2500\u2500\u2534\u2584', ' \u2502\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2502'],
-    storey: ' \u2502\u25aa\u25aa \u25aa\u25aa \u25aa\u25aa\u2502',
-    ground: [' \u2502\u25aa\u25aa \u25af\u25af \u25aa\u25aa\u2502', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b'],
-    window: '\u25aa',
+    blurb: 'A spire, a lantern and one gargoyle. People give directions by it.',
+    cap: ['     ╷     ', '    ╱▲╲    ', '   ╱───╲   ', '   │▪▪▪│   ', ' ▄▄┴─────┴▄', ' │▪▪▪▪▪▪▪▪│'],
+    storey: ' │▪▪ ▪▪ ▪▪│',
+    ground: [' │▪▪ ▯▯ ▪▪│', ' ╘════════╛'],
+    window: '▪',
   },
   {
-    name: 'arcology',
-    blurb: 'Sky bridges and a halo. It stopped being a building a while ago.',
-    cap: ['     \u25b2     ', '   \u2571\u2500\u2500\u2500\u2572   ', ' \u25dc\u2500\u2524\u25aa\u25aa\u25aa\u251c\u2500\u25dd ', ' \u2570\u2500\u2500\u2534\u2500\u2534\u2500\u2500\u256f '],
-    storey: ' \u255e\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u25aa\u2561 ',
-    ground: [' \u255e\u25aa\u25aa \u25af \u25aa\u25aa\u2561 ', ' \u2558\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255b '],
-    window: '\u25aa',
+    name: 'supertall',
+    blurb: 'Sixty feet wide, and it keeps going. There is still a crane on the top.',
+    // The crane is not finished with it yet, which is true of every one of them.
+    cap: ['  ╶──┬───╴ ', '     │     ', '     │     ', '   ┌─┴─┐   '],
+    storey: '   │▪▪▪│   ',
+    ground: ['   │▪▯▪│   ', '   ╘═══╛   '],
+    window: '▪',
   },
 ]
 

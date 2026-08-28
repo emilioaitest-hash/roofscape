@@ -1,11 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  ACCENTS, PALETTES, REGISTER_SLIP, TIER_ORDER,
-  designFor, seedOf, FLOOR_HEIGHT, type Palette,
+  ACCENTS, PALETTES, MATERIALS, REGISTER_SLIP, TIER_ORDER,
+  WINDOW_SHAPES, CROWN_KINDS, BASE_KINDS, ORNAMENTS, STREET_FURNITURE,
+  designFor, seedOf, streetFurniture, FLOOR_HEIGHT,
+  type Palette, type MaterialFamily,
 } from './design.js'
 import { citySvg, buildingSvg, portraitSvg } from './svg.js'
-import { tierOf, allTiers } from './tiers.js'
+import { tierOf, allTiers, type TierName } from './tiers.js'
 
 const design = (id: string, headcount: number) => designFor({ id, name: id, headcount })
 
@@ -163,7 +165,7 @@ test('two buildings the same size do not look the same', () => {
 
 test('a storey is the same height in every form', () => {
   // Height is headcount, and it stops being true the moment a tower's floors are
-  // drawn shorter than a walk-up's. Without this the skyline lies.
+  // drawn shorter than a brownstone's. Without this the skyline lies.
   for (const tierName of TIER_ORDER) {
     const headcount = allTiers().findIndex((t) => t.name === tierName) + 1
     const d = design('x', Math.max(1, headcount))
@@ -191,7 +193,7 @@ test('a building only redecorates when it changes form', () => {
   // is allowed to, because it has become a different kind of building.
   const five = design('steady', 5)
   const seven = design('steady', 7)
-  assert.equal(seven.palette.name, five.palette.name, 'the cast-iron block repainted itself')
+  assert.equal(seven.palette.name, five.palette.name, 'the cast-iron loft repainted itself')
   assert.equal(seven.crown, five.crown)
   assert.equal(seven.floors, 7, 'but it did grow')
 
@@ -221,20 +223,104 @@ test('a plate that is out of register stays out of register as the building grow
   assert.ok(slips.size >= 8, `ten buildings shared ${10 - slips.size} misprints`)
 })
 
-test('the forms are built out of finishes that suit them', () => {
-  const named = new Set<string>((Object.values(PALETTES) as Palette[]).map((p) => p.name))
+test('the ladder is geological: masonry at the bottom, metal and glass at the top', () => {
+  /*
+   * Low buildings are masonry and paint; tall ones are metal and glass. That is
+   * true outside, and it is what makes a skyline legible from across a room —
+   * you know roughly how big a building is before you have counted a storey.
+   * A brownstone is never black steel and a supertall is never red brick.
+   *
+   * Painted cast iron gets the strictest clause of the lot: it belongs to the
+   * loft and to nothing else, because a block that reads as SoHo is the whole
+   * reason that rung has a name.
+   */
+  const allowed: Record<TierName, readonly MaterialFamily[]> = {
+    newsstand: ['street', 'masonry'],
+    bodega: ['street', 'masonry'],
+    brownstone: ['masonry'],
+    'cast-iron loft': ['iron', 'masonry'],
+    'setback tower': ['masonry'],
+    landmark: ['masonry', 'metal'],
+    supertall: ['metal'],
+  }
+
+  for (const tier of TIER_ORDER) {
+    const materials = MATERIALS[tier]
+    assert.ok(materials.length >= 4, `${tier} is built out of only ${materials.length} things`)
+    for (const key of materials) {
+      const palette = PALETTES[key]
+      assert.ok(
+        allowed[tier].includes(palette.family),
+        `a ${tier} can be built out of ${palette.name}, which is ${palette.family}`,
+      )
+    }
+  }
+
+  // Said the other way round, because these are the two sentences the brief
+  // actually makes and they are the ones worth failing on.
+  const families = (tier: TierName) => MATERIALS[tier].map((key) => PALETTES[key].family)
+  assert.ok(!families('brownstone').includes('metal'), 'a brownstone was clad in steel')
+  assert.ok(!families('supertall').includes('masonry'), 'a supertall was built out of brick')
+  for (const tier of TIER_ORDER) {
+    if (tier === 'cast-iron loft') continue
+    assert.ok(!families(tier).includes('iron'), `${tier} was painted up as cast iron`)
+  }
+
+  // And what a building actually comes out wearing is on its own form's list.
   for (let headcount = 1; headcount <= 25; headcount++) {
     for (let i = 0; i < 6; i++) {
       const d = design(`m-${i}`, headcount)
-      assert.ok(named.has(d.palette.name), `${d.palette.name} is not a known finish`)
+      const names = MATERIALS[d.tier.name].map((key) => PALETTES[key].name)
+      assert.ok(names.includes(d.palette.name), `a ${d.tier.name} turned up in ${d.palette.name}`)
     }
   }
-  // The ladder is a ladder of *finish*, and it only means anything if the bottom
-  // of it cannot reach the top. A shack is never lacquered, exactly as it was
-  // never glazed in curtain wall, and this is the same test that guarded that.
-  const shacks = Array.from({ length: 24 }, (_, i) => design(`s-${i}`, 1).palette.name)
-  for (const shack of shacks) {
-    assert.ok(!/lacquer|anodised|enamel/.test(shack), `a shack was finished in ${shack}`)
+})
+
+test('every word in the vocabulary is on a list some building can reach', () => {
+  // A crown nobody can reach is a crown that is not in the city, and the way one
+  // goes missing is by being dropped off the one list that mentions it. This is
+  // the cheap half of the check; the sweep below proves each one also draws.
+  const seen = {
+    window: new Set<string>(),
+    crown: new Set<string>(),
+    base: new Set<string>(),
+    ornament: new Set<string>(),
+  }
+  for (let i = 0; i < 600; i++) {
+    for (const headcount of [1, 2, 3, 5, 9, 13, 19]) {
+      const d = design(`v-${i}`, headcount)
+      seen.window.add(d.window)
+      seen.crown.add(d.crown)
+      seen.base.add(d.base)
+      for (const ornament of d.ornaments) seen.ornament.add(ornament)
+    }
+  }
+  const missing = (all: readonly string[], found: Set<string>) => all.filter((x) => !found.has(x))
+  assert.deepEqual(missing(WINDOW_SHAPES, seen.window), [], 'window shapes no building can have')
+  assert.deepEqual(missing(CROWN_KINDS, seen.crown), [], 'crowns no building can wear')
+  assert.deepEqual(missing(BASE_KINDS, seen.base), [], 'bases no building can stand on')
+  assert.deepEqual(missing(ORNAMENTS, seen.ornament), [], 'ornaments nobody can be carrying')
+})
+
+test('the two jokes are rationed to the one form that earns them', () => {
+  // One gargoyle per skyline, and a crane only on the thing that is still going
+  // up. Both stop being funny the moment they are everywhere.
+  for (let i = 0; i < 200; i++) {
+    for (const headcount of [1, 2, 3, 5, 9, 13, 19, 24]) {
+      const d = design(`j-${i}`, headcount)
+      if (d.ornaments.includes('gargoyle')) assert.equal(d.tier.name, 'landmark')
+      if (d.ornaments.includes('crane')) assert.equal(d.tier.name, 'supertall')
+      if (d.ornaments.includes('fire-escape')) {
+        assert.ok(['brownstone', 'cast-iron loft'].includes(d.tier.name), 'a fire escape on a tower')
+      }
+    }
+  }
+  // And the one thing each form always has, because without it the form is not
+  // that form: a deli with no awning is a shop with the lights on, and a SoHo
+  // loft with no fire escape down the front is a warehouse.
+  for (let i = 0; i < 40; i++) {
+    assert.ok(design(`sig-${i}`, 2).ornaments.includes('deli-awning'), 'a bodega with no awning')
+    assert.ok(design(`sig-${i}`, 6).ornaments.includes('fire-escape'), 'a loft with no fire escape')
   }
 })
 
@@ -346,11 +432,10 @@ test('every form draws without throwing, at every size that reaches it', () => {
 })
 
 test('every crown and every ornament draws, and none of them draws nothing', () => {
-  // Twenty-five crowns and twenty-three ornaments are the wit in the drawing.
-  // The spec counts twenty-four because `cornice` is shared between the walk-up
-  // and the cast-iron block and gets counted once; the union has twenty-five.
-  // Sweeping a great many ids is how each one actually gets exercised, and a
-  // silently empty `case` is exactly the way one of them would go missing.
+  // The crowns and the ornaments are the wit in the drawing. Sweeping a great
+  // many ids is how each one actually gets exercised, and a silently empty
+  // `case` is exactly the way one of them would go missing. The counts come off
+  // the vocabulary itself so that adding a word to it adds work here too.
   const crowns = new Set<string>()
   const ornaments = new Set<string>()
   for (let i = 0; i < 400; i++) {
@@ -361,14 +446,72 @@ test('every crown and every ornament draws, and none of them draws nothing', () 
       const svg = buildingSvg(d)
       assert.ok(!svg.includes('NaN') && !svg.includes('undefined'), `${d.crown} drew badly`)
       // An empty group is a `case` that fell through and drew nothing at all.
-      assert.ok(!/<g class="rs-crown[^>]*><\/g>/.test(svg), `the ${d.crown} crown drew nothing`)
+      // The `\s*` is the point: the two plates are joined with newlines, so the
+      // old form of this pattern could never match and the guard was decorative
+      // for as long as it had been written down.
+      assert.ok(!/<g class="rs-crown[^>]*>\s*<\/g>/.test(svg), `the ${d.crown} crown drew nothing`)
+      // An ornament that matches no `case` leaves no group behind at all, which
+      // is quieter still: the building is simply not carrying the thing it was
+      // given.
+      for (const ornament of d.ornaments) {
+        assert.ok(svg.includes(`rs-o-${ornament}`), `the ${ornament} was never drawn`)
+      }
     }
   }
-  assert.equal(crowns.size, 25, `only ${crowns.size} crowns are reachable`)
-  assert.equal(ornaments.size, 23, `only ${ornaments.size} ornaments are reachable`)
+  assert.equal(crowns.size, CROWN_KINDS.length, `only ${crowns.size} crowns are reachable`)
+  assert.equal(ornaments.size, ORNAMENTS.length, `only ${ornaments.size} ornaments are reachable`)
   // The decorative one is called a pennant now, so the word cannot be mistaken
   // for the mark that means something is waiting on you.
   assert.ok(ornaments.has('pennant') && !ornaments.has('flag'))
+})
+
+// ---- the street ------------------------------------------------------------
+
+test('the street belongs to the city, and a hydrant is not part of any building', () => {
+  /*
+   * A hydrant, a bare tree in a pit, a steam vent, a subway railing: these stand
+   * on the pavement, not on anybody's plot. Seeding them off the city rather
+   * than off a building is what keeps decision 0013's promise intact — the
+   * building you have not touched in a month is still the one you recognise,
+   * however much its neighbour has grown.
+   */
+  const once = streetFurniture('home', 8)
+  const twice = streetFurniture('home', 8)
+  assert.deepEqual(twice, once, 'the street was rearranged between two draws of it')
+
+  // Every gap is seeded on its own, so extending the row at one end leaves the
+  // other end exactly where it was.
+  const longer = streetFurniture('home', 12)
+  assert.deepEqual(longer.filter((f) => f.gap < 8), once, 'a new plot moved the furniture down the block')
+
+  // Two cities are two streets.
+  const elsewhere = streetFurniture('other-home', 8)
+  assert.notDeepEqual(elsewhere, once, 'every city gets the same street')
+
+  const kinds = new Set<string>(STREET_FURNITURE)
+  for (const fixture of streetFurniture('big', 60)) {
+    assert.ok(kinds.has(fixture.kind), `${fixture.kind} is not street furniture`)
+    assert.ok(fixture.at > 0.2 && fixture.at < 0.8, 'a fixture is drawn touching a building')
+    assert.ok(Number.isInteger(fixture.gap) && fixture.gap >= 0 && fixture.gap < 60)
+  }
+})
+
+test('the set pieces on the street are rationed, and the pavement is mostly empty', () => {
+  // Furniture in every gap reads as a diagram of a street rather than a street.
+  // And a block with four steam vents on it is a fairground.
+  for (const city of ['a', 'b', 'c', 'd', 'e']) {
+    const gaps = 40
+    const placed = streetFurniture(city, gaps)
+    assert.ok(placed.length < gaps * 0.7, `${city} paved its whole street with hydrants`)
+    const count = (kind: string) => placed.filter((f) => f.kind === kind).length
+    assert.ok(count('steam-vent') <= 1, `${city} has ${count('steam-vent')} steam vents`)
+    assert.ok(count('subway-entrance') <= 2, `${city} has ${count('subway-entrance')} subway entrances`)
+  }
+  // A street with no gaps in it is not an error, it is a street with one
+  // building on it.
+  assert.deepEqual(streetFurniture('empty', 0), [])
+  assert.deepEqual(streetFurniture('odd', Number.NaN), [])
+  assert.ok(streetFurniture('huge', 1e9).length < 300, 'a wide frame ran the street off the page')
 })
 
 test('an empty skyline is still a drawing, and it says what to do about it', () => {
@@ -448,7 +591,7 @@ test('the drawing fills the frame it was given, in both directions', () => {
    * stripe above the roofline and another below the street rather than like a
    * bug. Widening with pavement covered a frame that was relatively wider; a
    * frame that was relatively *taller* had nothing to give, which is the common
-   * case: four shacks on a laptop.
+   * case: four newsstands on a laptop.
    */
   const ratio = (svg: string) => {
     const box = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)!
@@ -483,20 +626,48 @@ test('the drawing fills the frame it was given, in both directions', () => {
   }
 })
 
-test('air is what makes up the difference, not stretched buildings', () => {
-  // The fit must not come out of the drawing itself: the buildings stay the
-  // size they were drawn and the street stays where it is. Only the paper above
-  // them grows.
-  const short = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 400 })
-  const tall = citySvg([{ id: 'a', name: 'A', headcount: 3 }], { width: 1400, height: 1000 })
+test('more room draws the city bigger, and never smaller', () => {
+  /*
+   * This used to assert the opposite — that the scale was identical whatever
+   * height the frame reported — on the reasoning that a building drawn bigger
+   * on a taller window is a skyline whose heights cannot be compared with
+   * yesterday's.
+   *
+   * That reasoning was wrong, and it was expensive. Fitting on width alone, a
+   * street with an eighteen-storey tower on it came out taller than its frame,
+   * and the block that matches the frame's shape had to add pavement until the
+   * ratios agreed: a page asking for 1600×620 was handed a sheet 3121 wide with
+   * the buildings spanning 1069 of it. A review measured the result at 0.72×,
+   * where the misregistration, the socket lip and the figure at the desk are
+   * all under one pixel — the three inventions the whole language rests on,
+   * below the resolution of the screen it ships on.
+   *
+   * Heights are compared *within* one drawing, and every building is scaled by
+   * the same number, so nothing about that comparison is harmed. What must hold
+   * is that more room is never punished, and that the ladder is not rescaled
+   * building by building. Both are checked here.
+   */
+  const city = [
+    { id: 'a', name: 'A', headcount: 3 },
+    { id: 'b', name: 'B', headcount: 12 },
+  ]
+  const short = citySvg(city, { width: 1400, height: 400 })
+  const tall = citySvg(city, { width: 1400, height: 1000 })
   const heightOf = (svg: string) => Number(svg.match(/viewBox="0 0 [\d.]+ ([\d.]+)"/)![1])
+  const scaleOf = (svg: string) => Number(svg.match(/class="rs-plot"[^>]*scale\(([\d.]+)\)/)![1])
 
   assert.ok(heightOf(tall) > heightOf(short), 'a taller frame did not get a taller canvas')
+  assert.ok(
+    scaleOf(tall) >= scaleOf(short),
+    `more room drew the city smaller (${scaleOf(tall)} against ${scaleOf(short)})`,
+  )
 
-  // The plot transform carries the scale each building is drawn at. Same in
-  // both, or the fit is being paid for by the buildings.
-  const scaleOf = (svg: string) => svg.match(/class="rs-plot"[^>]*scale\(([\d.]+)\)/)![1]
-  assert.equal(scaleOf(tall), scaleOf(short), 'the buildings were resized to fit the frame')
+  // One number for the whole street, in both frames: a fit paid for by scaling
+  // buildings against each other would break the one thing the skyline claims.
+  for (const svg of [short, tall]) {
+    const scales = [...svg.matchAll(/class="rs-plot"[^>]*scale\(([\d.]+)\)/g)].map((m) => m[1])
+    assert.equal(new Set(scales).size, 1, 'buildings were scaled against each other')
+  }
 })
 
 test('a width on its own is honoured rather than quietly dropped', () => {
@@ -510,7 +681,7 @@ test('a width on its own is honoured rather than quietly dropped', () => {
   assert.ok(widthOf(asked) > widthOf(silent), 'asking for a width changed nothing')
 })
 
-test('a headcount that is not a number is drawn as a shack, not as nothing', () => {
+test('a headcount that is not a number is drawn as a newsstand, not as nothing', () => {
   // Math.max passes NaN through, and it reached the page as viewBox="0 0 NaN
   // NaN" — a document that renders as nothing rather than as an error.
   const d = designFor({ id: 'x', name: 'X', headcount: Number.NaN })
@@ -523,11 +694,13 @@ test('a headcount that is not a number is drawn as a shack, not as nothing', () 
 
 test('two buildings whose seeds collide are still two buildings', () => {
   // The seed is a 32-bit hash and these two really do collide. Nothing in the
-  // drawing may be keyed on it alone.
-  assert.equal(seedOf('b2cir:shack'), seedOf('b9kc:single-storey'), 'the collision this guards against')
+  // drawing may be keyed on it alone. The pair had to be found again when the
+  // ladder was renamed — the form is part of what is hashed, so `b2cir:shack`
+  // and `b9kc:single-storey` are not addresses in this city any more.
+  assert.equal(seedOf('m0cp:newsstand'), seedOf('aagb:bodega'), 'the collision this guards against')
 
   const svg = citySvg(
-    [{ id: 'b2cir', name: 'One', headcount: 1 }, { id: 'b9kc', name: 'Two', headcount: 2 }],
+    [{ id: 'm0cp', name: 'One', headcount: 1 }, { id: 'aagb', name: 'Two', headcount: 2 }],
     { width: 1400, height: 800 },
   )
   const ids = [...svg.matchAll(/ id="([^"]+)"/g)].map((m) => m[1])

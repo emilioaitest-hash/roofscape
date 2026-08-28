@@ -29,8 +29,8 @@
  * pavement, and up is negative. Every helper below obeys that and nothing else
  * has to think about it.
  */
-import type { BuildingDesign, Ornament, WindowShape } from './design.js'
-import { designFor, Chooser, seedOf, type DesignInput } from './design.js'
+import type { BuildingDesign, Ornament, Palette, StreetFixture, WindowShape } from './design.js'
+import { designFor, Chooser, seedOf, streetFurniture, type DesignInput } from './design.js'
 import { floorsSaid } from './tiers.js'
 
 /** What the building is doing, which is the only thing that animates. */
@@ -69,6 +69,16 @@ export interface CityOptions {
   labels?: boolean
   /** An empty lot at the end, for breaking ground on the next one. */
   emptyLot?: boolean
+  /**
+   * A stable key for *this* street, which its furniture is seeded off.
+   *
+   * The home's id is the right thing to pass. A hydrant belongs to the kerb
+   * rather than to the building behind it, so it cannot be seeded off a
+   * building without two neighbours who both rolled one putting two hydrants on
+   * one corner — and seeding it off the row as a whole would rearrange the far
+   * end of the street every time somebody broke ground at this one.
+   */
+  city?: string
 }
 
 export interface CityBuilding extends DesignInput, BuildingState {
@@ -96,6 +106,52 @@ function darken(hex: string, amount: number): string {
   return `#${[1, 3, 5]
     .map((i) => Math.round(channel(i) * (1 - amount)).toString(16).padStart(2, '0'))
     .join('')}`
+}
+
+/** How light a colour looks, 0–255, weighted the way the eye weights it. */
+function lightness(hex: string): number {
+  const c = (i: number) => parseInt(hex.slice(i, i + 2), 16)
+  return 0.299 * c(1) + 0.587 * c(3) + 0.114 * c(5)
+}
+
+/** Blend, so a hole can be lifted toward its own wall rather than toward grey. */
+function toward(from: string, to: string, amount: number): string {
+  const c = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16)
+  return `#${[1, 3, 5]
+    .map((i) =>
+      Math.round(c(from, i) + (c(to, i) - c(from, i)) * amount)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`
+}
+
+/**
+ * The darkest a hole is allowed to print.
+ *
+ * On warm paper a near-black fill stops reading as a recess and starts reading
+ * as a puncture — the paper has a hole in it rather than the building having a
+ * window. Eight of the eighteen palettes hand over a socket down at 25, which
+ * on a black-steel supertall turned the whole facade into a slab with dots in
+ * it. Two of them at once (a dark wall and a black socket) is the worst case
+ * and it is exactly the top of the ladder.
+ */
+const HOLE_FLOOR = 42
+
+/**
+ * The socket, as it is actually printed: never below the floor above.
+ *
+ * Lifted toward its *own wall* rather than toward grey, so it stays the same
+ * hole's colour — a brownstone's holes stay brown and a bottle-green loft's
+ * stay green. That is what makes an opening read as cut into the material
+ * rather than as pasted on top of it.
+ */
+function socketInk(palette: Palette): string {
+  const have = lightness(palette.socket)
+  if (have >= HOLE_FLOOR) return palette.socket
+  const wall = lightness(palette.wall)
+  if (wall <= have) return palette.socket
+  return toward(palette.socket, palette.wall, Math.min(0.5, (HOLE_FLOOR - have) / (wall - have)))
 }
 
 // ---- the press ------------------------------------------------------------
@@ -225,6 +281,45 @@ function massing(design: BuildingDesign): Block[] {
 const topWidth = (design: BuildingDesign): number => widthAtFloor(design, design.floors - 1)
 
 /**
+ * The highest roof that is not the top of the building.
+ *
+ * A setback tower's water tower stands on one of these, because a ledge is the
+ * only flat thing on a tower that steps in, and a barrel on a stick against the
+ * sky is a different — and much less true — drawing than one tucked into a
+ * corner of the massing with the shaft still going up behind it.
+ */
+function highestLedge(design: BuildingDesign): { y: number; width: number } | null {
+  const blocks = massing(design)
+  for (let i = blocks.length - 1; i >= 1; i--) {
+    const below = blocks[i - 1]!
+    if (blocks[i]!.width < below.width) return { y: below.top - 5, width: below.width }
+  }
+  return null
+}
+
+/**
+ * How far up the crown a thing left on the roof stands.
+ *
+ * Every one of these used to be placed at a *fraction of the crown's height*
+ * above the roofline, which reads correctly on a twelve-unit parapet and puts a
+ * satellite dish twenty-nine units into the open air beside a landmark's
+ * ninety-six-unit spire. A roof is a roof: things stand on it, and a tall crown
+ * is something they stand next to rather than something they climb.
+ */
+const perch = (design: BuildingDesign): number => -Math.min(design.crownHeight * 0.3, 10)
+
+/**
+ * The two colours a sidewalk shed is painted, which are not the building's.
+ *
+ * A shed does not belong to the building it is wrapped around — it belongs to
+ * whoever is being paid to have put it there — so it does not take the
+ * palette. This particular green is the one thing in New York that every
+ * scaffolding contractor agrees about. Both clear the meaning bands by a mile.
+ */
+const SHED_GREEN = '#4E7150'
+const SHED_PIPE = '#8C9AA0'
+
+/**
  * One building, as an SVG group with its feet at the origin.
  *
  * Returned as a `<g>` rather than a whole `<svg>` so a city can place several of
@@ -235,6 +330,14 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
   const lean = design.lean
   const transform = lean === 0 ? '' : ` transform="rotate(${round(lean)} 0 0)"`
   const pen = new Pen()
+  // What stands between the building and the street gets its own pair of
+  // plates, printed after the building's. Ink always lands on top of colour, so
+  // anything drawn into the building's own plates has the door and the
+  // shopfront outlines showing straight through it — which for a sidewalk shed,
+  // whose whole job is to be in the way, reads as a mistake rather than as a
+  // misprint. Two colour plates carry the same misregistration, so the shed is
+  // out of register by exactly as much as the building it is wrapped around.
+  const front = new Pen()
 
   // The lobby, then the shaft, then whatever is on top.
   baseSvg(pen, design)
@@ -243,9 +346,22 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
   setbackLedges(pen, design, blocks)
   windowsSvg(pen, design, state)
   crownSvg(pen, design, topWidth(design))
-  for (const ornament of design.ornaments) ornamentSvg(pen, design, ornament)
+  for (const ornament of design.ornaments) {
+    ornamentSvg(ornament === 'sidewalk-shed' ? front : pen, design, ornament)
+  }
 
   const { dx, dy } = design.register
+  const plate = (marks: readonly string[], ink: readonly string[]): string[] =>
+    marks.length + ink.length === 0
+      ? []
+      : [
+          `<g class="rs-plate-colour" style="--rs-dx:${dx}px;--rs-dy:${dy}px">`,
+          ...marks,
+          '</g>',
+          '<g class="rs-plate-ink">',
+          ...ink,
+          '</g>',
+        ]
   // Two nested groups on purpose. A CSS transform replaces an element's
   // `transform` attribute outright rather than composing with it, so the lean
   // and the hover lift cannot live on the same node — put them together and a
@@ -255,12 +371,8 @@ export function buildingSvg(design: BuildingDesign, state: BuildingState = {}): 
     '<g class="rs-building">',
     `<g class="rs-lean"${transform}>`,
     // Colour first, ink over it, exactly as it would go through a press.
-    `<g class="rs-plate-colour" style="--rs-dx:${dx}px;--rs-dy:${dy}px">`,
-    ...pen.colour,
-    '</g>',
-    '<g class="rs-plate-ink">',
-    ...pen.ink,
-    '</g>',
+    ...plate(pen.colour, pen.ink),
+    ...plate(front.colour, front.ink),
     // The one thing that is never misprinted. See `waitingPin`.
     (state.waiting ?? 0) > 0 ? waitingPin(design) : '',
     '</g>',
@@ -298,18 +410,17 @@ function blockSvg(pen: Pen, design: BuildingDesign, block: Block): void {
 
   if (design.pilasters) pilasters(pen, design, block)
   if (design.bandCourse) bandCourses(pen, design, block)
-  if (design.tier.name === 'shack') boards(pen, design, block)
+  if (design.tier.name === 'newsstand') boards(pen, design, block)
 }
 
 /**
- * The mismatched boards a shack is actually made of.
+ * The mismatched boards a newsstand is actually made of.
  *
  * Without this the first building anybody sees is a small tidy box, which is
- * the wrong promise: the shack is supposed to look like somebody threw it up in
- * an afternoon, so that the walk-up two hires later feels earned. Under
+ * the wrong promise: a kiosk is supposed to look like somebody threw it up in
+ * an afternoon, so that the brownstone two hires later feels earned. Under
  * Overprint it is drawn rather than shaded — a few ink lines where the boards
- * meet, one patch nailed over a gap, and a brace holding the whole thing
- * together.
+ * meet, one patch of ply nailed over a gap, and a brace holding it together.
  */
 function boards(pen: Pen, design: BuildingDesign, block: Block): void {
   const rng = new Chooser(seedOf(`${design.id}:weather`))
@@ -398,27 +509,49 @@ interface Bay {
   floor: number
 }
 
+/**
+ * How big an opening is, as a fraction of its storey and of its bay.
+ *
+ * A table rather than a chain of ternaries: twelve shapes is well past where a
+ * nested conditional stays readable, and a shape nobody gave a size to should
+ * be a compile error rather than a window quietly drawn at the default. The
+ * numbers are the difference between a brownstone and a supertall as much as
+ * the massing is — a sash is tall and narrow with wall either side of it, and a
+ * curtain wall is the whole bay with a spandrel above and below and no wall at
+ * all.
+ */
+const OPENING: Record<WindowShape, { h: number; w: number }> = {
+  plank: { h: 0.42, w: 0.54 },
+  // A roll-down shutter is the shopfront: it fills the opening it covers.
+  shutter: { h: 0.54, w: 0.8 },
+  sash: { h: 0.64, w: 0.44 },
+  'plate-glass': { h: 0.54, w: 0.88 },
+  arched: { h: 0.68, w: 0.5 },
+  'round-top': { h: 0.64, w: 0.5 },
+  tall: { h: 0.7, w: 0.42 },
+  grid: { h: 0.55, w: 0.54 },
+  ribbon: { h: 0.36, w: 0.84 },
+  slit: { h: 0.7, w: 0.26 },
+  porthole: { h: 0.52, w: 0.5 },
+  'curtain-wall': { h: 0.76, w: 0.86 },
+}
+
+/** Shapes that run right out to the piers, so they get a narrower margin. */
+const EDGE_TO_EDGE = new Set<WindowShape>(['ribbon', 'curtain-wall', 'plate-glass', 'shutter'])
+
 function windowGrid(design: BuildingDesign): Bay[] {
   const bays: Bay[] = []
   const shape = design.window
   for (let floor = 0; floor < design.floors; floor++) {
     const blockWidth = widthAtFloor(design, floor)
     const half = blockWidth / 2
-    const margin = blockWidth * (shape === 'ribbon' ? 0.07 : 0.12)
+    const margin = blockWidth * (EDGE_TO_EDGE.has(shape) ? 0.07 : 0.12)
     const usable = blockWidth - margin * 2
     const pitch = usable / design.bays
     const floorTop = -(design.baseHeight + (floor + 1) * design.floorHeight)
 
-    const heightFactor =
-      shape === 'tall' ? 0.66 : shape === 'slit' ? 0.7 : shape === 'ribbon' ? 0.36
-      : shape === 'arched' || shape === 'round-top' ? 0.6 : shape === 'plank' ? 0.42
-      : shape === 'porthole' ? 0.52 : 0.55
-    const widthFactor =
-      shape === 'ribbon' ? 0.84 : shape === 'slit' ? 0.26 : shape === 'tall' ? 0.44
-      : shape === 'porthole' ? 0.5 : 0.54
-
-    let height = design.floorHeight * heightFactor
-    let width = pitch * widthFactor
+    let height = design.floorHeight * OPENING[shape].h
+    let width = pitch * OPENING[shape].w
     // A drilled round hole is only round if it is drawn round.
     if (shape === 'porthole') width = height = Math.min(width, height)
     const y = floorTop + (design.floorHeight - height) / 2
@@ -439,19 +572,27 @@ function windowGrid(design: BuildingDesign): Bay[] {
 }
 
 /**
+ * How far inside its hole a counter sits.
+ *
+ * The same on both axes, which matters more than it looks: the busy state is
+ * drawn by stroking the counter until it fills the socket, and a counter inset
+ * by one amount across and another down cannot be grown back to the edge by a
+ * single stroke width.
+ */
+const counterInset = (bay: Bay): number => Math.min(1.5, bay.width * 0.2, bay.height * 0.2)
+
+/**
  * The outline of one opening.
  *
- * Nine shapes sharing one grammar, so that a facade of arches and a facade of
- * ribbons are recognisably the same city. `inset` gives the counter: the same
- * hole, a little smaller, sitting inside it.
+ * Twelve shapes sharing one grammar, so that a street of arched cast iron and a
+ * street of curtain wall are recognisably the same city. `inset` gives the
+ * counter: the same hole, a little smaller, sitting inside it.
  */
 function socketPath(shape: WindowShape, bay: Bay, inset = 0): string {
-  const dx = Math.min(inset, bay.width * 0.22)
-  const dy = Math.min(inset, bay.height * 0.22)
-  const x = bay.x + dx
-  const y = bay.y + dy
-  const w = bay.width - dx * 2
-  const h = bay.height - dy * 2
+  const x = bay.x + inset
+  const y = bay.y + inset
+  const w = bay.width - inset * 2
+  const h = bay.height - inset * 2
   const r = w / 2
 
   switch (shape) {
@@ -498,25 +639,36 @@ function lipPath(shape: WindowShape, bay: Bay): string {
 /**
  * Every window, with the lit ones marked rather than coloured.
  *
+ * **Marigold means work in hand and nothing else.** This used to light a
+ * sixteen-percent scatter of every facade as well, which meant that on a home
+ * screen where every building reported `working: 0` roughly a hundred windows
+ * were burning for decoration while the strip underneath said nine things were
+ * in hand. A building captioned *nobody in yet* was drawn with its lights on.
+ * A drawing that lies about its own state is worse than a plain one that does
+ * not, so the scatter is gone: the floors that are working are lit, from the
+ * top down, and every other opening is an empty hole. An idle facade of empty
+ * sockets is *correct* — the chamfer along each mass already stops it reading
+ * as abandoned.
+ *
  * The class is the interface: the page toggles `rs-busy` as work starts and
  * stops without asking the daemon to draw the building again. A building only
  * has to be re-rendered when it grows.
  *
- * Sockets and lips are merged into one path per storey — four shapes per window
- * against one before, and a twenty-storey tower has a hundred and twenty of
- * them. What is left is the counter, which the page has to be able to address,
- * and the figure, which is its sibling so that CSS can light one from the other
- * without a wrapper around each pair.
+ * Sockets, lips and glazing bars are merged into one path per storey — a
+ * twenty-storey tower has a hundred and twenty windows and four shapes each.
+ * What is left per window is the counter, which the page has to be able to
+ * address, and the figure, which is its sibling so that CSS can light one from
+ * the other without a wrapper around each pair.
  */
 function windowsSvg(pen: Pen, design: BuildingDesign, state: BuildingState): void {
   const { palette } = design
-  const ambient = new Set(design.ambientLights)
   const working = Math.max(0, Math.min(design.floors, state.working ?? 0))
   // Work lights a building from the head down, because that is the order it is
   // handed out in: the manager is on the top floor.
   const firstWorkingFloor = design.floors - working
   const shape = design.window
-  const lip = darken(palette.socket, 0.45)
+  const hole = socketInk(palette)
+  const lip = darken(hole, 0.4)
 
   const rows = new Map<number, Bay[]>()
   for (const bay of windowGrid(design)) {
@@ -530,7 +682,7 @@ function windowsSvg(pen: Pen, design: BuildingDesign, state: BuildingState): voi
 
   for (const [, bays] of rows) {
     const sockets = bays.map((bay) => socketPath(shape, bay)).join(' ')
-    pen.wash(`<path class="rs-socket" d="${sockets}" fill="${palette.socket}"/>`)
+    pen.wash(`<path class="rs-socket" d="${sockets}" fill="${hole}"/>`)
     pen.line(sockets)
     if (bays[0]!.height >= 6) {
       const lips = bays.map((bay) => lipPath(shape, bay)).join(' ')
@@ -538,33 +690,126 @@ function windowsSvg(pen: Pen, design: BuildingDesign, state: BuildingState): voi
         `<path class="rs-lip" d="${lips}" fill="none" stroke="${lip}" stroke-width="1.2" stroke-linecap="round"/>`,
       )
     }
+    // What divides the glass: the slats of a roll-down shutter, the meeting
+    // rail of a sash, the mullion of a structural bay.
+    //
+    // Drawn twice, which is not a mistake. A muntin is painted stone or painted
+    // steel, so against dark glass it is the *light* thing — draw it in ink and
+    // it disappears into the socket, which is what happened to every sash
+    // window in the city on the first pass. Against a lit window it is the dark
+    // thing, silhouetted. So the pale one goes under the counter and the ink one
+    // over it, and each window shows whichever of the two it can.
+    const bars = glazingBars(shape, bays)
+    if (bars) {
+      pen.wash(
+        `<path class="rs-mullion" d="${bars}" fill="none" stroke="${palette.lit}" stroke-width="1" stroke-linecap="round"/>`,
+      )
+    }
 
     for (const bay of bays) {
       const atWork = bay.floor >= firstWorkingFloor
-      const lit = atWork || ambient.has(bay.index)
       // Three flat marigolds, so a lit facade is a row of separate rooms rather
       // than one painted band. Chosen by position, so it never changes under a
       // re-render. The bay within its storey, offset by the storey — an earlier
       // form of this reduced to `index % 3`, which with a bay count divisible by
       // three made every column one fixed tone all the way up.
-      const warmth = lit ? ` rs-t${(bay.index + bay.floor * 2) % 3}` : ''
-      const classes = `rs-w${lit ? ' rs-on' : ''}${atWork ? ' rs-busy' : ''}${warmth}`
+      const warmth = atWork ? ` rs-t${(bay.index + bay.floor * 2) % 3}` : ''
+      const classes = `rs-w${atWork ? ' rs-on rs-busy' : ''}${warmth}`
+      const inset = counterInset(bay)
+      // The stroke width is what the third state is *made of*. A counter that
+      // is merely lit sits inset in its hole; one with somebody at it is
+      // stroked in its own colour until it fills the socket to the edge. That
+      // difference survives at six pixels, where the old one — a marigold 1.8
+      // L* brighter than the one next to it — did not survive at sixty.
       pen.wash(
-        `<path class="${classes}" data-floor="${bay.floor}" d="${socketPath(shape, bay, 1.5)}" fill="${palette.socket}"/>`,
+        `<path class="${classes}" data-floor="${bay.floor}" d="${socketPath(shape, bay, inset)}" fill="${hole}" stroke-width="${round(inset * 2)}"/>`,
       )
-      // Somebody sitting at the window. Only where there is room to see them,
-      // and only ever on the colour plate: a figure that drifted out of its own
-      // window would read as a bug rather than as a misprint.
-      if (bay.width >= 7) {
-        pen.wash(
-          `<circle class="rs-body" cx="${round(bay.x + bay.width * 0.3)}" cy="${round(bay.y + bay.height * 0.74)}" r="1.9"/>`,
-        )
-      }
+      pen.wash(figure(bay, inset))
     }
+    if (bars) pen.mark(`<path class="rs-bar" d="${bars}"/>`)
   }
 
   pen.wash('</g>')
   pen.mark('</g>')
+}
+
+/**
+ * Somebody sitting at that window.
+ *
+ * Emitted for *every* opening, which it was not before: the figure was the
+ * thing carrying the third state, and it was skipped on any bay under seven
+ * units wide — which is nine of the fifty form-and-shape combinations, all of
+ * them on the tallest buildings, where the states most needed telling apart. A
+ * signal is not allowed to fall off a width threshold. Where there is no room
+ * for a person there is a bar across the foot of the counter instead: the same
+ * ink, the same meaning, and it survives being two pixels tall.
+ *
+ * Only ever on the colour plate — a figure that drifted out of its own window
+ * would read as a bug rather than as a misprint.
+ */
+function figure(bay: Bay, inset: number): string {
+  if (bay.width >= 7.5 && bay.height >= 7.5) {
+    return `<circle class="rs-body" cx="${round(bay.x + bay.width * 0.32)}" cy="${round(bay.y + bay.height * 0.72)}" r="1.9"/>`
+  }
+  const bar = Math.max(1.2, Math.min(2.2, bay.height * 0.22))
+  const x = bay.x + inset
+  const w = Math.max(0.8, bay.width - inset * 2)
+  return `<path class="rs-body" d="${boxPath(x, bay.y + bay.height - inset - bar, w, bar)}"/>`
+}
+
+/**
+ * The bars across the glass, one merged path for a whole storey.
+ *
+ * This is most of what tells a brownstone's sash from a supertall's structural
+ * bay at the size these are actually drawn at, and it costs one node a floor.
+ */
+function glazingBars(shape: WindowShape, bays: readonly Bay[]): string {
+  const out: string[] = []
+  for (const bay of bays) {
+    const l = round(bay.x)
+    const r = round(bay.x + bay.width)
+    switch (shape) {
+      case 'shutter': {
+        // Slats. A roll-down shutter is nothing else.
+        const slats = Math.max(2, Math.round(bay.height / 3.4))
+        for (let i = 1; i < slats; i++) {
+          const y = round(bay.y + (bay.height / slats) * i)
+          out.push(`M ${l} ${y} H ${r}`)
+        }
+        break
+      }
+      case 'sash': {
+        // The meeting rail, where the top sash laps the bottom one.
+        const y = round(bay.y + bay.height * 0.44)
+        out.push(`M ${l} ${y} H ${r}`)
+        out.push(`M ${round(bay.x + bay.width / 2)} ${round(bay.y)} V ${round(bay.y + bay.height)}`)
+        break
+      }
+      case 'grid': {
+        const cx = round(bay.x + bay.width / 2)
+        const cy = round(bay.y + bay.height / 2)
+        out.push(`M ${cx} ${round(bay.y)} V ${round(bay.y + bay.height)}`)
+        out.push(`M ${l} ${cy} H ${r}`)
+        break
+      }
+      case 'curtain-wall': {
+        // One mullion up the middle and a transom under the head: a bay of
+        // glass with nothing else in it is a hole, not a building.
+        const cx = round(bay.x + bay.width / 2)
+        out.push(`M ${cx} ${round(bay.y)} V ${round(bay.y + bay.height)}`)
+        out.push(`M ${l} ${round(bay.y + bay.height * 0.16)} H ${r}`)
+        break
+      }
+      case 'plate-glass': {
+        // A shopfront pane sits on a stall riser and has a transom over it.
+        out.push(`M ${l} ${round(bay.y + bay.height * 0.22)} H ${r}`)
+        break
+      }
+      default:
+        break
+    }
+  }
+  return out.join(' ')
 }
 
 // ---- the lobby ------------------------------------------------------------
@@ -572,27 +817,28 @@ function windowsSvg(pen: Pen, design: BuildingDesign, state: BuildingState): voi
 /**
  * Glazing in the lobby.
  *
- * Divided into panes rather than left as one long counter. A lobby the width of
- * the building lit end to end is a great deal of marigold for something that is
- * not work, and it drowns out the one window upstairs that is. Panes, mullions,
- * and only some of them on — a lobby with the lights on, rather than a lightbox.
+ * It is glass, and it is not a light. This used to light the first pane
+ * unconditionally and flip a coin over the rest, so every building in the city
+ * had marigold at street level whether anybody was working in it or not — the
+ * largest single leak in a rule that says marigold means work in hand. The
+ * lobby gets the wall's own caught light instead: glass reflecting the sky,
+ * which is what a lobby window looks like from the pavement in the afternoon.
  *
- * The first pane is always lit, because the way in is always open.
+ * Divided into panes with mullions between them, because a sheet of glazing the
+ * width of the building is a lightbox rather than a way in.
  */
-function lobbyLight(pen: Pen, design: BuildingDesign, x: number, y: number, w: number, h: number): void {
+function lobbyGlazing(pen: Pen, design: BuildingDesign, x: number, y: number, w: number, h: number): void {
   const { palette } = design
-  pen.rect(x, y, w, h, palette.socket)
+  pen.rect(x, y, w, h, socketInk(palette))
 
   const panes = Math.max(1, Math.round(w / 17))
   const pitch = w / panes
-  const rng = new Chooser(seedOf(`${design.id}:lobby:${Math.round(x)}`))
   for (let i = 0; i < panes; i++) {
     if (i > 0) pen.line(`M ${round(x + pitch * i)} ${round(y)} V ${round(y + h)}`)
     const paneWidth = pitch - 3.4
     if (paneWidth < 2.5 || h < 5) continue
-    const lit = i === 0 || rng.chance(0.5)
-    pen.rect(x + pitch * i + 1.7, y + 1.7, paneWidth, h - 3.4, palette.socket, {
-      cls: lit ? 'rs-w rs-on' : 'rs-w',
+    pen.rect(x + pitch * i + 1.7, y + 1.7, paneWidth, h - 3.4, palette.lit, {
+      cls: 'rs-glazing',
       outline: false,
     })
   }
@@ -617,10 +863,18 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
   const room = -signBottom
   const doorWidth = Math.min(20, width * 0.16)
   const doorHeight = room * 0.72
-  const stoopLift = Math.min(9, room * 0.18)
-  const door = (lift = 0) => {
-    pen.rect(-doorWidth / 2, -doorHeight - lift, doorWidth, doorHeight, accent, { cls: 'rs-door' })
-    pen.line(`M 0 ${round(-doorHeight - lift + 2)} V ${round(-lift - 2)}`)
+  const door = (lift = 0, at = 0) => {
+    pen.rect(at - doorWidth / 2, -doorHeight - lift, doorWidth, doorHeight, accent, { cls: 'rs-door' })
+    pen.line(`M ${round(at)} ${round(-doorHeight - lift + 2)} V ${round(-lift - 2)}`)
+  }
+
+  // A kiosk is not a small building, it is a counter with a roof over it, so it
+  // gets its own ground floor rather than a shrunken version of somebody
+  // else's. Every newsstand has one whichever base it rolled.
+  if (design.tier.name === 'newsstand') {
+    kiosk(pen, design, signBottom)
+    facadeSign(pen, design, top, width)
+    return
   }
 
   switch (design.base) {
@@ -628,9 +882,14 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
       const glassW = width * 0.3
       const glassY = signBottom + 13
       const glassH = Math.max(7, -glassY - 3)
-      lobbyLight(pen, design, -half + width * 0.08, glassY, glassW, glassH)
-      lobbyLight(pen, design, half - width * 0.08 - glassW, glassY, glassW, glassH)
-      awning(pen, design, -half + width * 0.06, half - width * 0.06, signBottom + 2)
+      lobbyGlazing(pen, design, -half + width * 0.08, glassY, glassW, glassH)
+      lobbyGlazing(pen, design, half - width * 0.08 - glassW, glassY, glassW, glassH)
+      // A bodega carries a proper deli awning as its signature, drawn with the
+      // ornaments and twice this size. Two awnings over one shopfront is one
+      // awning too many.
+      if (!design.ornaments.includes('deli-awning')) {
+        awning(pen, design, -half + width * 0.06, half - width * 0.06, signBottom + 2)
+      }
       door()
       break
     }
@@ -639,6 +898,7 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
       const pitch = (width * 0.86) / count
       const r = pitch * 0.38
       const doorBay = Math.floor(count / 2)
+      const hole = socketInk(palette)
       for (let i = 0; i < count; i++) {
         const cx = -half + width * 0.07 + pitch * (i + 0.5)
         const spring = Math.max(-design.baseHeight * 0.42, signBottom + r + 3)
@@ -648,9 +908,12 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
           pen.shape(arch, accent, { cls: 'rs-door' })
           pen.line(`M ${round(cx)} ${round(-design.baseHeight * 0.46)} V -3`)
         } else {
-          pen.shape(arch, palette.socket)
+          pen.shape(arch, hole)
+          // Glass under an arch, not a light: an arcade lit end to end was
+          // marigold on every cast-iron building in the city, all day, for
+          // nothing.
           pen.wash(
-            `<path class="rs-w rs-on" d="M ${round(cx - r + 1.6)} -3.5 V ${round(spring)} A ${round(r - 1.6)} ${round(r - 1.6)} 0 0 1 ${round(cx + r - 1.6)} ${round(spring)} V -3.5 Z" fill="${palette.socket}"/>`,
+            `<path class="rs-glazing" d="M ${round(cx - r + 1.6)} -3.5 V ${round(spring)} A ${round(r - 1.6)} ${round(r - 1.6)} 0 0 1 ${round(cx + r - 1.6)} ${round(spring)} V -3.5 Z" fill="${palette.lit}"/>`,
           )
         }
       }
@@ -659,7 +922,7 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
     case 'colonnade': {
       const count = Math.max(4, design.bays + 1)
       const pitch = (width * 0.88) / (count - 1)
-      lobbyLight(pen, design, -half + width * 0.06, -design.baseHeight * 0.7, width * 0.88, design.baseHeight * 0.56)
+      lobbyGlazing(pen, design, -half + width * 0.06, -design.baseHeight * 0.7, width * 0.88, design.baseHeight * 0.56)
       for (let i = 0; i < count; i++) {
         const cx = -half + width * 0.06 + pitch * i
         pen.rect(cx - 3, signBottom + 6, 6, -signBottom - 6, palette.wall)
@@ -669,28 +932,19 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
       break
     }
     case 'plaza': {
-      lobbyLight(pen, design, -half + width * 0.1, -design.baseHeight * 0.66, width * 0.8, design.baseHeight * 0.52)
+      lobbyGlazing(pen, design, -half + width * 0.1, -design.baseHeight * 0.66, width * 0.8, design.baseHeight * 0.52)
       pen.rect(-half - 10, -6, width + 20, 6, palette.roof)
       pen.rect(-half + width * 0.08, signBottom + 3, width * 0.84, 4, accent)
       door()
       break
     }
-    case 'stoop': {
-      const step = stoopLift / 3
-      for (let i = 0; i < 3; i++) {
-        const w = doorWidth + 14 - i * 4
-        pen.rect(-w / 2, -(i + 1) * step, w, step, palette.trim)
-      }
-      door(stoopLift)
-      const sillY = signBottom + 3
-      lobbyLight(pen, design, -half + width * 0.1, sillY, width * 0.2, Math.max(6, -sillY - 4))
-      lobbyLight(pen, design, half - width * 0.3, sillY, width * 0.2, Math.max(6, -sillY - 4))
+    case 'stoop':
+      stoop(pen, design, signBottom, doorWidth)
       break
-    }
     case 'yard':
     default: {
       door()
-      lobbyLight(pen, design, -half + width * 0.12, signBottom + 3, width * 0.18, Math.max(6, room - 7))
+      lobbyGlazing(pen, design, -half + width * 0.12, signBottom + 3, width * 0.18, Math.max(6, room - 7))
       // The fence nobody has taken down.
       for (let i = 0; i < 5; i++) {
         const x = half - 5 - i * 5
@@ -702,6 +956,134 @@ function baseSvg(pen: Pen, design: BuildingDesign): void {
   }
 
   facadeSign(pen, design, top, width)
+}
+
+/**
+ * The high stoop. This is the most recognisable object in New York.
+ *
+ * Nobody has to be told what it is: a flight of steps climbing from the
+ * pavement to a door a storey above it, iron railings either side, and the
+ * garden-level door tucked in underneath. Four brownstones in a row and the
+ * street is Brooklyn, at any size the drawing is ever shown at — which is why
+ * this is a function with a stair and a railing in it rather than the three
+ * stacked rectangles it used to be.
+ *
+ * Drawn to one side, seeded, because a row of houses with every stoop in the
+ * middle is a diagram of a house rather than a row of them.
+ */
+function stoop(pen: Pen, design: BuildingDesign, signBottom: number, doorWidth: number): void {
+  const { palette, accent } = design
+  const half = design.width / 2
+  const room = -signBottom
+  const rng = new Chooser(seedOf(`${design.id}:stoop`))
+  const side = rng.chance(0.5) ? -1 : 1
+
+  // The parlour floor: high enough that the steps are obviously a climb, low
+  // enough that the door still has a door's proportions above them.
+  const lift = Math.max(9, Math.min(15, room * 0.52))
+  const doorAt = -side * design.width * 0.13
+  const landing = doorAt + side * (doorWidth / 2 + 2)
+  const run = Math.min(design.width * 0.36, 36)
+  const foot = landing + side * run
+  const steps = 6
+
+  // The flight, as one silhouette with a stepped top edge. Drawn as a single
+  // shape rather than as six rectangles so the ink outlines the stair rather
+  // than every tread inside it.
+  const tread = run / steps
+  const rise = lift / steps
+  const edge: string[] = [`M ${round(landing - side * (doorWidth + 4))} ${round(-lift)}`, `L ${round(landing)} ${round(-lift)}`]
+  for (let i = 0; i < steps; i++) {
+    const x = landing + side * tread * (i + 1)
+    edge.push(`L ${round(x)} ${round(-lift + rise * i)}`)
+    edge.push(`L ${round(x)} ${round(-lift + rise * (i + 1))}`)
+  }
+  edge.push(`L ${round(landing - side * (doorWidth + 4))} 0 Z`)
+  pen.shape(edge.join(' '), palette.trim)
+
+  // The iron railing, which is half of what makes a stoop a stoop. It follows
+  // the nosings up, on a newel post at each end, with balusters between.
+  const railTop = -lift - 11
+  const railFoot = -11
+  pen.line(`M ${round(landing)} ${round(railTop)} L ${round(foot)} ${round(railFoot)}`)
+  pen.line(`M ${round(landing)} ${round(railTop)} V ${round(-lift)}`)
+  pen.line(`M ${round(foot)} ${round(railFoot)} V 0`)
+  const balusters = 5
+  for (let i = 1; i < balusters; i++) {
+    const t = i / balusters
+    const x = landing + (foot - landing) * t
+    const yTop = railTop + (railFoot - railTop) * t
+    pen.line(`M ${round(x)} ${round(yTop)} V ${round(-lift + lift * t)}`)
+  }
+
+  // The parlour door at the head of the steps, and the garden door underneath
+  // it at the pavement — the half-storey nobody photographs and everybody
+  // recognises.
+  const doorHeight = Math.max(9, room - lift - 1)
+  pen.rect(doorAt - doorWidth / 2, -lift - doorHeight, doorWidth, doorHeight, accent, { cls: 'rs-door' })
+  pen.line(`M ${round(doorAt)} ${round(-lift - doorHeight + 2)} V ${round(-lift - 2)}`)
+
+  const gardenAt = doorAt - side * (doorWidth / 2 + 9)
+  pen.rect(gardenAt - 4.5, -11, 9, 11, socketInk(palette))
+  pen.line(`M ${round(gardenAt - 8)} -13 H ${round(gardenAt + 8)}`)
+
+  // And a tall parlour window on the far side of the door from the steps.
+  const sill = -lift - 2
+  const sashW = Math.min(14, design.width * 0.14)
+  const sashX = doorAt - side * (doorWidth / 2 + 9 + sashW)
+  if (Math.abs(sashX) + sashW / 2 < half - 4) {
+    lobbyGlazing(pen, design, sashX - sashW / 2, sill - Math.max(10, room - lift - 3), sashW, Math.max(10, room - lift - 3))
+  }
+}
+
+/**
+ * A newsstand: a counter, a rack of papers and a bulb over the till.
+ *
+ * The kiosk is the one form on the ladder that has no lobby to speak of, and
+ * drawing it with a door and a plate-glass window made it a very small office
+ * block. What it has instead is the serving hatch you buy a paper through, the
+ * rack the papers are clipped to, and the bulb somebody screwed into the
+ * ceiling of it — which is the only light in this whole city that is neither a
+ * window nor a signal, and is allowed to be marigold because it is a bulb.
+ */
+function kiosk(pen: Pen, design: BuildingDesign, signBottom: number): void {
+  const { palette, accent } = design
+  const half = design.width / 2
+  const hatchW = design.width * 0.5
+  const hatchY = signBottom + 5
+  const hatchH = Math.max(9, -hatchY - 9)
+
+  // The hatch, with the counter shelf across the bottom of it.
+  pen.rect(-hatchW / 2, hatchY, hatchW, hatchH, socketInk(palette))
+  pen.rect(-hatchW / 2 - 3, hatchY + hatchH, hatchW + 6, 3, palette.trim)
+
+  // Papers on the counter, seen end-on: a short stack and a taller one.
+  pen.rect(-hatchW / 2 + 3, hatchY + hatchH - 4, 11, 4, palette.lit)
+  pen.rect(-hatchW / 2 + 16, hatchY + hatchH - 6, 9, 6, palette.lit)
+  pen.line(`M ${round(-hatchW / 2 + 3)} ${round(hatchY + hatchH - 2)} H ${round(-hatchW / 2 + 14)}`)
+
+  // The rack, bolted to the side: three shelves of magazines.
+  const rackX = half - 4
+  for (let i = 0; i < 3; i++) {
+    const y = -8 - i * 8
+    pen.rect(rackX - 12, y - 6, 12, 6, palette.lit)
+    pen.line(`M ${round(rackX - 8)} ${round(y - 6)} V ${round(y)}`)
+  }
+
+  // The bulb, on its flex.
+  pen.line(`M ${round(-hatchW * 0.22)} ${round(hatchY)} V ${round(hatchY + 5)}`)
+  pen.disc(-hatchW * 0.22, hatchY + 7, 2.4, 'none', { cls: 'rs-bulb' })
+
+  // The shutter, half down over the far end of the hatch. Every one of them has
+  // one and half of them are stuck.
+  pen.rect(-hatchW / 2, hatchY, hatchW * 0.34, hatchH * 0.42, palette.trim)
+  for (let i = 1; i < 3; i++) {
+    const y = hatchY + (hatchH * 0.42 * i) / 3
+    pen.line(`M ${round(-hatchW / 2)} ${round(y)} H ${round(-hatchW / 2 + hatchW * 0.34)}`)
+  }
+
+  // And the way in, round the side.
+  pen.rect(-half + 3, -12, 7, 12, accent, { cls: 'rs-door' })
 }
 
 /**
@@ -886,7 +1268,11 @@ function crownSvg(pen: Pen, design: BuildingDesign, width: number): void {
     case 'lantern':
       pen.rect(-half * 0.72, -h * 0.42, width * 0.72, h * 0.42, palette.wall)
       pen.rect(-half * 0.34, -h * 0.86, width * 0.34, h * 0.46, palette.shade)
-      pen.rect(-half * 0.24, -h * 0.8, width * 0.24, h * 0.32, palette.socket, { cls: 'rs-w rs-on rs-busy' })
+      // Glazing, not a light. This one hard-coded `rs-w rs-on rs-busy` — the
+      // class that means somebody is at that desk right now — with no
+      // `data-floor` on it, so nothing in the product could ever clear it: a
+      // building with nobody in it had one window permanently at work.
+      pen.rect(-half * 0.24, -h * 0.8, width * 0.24, h * 0.32, palette.lit, { cls: 'rs-glazing' })
       pen.shape(
         `M ${round(-half * 0.4)} ${round(-h * 0.86)} L 0 ${round(-h)} L ${round(half * 0.4)} ${round(-h * 0.86)} Z`,
         palette.trim,
@@ -904,7 +1290,7 @@ function crownSvg(pen: Pen, design: BuildingDesign, width: number): void {
       )
       pen.shape(`M ${round(-half * 0.44)} ${round(-h * 0.3)} L 0 ${round(-h * 0.94)} L 0 ${round(-h * 0.3)} Z`, palette.lit, { outline: false })
       pen.line(`M 0 ${round(-h * 0.94)} V ${round(-h)}`)
-      beacon(pen, 0, -h - 2.6)
+      beacon(pen, 0, -h * 0.66, 9)
       break
     case 'needle':
       pen.rect(-half * 0.5, -h * 0.2, width * 0.5, h * 0.2, palette.wall)
@@ -912,9 +1298,10 @@ function crownSvg(pen: Pen, design: BuildingDesign, width: number): void {
         `M ${round(-half * 0.2)} ${round(-h * 0.2)} L 0 ${round(-h * 0.98)} L ${round(half * 0.2)} ${round(-h * 0.2)} Z`,
         palette.trim,
       )
+      // The observation deck, glazed. It used to be `rs-w rs-on`, permanently.
       pen.disc(0, -h * 0.42, width * 0.15, palette.shade)
-      pen.disc(0, -h * 0.42, width * 0.09, palette.socket, { cls: 'rs-w rs-on', outline: false })
-      beacon(pen, 0, -h - 2.4)
+      pen.disc(0, -h * 0.42, width * 0.09, palette.lit, { cls: 'rs-glazing', outline: false })
+      beacon(pen, 0, -h * 0.62)
       break
     case 'dome':
       pen.rect(-half * 0.7, -h * 0.24, width * 0.7, h * 0.24, palette.wall)
@@ -934,49 +1321,73 @@ function crownSvg(pen: Pen, design: BuildingDesign, width: number): void {
       pen.shape(`M -6 ${round(-h * 0.26)} L -2 ${round(-h)} L 2 ${round(-h)} L 6 ${round(-h * 0.26)} Z`, palette.trim)
       pen.line(`M -9 ${round(-h * 0.62)} H 9`)
       pen.line(`M -6.5 ${round(-h * 0.8)} H 6.5`)
-      beacon(pen, 0, -h - 2.4)
+      beacon(pen, 0, -h * 0.44, 12)
       break
-    case 'halo':
-      pen.rect(-half * 0.5, -h * 0.5, width * 0.5, h * 0.5, palette.wall)
-      pen.rect(-2.5, -h * 0.86, 5, h * 0.4, palette.trim)
-      pen.mark(
-        `<ellipse class="rs-halo" cx="0" cy="${round(-h * 0.86)}" rx="${round(width * 0.56)}" ry="${round(width * 0.13)}"/>`,
-      )
-      pen.mark(
-        `<ellipse cx="0" cy="${round(-h * 0.78)}" rx="${round(width * 0.38)}" ry="${round(width * 0.09)}"/>`,
-      )
-      break
-    case 'solar-fin':
-      pen.rect(-half * 0.8, -h * 0.2, width * 0.8, h * 0.2, palette.wall)
-      for (let i = 0; i < 4; i++) {
-        const x = -half * 0.7 + (width * 0.7 * i) / 3
-        pen.shape(
-          `M ${round(x)} 0 L ${round(x + 8)} ${round(-h)} L ${round(x + 13)} ${round(-h)} L ${round(x + 5)} 0 Z`,
-          i % 2 ? palette.trim : palette.shade,
-        )
+    /*
+     * The four supertall tops. A supertall does not finish, it *stops* — the
+     * shaft runs out of budget or out of air rights and something perfunctory
+     * is bolted on. That is the joke, and all four of these are things you can
+     * see from the reservoir.
+     */
+    case 'mechanical-floor': {
+      // 432 Park: two open braced storeys with the weather blowing through
+      // them, so the tower reads as unfinished from a mile away. The paper
+      // shows through on purpose — this is the one mass in the city that is not
+      // filled in.
+      const bays = 3
+      const pitch = width / bays
+      pen.rect(-half, -h, width, 5, palette.trim)
+      pen.rect(-half, -6, width, 6, palette.trim)
+      for (let i = 0; i <= bays; i++) {
+        const x = -half + pitch * i
+        pen.rect(x - 2, -h + 5, 4, h - 11, palette.shade, { outline: false })
+        pen.line(`M ${round(x)} ${round(-h + 5)} V -6`)
+      }
+      for (let i = 0; i < bays; i++) {
+        const l = -half + pitch * i
+        pen.line(`M ${round(l + 2)} -6 L ${round(l + pitch - 2)} ${round(-h + 5)}`)
       }
       break
-    case 'orb':
-      pen.rect(-half * 0.36, -h * 0.55, width * 0.36, h * 0.55, palette.wall)
-      pen.disc(0, -h * 0.72, width * 0.24, palette.shade)
-      pen.disc(0, -h * 0.72, width * 0.15, accent)
-      pen.mark(
-        `<ellipse cx="0" cy="${round(-h * 0.72)}" rx="${round(width * 0.38)}" ry="${round(width * 0.09)}"/>`,
+    }
+    case 'chisel':
+      // Citicorp: the shaft cut off on a slant, which was for solar panels that
+      // never arrived and is now simply what the building looks like.
+      pen.shape(
+        `M ${round(-half)} 0 L ${round(-half)} ${round(-h * 0.28)} L ${round(half)} ${round(-h)} L ${round(half)} 0 Z`,
+        palette.shade,
       )
+      pen.shape(
+        `M ${round(-half)} ${round(-h * 0.28)} L ${round(half)} ${round(-h)} L ${round(half)} ${round(-h + 6)} L ${round(-half)} ${round(-h * 0.28 + 6)} Z`,
+        palette.lit,
+        { outline: false },
+      )
+      pen.line(`M ${round(-half)} ${round(-h * 0.28 + 6)} L ${round(half)} ${round(-h + 6)}`)
       break
-    case 'skybridge-crown': {
-      const deck = -h * 0.66
-      pen.rect(-half * 0.86, -h, width * 0.26, h, palette.wall)
-      pen.rect(half * 0.6, -h * 0.82, width * 0.26, h * 0.82, palette.shade)
-      pen.rect(-half * 0.6, deck, width * 1.2, 9, palette.trim)
-      const panes = Math.max(3, Math.round(width / 13))
-      const pitch = (width * 1.1) / panes
-      for (let i = 0; i < panes; i++) {
-        pen.rect(-half * 0.55 + pitch * i + 1.4, deck + 2.4, pitch - 2.8, 4.2, palette.socket, {
-          cls: i % 2 ? 'rs-w rs-on' : 'rs-w',
-          outline: false,
-        })
+    case 'glass-fin': {
+      // A parapet of plain glass with one fin standing off the top of it, which
+      // is what a tower gets when the crown is the last thing left to cut.
+      pen.rect(-half, -h * 0.34, width, h * 0.34, palette.shade)
+      pen.rect(-half, -h * 0.34, width, 3.5, palette.trim)
+      const fin = half * 0.34
+      pen.shape(
+        `M ${round(fin - 3)} ${round(-h * 0.34)} L ${round(fin - 3)} ${round(-h)} L ${round(fin + 3)} ${round(-h + 9)} L ${round(fin + 3)} ${round(-h * 0.34)} Z`,
+        palette.trim,
+      )
+      beacon(pen, fin, -h * 0.72, 9)
+      break
+    }
+    case 'crown-terrace': {
+      // The last setback, with a rail round it. Somebody's terrace, and nobody
+      // has ever been seen on one.
+      pen.rect(-half * 0.82, -h * 0.55, width * 0.82, h * 0.55, palette.wall)
+      pen.rect(-half * 0.82, -h * 0.55, width * 0.82, 3, palette.lit, { outline: false })
+      pen.rect(-half, -6, width, 6, palette.roof)
+      const posts = Math.max(4, Math.round(width / 9))
+      for (let i = 0; i <= posts; i++) {
+        const x = -half + (width * i) / posts
+        pen.line(`M ${round(x)} -6 V -15`)
       }
+      pen.line(`M ${round(-half)} -15 H ${round(half)}`)
       break
     }
   }
@@ -985,9 +1396,21 @@ function crownSvg(pen: Pen, design: BuildingDesign, width: number): void {
   wrapRange(pen, colourFrom, inkFrom, open)
 }
 
-/** A bulb is allowed to be the colour of light. That is the rule, not a hole in it. */
-function beacon(pen: Pen, cx: number, cy: number): void {
-  pen.disc(cx, cy, 3, 'none', { cls: 'rs-beacon' })
+/**
+ * An aircraft warning light: a flat marigold band across the mast.
+ *
+ * A bulb is allowed to be the colour of light — that is the rule, not a hole in
+ * it. What it is *not* allowed to be is the same shape as the mark that means
+ * something is waiting on you. This used to be a disc on the tip of a spire or
+ * a needle, which is a vertical post with a ball on top: precisely the pin's
+ * anatomy, in the other meaning colour, and it blinked. The documentation
+ * claimed nothing else in the city had that silhouette and two crowns did.
+ *
+ * So it is a band across the shaft rather than a ball on the end of it, and it
+ * is set below the tip so the top of a spire is bare ink.
+ */
+function beacon(pen: Pen, cx: number, cy: number, width = 8): void {
+  pen.rect(cx - width / 2, cy - 2, width, 4, 'none', { cls: 'rs-beacon', rx: 1.2 })
 }
 
 /** Wrap the marks made since a mark in the log, on both plates at once. */
@@ -1027,7 +1450,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       pen.rect(-6.5, -26, 13, 4.5, palette.shade)
       // Smoke, drawn rather than glowed: on paper you cannot make anything pale.
       pen.mark('<path class="rs-smoke" d="M 0 -30 q -5 -5 0 -10 q 5 -5 0 -10" opacity="0.5"/>')
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.55, -design.crownHeight * 0.2))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.55, perch(design)))
       break
     }
     case 'vent-stack':
@@ -1040,7 +1463,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       pen.line('M 0 -21 V 0')
       pen.shape('M 0 -21 L 11 -16.5 L 0 -12 Z', accent)
       pen.line('M -6.5 -15 H 6.5')
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.45, -design.crownHeight * 0.55, rng.float(-7, 7)))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.45, perch(design), rng.float(-7, 7)))
       break
     case 'ladder': {
       pen.line('M -5 -27 V 0')
@@ -1050,14 +1473,111 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       break
     }
     case 'water-tower': {
+      // A wooden barrel on a steel frame, and the single most New York object
+      // there is. Banded, on four legs, with a conical lid.
       for (let i = -1; i <= 1; i += 2) pen.line(`M ${i * 9} -14 V 1`)
       pen.line('M -9 -8 L 9 -3')
       pen.rect(-13, -38, 26, 24, palette.trim, { rx: 2 })
       pen.shape('M -15 -38 L 0 -49 L 15 -38 Z', palette.roof)
       pen.line('M -13 -29 H 13')
       pen.line('M -13 -22 H 13')
-      // It leans. Nobody has ever straightened one of these.
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.5, -design.crownHeight * 0.1, rng.float(-4.5, 4.5)))
+      // On a setback tower it stands on a *lower* roof, which is where they
+      // are — the ledge a tower leaves when it steps in is the only flat thing
+      // on it. It leans, because nobody has ever straightened one of these.
+      const ledge = highestLedge(design)
+      const tilt = rng.float(-4.5, 4.5)
+      if (ledge) {
+        wrapRange(
+          pen,
+          colourFrom,
+          inkFrom,
+          `<g class="rs-ornament rs-o-water-tower" transform="translate(${round(side * ledge.width * 0.3)} ${round(ledge.y)}) rotate(${round(tilt)})">`,
+        )
+      } else {
+        wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.5, perch(design), tilt))
+      }
+      break
+    }
+    case 'roof-bulkhead': {
+      // The little brick box with the hatch in it, which is how anybody gets
+      // onto a roof in the first place. Every rowhouse has one and nobody has
+      // ever drawn one on purpose.
+      const w = Math.min(26, width * 0.34)
+      pen.rect(-w / 2, -17, w, 18, palette.wall)
+      pen.rect(-w / 2 - 2.5, -21, w + 5, 4.5, palette.roof)
+      pen.rect(-w * 0.22, -13, w * 0.44, 13, socketInk(palette))
+      pen.line(`M ${round(w * 0.22)} -19 L ${round(w * 0.42)} -25`)
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.42, perch(design)))
+      break
+    }
+    case 'standpipe': {
+      // The fire-department siamese connection, bolted to the front at waist
+      // height. Two brass outlets on a Y, and the only thing on a New York
+      // facade that everybody walks past and nobody looks at.
+      pen.line('M 0 -13 V 0')
+      pen.line('M 0 -13 L -6 -19')
+      pen.line('M 0 -13 L 6 -19')
+      pen.disc(-6.5, -20, 3, palette.trim)
+      pen.disc(6.5, -20, 3, palette.trim)
+      pen.rect(-2.5, -13, 5, 13, palette.trim, { outline: false })
+      wrapRange(
+        pen,
+        colourFrom,
+        inkFrom,
+        `<g class="rs-ornament rs-o-standpipe" transform="translate(${round(side * bodyHalf * 0.62)} 0)">`,
+      )
+      break
+    }
+    case 'gargoyle': {
+      // One good joke per skyline, and it is on the landmark. A steel eagle
+      // leaning out over the street from the corner of the crown, which is a
+      // thing the Chrysler Building actually has six of.
+      const out = side * 1
+      pen.shape(
+        `M 0 0 L ${round(out * 4)} -4 L ${round(out * 17)} -9 L ${round(out * 21)} -3 L ${round(out * 13)} 1 L ${round(out * 6)} 5 Z`,
+        palette.trim,
+      )
+      pen.shape(`M ${round(out * 5)} -4 L ${round(out * 12)} -16 L ${round(out * 15)} -7 Z`, palette.shade)
+      pen.line(`M ${round(out * 19)} -6 L ${round(out * 22)} -7`)
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.92, perch(design)))
+      break
+    }
+    case 'deli-awning': {
+      // The bodega's signature, so every one of them has it: a striped canvas
+      // over the whole shopfront, a lettering board along the valance, and the
+      // crates of fruit that are on the pavement outside by six in the morning.
+      const left = -bodyHalf + 3
+      const right = bodyHalf - 3
+      const span = right - left
+      const y = -design.baseHeight + Math.min(15, design.baseHeight * 0.38) + 2
+      const drop = 11
+      const lip = 6
+      const face = (a: number, b: number) =>
+        `M ${round(a)} ${round(y)} L ${round(b)} ${round(y)} L ${round(b - lip)} ${round(y + drop)} L ${round(a + lip)} ${round(y + drop)} Z`
+      pen.shape(face(left, right), accent)
+      const stripes = Math.max(4, Math.round(span / 13))
+      for (let i = 1; i < stripes; i += 2) {
+        const x = left + (span / stripes) * i
+        pen.shape(face(x, x + span / stripes), palette.lit, { outline: false })
+      }
+      // The valance, and the lettering on it: dashes rather than words, because
+      // a name at this size is a smudge and a smudge that says nothing is worse
+      // than a rule that says "sign".
+      pen.rect(left + lip, y + drop, span - lip * 2, 4.5, palette.lit)
+      const words = [0.1, 0.34, 0.52, 0.74]
+      for (const t of words) {
+        const x = left + lip + (span - lip * 2) * t
+        pen.line(`M ${round(x)} ${round(y + drop + 2.2)} H ${round(x + (span - lip * 2) * 0.14)}`)
+      }
+      // Crates, stacked two high on one side of the door.
+      const crateAt = side * bodyHalf * 0.56
+      for (let i = 0; i < 3; i++) {
+        const cx = crateAt + (i % 2 ? 7 : -7)
+        const cy = i < 2 ? -7 : -14
+        pen.rect(cx - 7, cy, 14, 7, palette.trim)
+        pen.line(`M ${round(cx - 7)} ${round(cy + 3.5)} H ${round(cx + 7)}`)
+      }
+      wrapRange(pen, colourFrom, inkFrom, '<g class="rs-ornament rs-o-deli-awning">')
       break
     }
     case 'ac-units': {
@@ -1074,7 +1594,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       pen.line('M -7 -34 H 7')
       pen.line('M -5.5 -28 H 5.5')
       pen.line('M -4 -22 H 4')
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.6, -design.crownHeight * 0.3))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.6, perch(design)))
       break
     case 'satellite':
       pen.line('M 0 -12 V 0')
@@ -1085,21 +1605,21 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
     case 'pennant':
       pen.line('M 0 -30 V 0')
       pen.shape('M 1 -30 L 21 -26 L 1 -22 Z', accent, { cls: 'rs-pennant' })
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.7, -design.crownHeight * 0.6))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.7, perch(design)))
       break
     case 'clock':
       pen.disc(0, 0, 13, palette.trim)
       pen.disc(0, 0, 10, palette.lit)
       pen.line('M 0 -7 V 0')
       pen.line('M 0 0 H 6')
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.42, -design.crownHeight - 15))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.42, design.floorHeight * 1.7))
       break
     case 'neon-sign':
       pen.line('M 0 -26 V 0')
       pen.rect(-16, -41, 32, 16, palette.lit, { rx: 2 })
       pen.rect(-11, -36, 22, 3, accent, { cls: 'rs-neon', outline: false })
       pen.rect(-11, -31, 15, 3, accent, { cls: 'rs-neon', outline: false })
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.62, -design.crownHeight * 0.4))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.62, perch(design)))
       break
     case 'banner': {
       // In the blank margin beside the windows, hanging inward. Across the
@@ -1120,7 +1640,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
         const x = -20 + i * 10
         pen.disc(x, -8 - (i % 2) * 2.5, 4 + (i % 3), '#4F8A5B')
       }
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.25, -design.crownHeight * 0.05))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.25, perch(design)))
       break
     }
     case 'billboard':
@@ -1130,7 +1650,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       pen.rect(-15, -28, 24, 4, accent, { outline: false })
       pen.line('M -15 -21 H 15')
       pen.line('M -15 -16 H 3')
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.3, -design.crownHeight * 0.15))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.3, perch(design)))
       break
     case 'string-lights': {
       const span = design.width + 10
@@ -1139,10 +1659,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
         const t = i / 9
         const x = -span / 2 + span * t
         const sag = Math.sin(Math.PI * t) * 9
-        pen.disc(x, -6 + sag, 2.4, 'none', {
-          cls: 'rs-bulb',
-          attrs: ` style="animation-delay:${(i * 0.28).toFixed(2)}s"`,
-        })
+        pen.disc(x, -6 + sag, 2.2, 'none', { cls: 'rs-bulb' })
       }
       wrapRange(pen, colourFrom, inkFrom, at(0, -2))
       break
@@ -1152,7 +1669,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
         const x = -21 + i * 15
         pen.shape(`M ${x} 0 L ${x + 13} 0 L ${x + 11} -10 L ${x - 2} -10 Z`, palette.shade)
       }
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.3, -design.crownHeight * 0.05))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.3, perch(design)))
       break
     }
     case 'planters': {
@@ -1179,63 +1696,75 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
         ` c 0.2 -2.2 2.8 -2.2 2.8 0 l 2.4 0.7 l -2.3 0.8` +
         ` c 0.5 1.6 -0.6 3.4 -2.9 3.5 Z`
       for (let i = 0; i < 3; i++) {
-        pen.shape(bird(-12 + i * 12 + (i % 2) * 3), palette.trim, {
-          cls: 'rs-pigeon',
-          attrs: ` style="animation-delay:${(i * 1.4).toFixed(1)}s"`,
-        })
+        pen.shape(bird(-12 + i * 12 + (i % 2) * 3), palette.trim, { cls: 'rs-pigeon' })
       }
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.5, -design.crownHeight - 1))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.5, perch(design) - 1))
       break
     }
     case 'fire-escape': {
-      // Down the front, which is where they are, and the reason the cast-iron
-      // block reads as a cast-iron block at any size. Kept inside the footprint:
-      // ironwork that overhangs the brickwork reads as a rendering fault.
-      const platform = 22
-      const x = side * (design.width * 0.5 - platform / 2 - 5)
+      // Down the FRONT, past the arched bays, which is where SoHo has them and
+      // half of why a block of Greene Street looks like a block of Greene
+      // Street. Kept inside the footprint: ironwork overhanging the brickwork
+      // reads as a rendering fault rather than as iron.
+      const platform = Math.min(design.width * 0.42, 46)
+      const x = side * (design.width * 0.5 - platform / 2 - 4)
+      const left = x - platform / 2
+      const right = x + platform / 2
       for (let floor = 1; floor < design.floors; floor++) {
         const y = -(design.baseHeight + floor * design.floorHeight)
-        pen.line(`M ${round(x - platform / 2)} ${round(y)} H ${round(x + platform / 2)}`)
-        pen.line(`M ${round(x - platform / 2)} ${round(y - 9)} V ${round(y)}`)
-        pen.line(`M ${round(x + platform / 2)} ${round(y - 9)} V ${round(y)}`)
-        pen.line(`M ${round(x - platform / 2)} ${round(y - 5)} H ${round(x + platform / 2)}`)
+        // The landing, its rail, and the stanchions holding the rail up.
+        pen.line(`M ${round(left)} ${round(y)} H ${round(right)}`)
+        pen.line(`M ${round(left)} ${round(y - 9)} H ${round(right)}`)
+        pen.line(`M ${round(left)} ${round(y - 9)} V ${round(y)}`)
+        pen.line(`M ${round(right)} ${round(y - 9)} V ${round(y)}`)
+        pen.line(`M ${round(x)} ${round(y - 9)} V ${round(y)}`)
+        // The stair down to the landing below, alternating sides so the whole
+        // thing zig-zags the way it does outside.
+        const down = floor % 2 ? 1 : -1
         pen.line(
-          `M ${round(x - platform / 2 + 3)} ${round(y)} L ${round(x + platform / 2 - 3)} ${round(y + design.floorHeight - 1)}`,
+          `M ${round(x + (down * platform) / 2 - down * 3)} ${round(y)} L ${round(x - (down * platform) / 2 + down * 3)} ${round(y + design.floorHeight - 1)}`,
         )
+      }
+      // And the drop ladder over the pavement, hanging a storey short of it,
+      // which is the whole point of a drop ladder.
+      const dropTop = -(design.baseHeight + design.floorHeight)
+      pen.line(`M ${round(x - 4)} ${round(dropTop)} V ${round(dropTop + 15)}`)
+      pen.line(`M ${round(x + 4)} ${round(dropTop)} V ${round(dropTop + 15)}`)
+      for (let i = 1; i < 4; i++) {
+        pen.line(`M ${round(x - 4)} ${round(dropTop + i * 4)} H ${round(x + 4)}`)
       }
       wrapRange(pen, colourFrom, inkFrom, '<g class="rs-ornament rs-o-fire-escape">')
       break
     }
-    case 'skybridge': {
-      const y = -(design.baseHeight + Math.max(2, Math.floor(design.floors * 0.62)) * design.floorHeight)
-      const x = side * (design.width * 0.5)
-      const reach = side * 46
-      const left = Math.min(x, x + reach)
-      const span = Math.abs(reach)
-      pen.rect(left, y, span, 12, palette.shade, { rx: 3 })
-      const panes = Math.max(3, Math.round(span / 11))
-      const pitch = (span - 6) / panes
-      for (let i = 0; i < panes; i++) {
-        pen.rect(left + 3 + pitch * i + 1, y + 3.5, pitch - 2, 4.5, palette.socket, {
-          cls: i % 2 ? 'rs-w rs-on' : 'rs-w',
-          outline: false,
-        })
+    case 'sidewalk-shed': {
+      // The green plywood-and-pipe tunnel that has been outside every building
+      // in New York since before anybody currently living moved here. It costs
+      // three rectangles and it is funny because it is true.
+      //
+      // It stands in *front* of the building, so it is drawn on its own pair of
+      // plates after both of the building's — see `buildingSvg`. Overprinted on
+      // top of the ink plate it would have the door's outline showing straight
+      // through it, which reads as a mistake rather than as a print.
+      const span = design.width + 22
+      const left = -span / 2
+      const deck = -30
+      pen.rect(left, deck, span, 7, SHED_GREEN)
+      pen.rect(left, deck + 7, span, 3.5, darken(SHED_GREEN, 0.22), { outline: false })
+      const legs = Math.max(3, Math.round(span / 30))
+      for (let i = 0; i <= legs; i++) {
+        const lx = left + (span * i) / legs
+        pen.rect(lx - 2, deck + 10.5, 4, 30.5, SHED_PIPE)
       }
-      wrapRange(pen, colourFrom, inkFrom, '<g class="rs-ornament rs-o-skybridge">')
+      pen.line(`M ${round(left)} ${round(deck + 24)} H ${round(left + span)}`)
+      wrapRange(pen, colourFrom, inkFrom, '<g class="rs-ornament rs-o-sidewalk-shed">')
       break
     }
-    case 'drone-pad':
-      pen.ellipse(0, -2, 20, 6, palette.shade)
-      pen.mark('<ellipse cx="0" cy="-3" rx="13" ry="4"/>')
-      pen.mark(`<g class="rs-drone">
-<path d="M -9 -20 H -3 M 3 -20 H 9 M -6 -20 V -17.5 M 6 -20 V -17.5"/>
-<path d="M -5 -17.5 H 5 L 3 -13 H -3 Z" fill="${accent}"/></g>`)
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.35, -design.crownHeight * 0.05))
-      break
     case 'beacon':
-      pen.rect(-2.5, -9, 5, 9, palette.trim)
-      beacon(pen, 0, -12.5)
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.55, -design.crownHeight - 2))
+      // A warning light on a plinth. Not a ball on a post — that shape belongs
+      // to the pin and to nothing else in this city.
+      pen.rect(-5, -8, 10, 9, palette.trim)
+      beacon(pen, 0, -10, 12)
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.55, perch(design)))
       break
     case 'crane': {
       const height = 58
@@ -1245,7 +1774,7 @@ function ornamentSvg(pen: Pen, design: BuildingDesign, ornament: Ornament): void
       pen.line(`M 0 ${-height} L 32 ${-height + 4}`)
       pen.line(`M 26 ${-height + 4} V ${-height + 24}`)
       pen.rect(22, -height + 24, 9, 6, accent)
-      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.7, -design.crownHeight * 0.2))
+      wrapRange(pen, colourFrom, inkFrom, at(side * half * 0.7, perch(design)))
       break
     }
   }
@@ -1291,47 +1820,110 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   const margin = options.margin ?? 60
   const designs = buildings.map((b) => ({ design: designFor(b), state: b, note: b.note }))
 
+  // Either dimension on its own is worth honouring: the option's whole purpose
+  // is to stop a drawing being marooned in a frame, and a caller who gives only
+  // a width was once ignored entirely. A width with no height is taken as a
+  // floor to reach rather than as a ratio to match.
+  const asked = (value: number | undefined): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
+
   const lotWidth = 150
   const bodyWidth = designs.reduce((sum, d) => sum + Math.max(d.design.width, 96), 0)
   const gapCount = Math.max(0, designs.length - (options.emptyLot === false ? 1 : 0))
   const rowWidth = bodyWidth + gap * gapCount + (options.emptyLot === false ? 0 : lotWidth)
 
   /**
-   * A short row is drawn larger.
+   * The row is scaled up until it fills the width it was given.
    *
-   * The first thing anybody ever sees here is one shack, and one shack at the
-   * scale a row of thirty needs is a speck in the middle of a large sheet.
-   * Scaling toward a comfortable row width means a new skyline reads as a place
-   * from the first building, and a crowded one still fits.
+   * This used to fit by *padding*: zoom was capped at `860 / rowWidth`, so any
+   * row wider than 860 units never grew past 1×, and everything left over went
+   * into pavement on both sides. Measured on a 1361px viewport, six buildings
+   * spanned 551px — forty percent of the width, with four hundred pixels of
+   * dead paper either side — and the whole drawing came out at 0.687×. At that
+   * scale `REGISTER_SLIP` lands at 1.1 CSS pixels and the lip inside a socket
+   * at 0.82: the signature effect of the design language was below the
+   * resolution of the screen it ships on, and every ornament carrying the wit
+   * was a five-pixel speck.
    *
-   * Measured on the buildings alone. The empty lot is a control rather than a
-   * building, and letting it drive this magnified the plus sign on an empty
-   * skyline until it was the size of a door.
+   * So it fits by scale instead. The buildings take most of the room, and only
+   * what is left over becomes pavement.
+   *
+   * Two things it is deliberately *not* driven by. Not the frame's height: the
+   * page hands this drawing a different height on every screen, and a building
+   * that is drawn bigger on a taller window is a skyline whose heights cannot
+   * be compared with yesterday's. And not the empty lot, which is a control
+   * rather than a building — letting it into the basis magnified the plus sign
+   * on an empty skyline until it was the size of a door.
    */
+  const SHEET = 1180
+  const MOST_ZOOM = 2.4
+  /**
+   * Below this the drawing stops being a drawing. A supertall in a short frame
+   * has to give somewhere, and giving here is better than giving in width.
+   */
+  const LEAST_ZOOM = 0.72
   const zoomBasis = designs.length > 0 ? bodyWidth + gap * Math.max(0, designs.length - 1) : 860
-  const zoom = Math.min(1.75, Math.max(1, 860 / Math.max(1, zoomBasis)))
+  const room = Math.max(320, (asked(options.width) || SHEET) - margin * 2)
+  const belowGround = options.labels === false ? 40 : 104
+
+  /** The tallest thing to be drawn, before any zoom is applied to it. */
+  const rawTallest = designs.reduce(
+    (max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)),
+    110,
+  )
+
+  /**
+   * Height constrains the zoom as well as width, which it did not used to.
+   *
+   * Fitting on width alone looked right until a supertall was on the street.
+   * Then the drawing came out taller than the frame, and the block below —
+   * which matches the frame's *shape* by widening — had to add pavement until
+   * the ratios agreed. Measured: the page asked for 1600×620 and was handed a
+   * sheet 3121 wide, with the six buildings spanning 1069 of it. A third of the
+   * drawing was buildings and two thirds was empty pavement, which is exactly
+   * the "postage stamp marooned in a half-empty sheet" a review found.
+   *
+   * So the height gets a vote. `1.09` is the sky the block below adds above the
+   * roofline as a fraction of it; solving for the zoom that lands the whole
+   * drawing inside the frame is cheaper than iterating, and near enough that
+   * the widening has almost nothing left to do. Keep the two in step: a sky
+   * fraction changed here and not there is a drawing that overflows its frame.
+   */
+  const wantsHeight = asked(options.height)
+  const heightFit =
+    wantsHeight > 0 ? (wantsHeight - belowGround) / (1.09 * Math.max(1, rawTallest)) : Infinity
+
+  const zoom = Math.max(
+    LEAST_ZOOM,
+    Math.min(
+      MOST_ZOOM,
+      (room * 0.9) / Math.max(1, zoomBasis),
+      room / Math.max(1, rowWidth),
+      heightFit,
+    ),
+  )
   const scaled = rowWidth * zoom
   const natural = margin * 2 + scaled
 
   /**
    * Air above the roofline, so a low skyline is still a skyline.
    *
-   * The page scales this drawing to the height of its frame, so a canvas only
-   * as tall as its tallest building gets magnified to fill the screen — and a
-   * city of two shacks came out looking like two barns. Giving the short cases
-   * more room costs nothing and keeps everything at a believable size.
+   * Enough that a building is not drawn touching the top of the frame, and no
+   * more: the old floor of 320 units meant a street of newsstands was a small
+   * drawing at the bottom of a tall empty rectangle, and a third of the home
+   * screen was blank paper with nothing in it.
    */
-  const tallest = Math.max(
-    options.backdrop === false ? 120 : 320,
-    designs.reduce((max, d) => Math.max(max, d.design.height + ornamentHeadroom(d.design)), 120) * zoom,
-  )
-  const belowGround = options.labels === false ? 44 : 122
+  const tallest = Math.max(options.backdrop === false ? 110 : 220, rawTallest * zoom)
   // A city wants air above it; a portrait wants a margin. The backdrop being
   // off is what distinguishes the two, and it is the portrait that turns it off.
   const portrait = options.backdrop === false
+  // Air above the roofline, and not a field. Every unit spent here is a unit
+  // the buildings do not get, because the zoom is now fitted to the height as
+  // well as the width — so generosity above the roofline is paid for in the
+  // size of everything below it.
   const baseSky = portrait
-    ? Math.max(34, Math.round(tallest * 0.1))
-    : Math.max(140, Math.round(tallest * 0.24))
+    ? Math.max(24, Math.round(tallest * 0.07))
+    : Math.max(40, Math.round(tallest * 0.09))
   /** What the drawing comes to on its own, before it is asked to fit anything. */
   const naturalHeight = baseSky + tallest + belowGround
 
@@ -1344,12 +1936,6 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
    * alone and scrolls, because shrinking thirty buildings to fit one screen is
    * how you get thirty buildings nobody can tell apart.
    */
-  // Either dimension on its own is still worth honouring: the option's whole
-  // purpose is to stop a drawing being marooned in a frame, and a caller who
-  // gives only a width was previously ignored entirely. A width with no height
-  // is taken as a floor to reach rather than a ratio to match.
-  const asked = (value: number | undefined): number =>
-    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
   const wantWidth = asked(options.width)
   const wantHeight = asked(options.height)
   const aspect = wantWidth > 0 && wantHeight > 0 ? wantWidth / wantHeight : 0
@@ -1359,6 +1945,20 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   // non-finite, a loop that never ends. Wide enough for a very large skyline on
   // a very wide screen; nowhere near enough to hang anything.
   const MAX_WIDTH = 40_000
+  /*
+   * Widening to match the frame's shape is safe again, and it was not always.
+   *
+   * When the zoom was fitted to width alone, a street with a tall tower on it
+   * came out taller than its frame, and matching the shape here meant adding
+   * pavement until the ratios agreed: the page asked for 1600×620 and was
+   * handed a sheet 3121 wide, of which the six buildings were 1069. Two thirds
+   * of the drawing was empty pavement.
+   *
+   * The fix belonged upstream, and is upstream: the zoom is fitted to the
+   * height as well, so the drawing already comes out close to the frame's
+   * proportions and this has very little left to do. Capping it here instead
+   * was treating the symptom, and it let a wide short frame letterbox.
+   */
   const width = Math.min(
     MAX_WIDTH,
     Math.max(options.minWidth ?? 760, natural, wantWidth, aspect > 0 ? Math.round(naturalHeight * aspect) : 0),
@@ -1407,23 +2007,57 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   }
   parts.push(`<path class="rs-street" d="M 0 ${round(groundY)} H ${round(width)}"/>`)
 
+  /*
+   * Where each gap in the row begins, so the street can be furnished.
+   *
+   * Gap 0 is the kerb before the first building; gap n is the pavement after
+   * the last one. Collected as the row is laid out rather than recomputed,
+   * because the two would drift apart the first time anybody changed a margin.
+   */
+  const gaps: Array<{ from: number; to: number }> = []
   let x = margin + spare
+  gaps.push({ from: Math.max(4, x - gap * zoom), to: x })
   for (const { design, state, note } of designs) {
     const slot = Math.max(design.width, 96)
     const centre = x + (slot * zoom) / 2
+    const waiting = (state.waiting ?? 0) > 0
+    // The pin has to have a textual equivalent, or the one thing on this screen
+    // that needs the owner is the one thing a screen reader does not mention.
+    const label = `${esc(design.name)} — ${esc(design.tier.name)}, ${floorsSaid(design.headcount)}${
+      waiting ? ', waiting on you' : ''
+    }`
     // Scaled about its own feet, so the whole row still stands on one street.
     parts.push(
-      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${esc(design.name)} — ${esc(design.tier.name)}, ${floorsSaid(design.headcount)}" transform="translate(${round(centre)} ${round(groundY)}) scale(${round(zoom)})">`,
+      `<g class="rs-plot" data-building="${esc(design.id)}" tabindex="0" role="button" aria-label="${label}" transform="translate(${round(centre)} ${round(groundY)}) scale(${round(zoom)})">`,
     )
     parts.push(buildingSvg(design, state))
     if (options.labels !== false) parts.push(nameplate(design, state, slot + gap * 0.8, note))
-    // A generous invisible hit area: a shack is a small target otherwise.
+    // A generous invisible hit area: a newsstand is a small target otherwise —
+    // and the same rectangle, drawn rather than left transparent, is where the
+    // keyboard says it is. See `.rs-focus`.
+    const hit = {
+      x: -slot / 2 - gap / 2,
+      y: -design.height - 40,
+      w: slot + gap,
+      h: design.height + 40 + (options.labels === false ? 10 : 76),
+    }
     parts.push(
-      `<rect class="rs-hit" x="${round(-slot / 2 - gap / 2)}" y="${round(-design.height - 40)}" width="${round(slot + gap)}" height="${round(design.height + 40 + (options.labels === false ? 10 : 90))}" fill="transparent"/>`,
+      `<rect class="rs-hit" x="${round(hit.x)}" y="${round(hit.y)}" width="${round(hit.w)}" height="${round(hit.h)}" fill="transparent"/>`,
+    )
+    parts.push(
+      `<rect class="rs-focus" x="${round(hit.x)}" y="${round(hit.y)}" width="${round(hit.w)}" height="${round(hit.h)}" rx="6"/>`,
     )
     parts.push('</g>')
-    x += (slot + gap) * zoom
+    x += slot * zoom
+    gaps.push({ from: x, to: x + gap * zoom })
+    x += gap * zoom
   }
+
+  // The street itself, furnished. Drawn after the buildings so a tree stands in
+  // front of the shadow the building next to it throws, and seeded off the city
+  // rather than off any one building — a hydrant belongs to the kerb, and two
+  // neighbours that both rolled one would put two on the same corner.
+  parts.push(streetSvg(options.city ?? designs[0]?.design.id ?? 'roofscape', gaps, groundY, zoom))
 
   if (options.emptyLot !== false) {
     parts.push(emptyLot(x, groundY, lotWidth * zoom, zoom))
@@ -1432,6 +2066,112 @@ export function citySvg(buildings: readonly CityBuilding[], options: CityOptions
   parts.push('</svg>')
   return parts.join('\n')
 }
+
+/**
+ * The pavement, furnished.
+ *
+ * A street is not a row of buildings with air between them. It is a hydrant
+ * nobody can park in front of, a tree in a pit with a guard round it that is
+ * bare eight months of the year, a plume coming out of a stack in the middle of
+ * the road, and a set of steps going down into the ground. Four things, drawn
+ * between the plots rather than on them, and none of them belonging to any
+ * building — which is what keeps decision 0013's promise intact: the building
+ * you have not touched in a month still looks the same, however much its
+ * neighbour has grown.
+ */
+function streetSvg(
+  city: string,
+  gaps: ReadonlyArray<{ from: number; to: number }>,
+  groundY: number,
+  zoom: number,
+): string {
+  const out: string[] = ['<g class="rs-street-kit">']
+  for (const fixture of streetFurniture(city, gaps.length)) {
+    const gap = gaps[fixture.gap]
+    if (!gap) continue
+    const span = gap.to - gap.from
+    if (span < 18) continue
+    const x = gap.from + span * fixture.at
+    const flip = fixture.flip ? ' scale(-1 1)' : ''
+    // Drawn a little under the buildings' own scale: street furniture at full
+    // size next to a newsstand is a hydrant the size of a person.
+    const size = round(Math.min(1.25, Math.max(0.7, zoom * 0.8)))
+    out.push(
+      `<g class="rs-fixture rs-f-${fixture.kind}" transform="translate(${round(x)} ${round(groundY)}) scale(${size})${flip}">`,
+      streetPiece(fixture),
+      '</g>',
+    )
+  }
+  out.push('</g>')
+  return out.length > 2 ? out.join('\n') : ''
+}
+
+/** One thing on the pavement. Ink and one flat wash, like everything else. */
+function streetPiece(fixture: StreetFixture): string {
+  const rng = new Chooser(fixture.seed)
+  const pen = new Pen()
+  switch (fixture.kind) {
+    case 'hydrant':
+      // Not vermilion, whatever colour they are outside. Vermilion means the
+      // owner is needed, and a fire hydrant is not.
+      pen.rect(-5.5, -3, 11, 3, HYDRANT)
+      pen.rect(-3.5, -14, 7, 11, HYDRANT, { rx: 2 })
+      pen.rect(-6.5, -11, 13, 3, HYDRANT)
+      pen.disc(0, -15.5, 2.4, HYDRANT)
+      break
+    case 'street-tree': {
+      // Bare, in a pit, with a guard round it. A tree in leaf is a green blob
+      // and this city is not green.
+      pen.rect(-9, -1.5, 18, 1.5, '#6E6A5E', { outline: false })
+      pen.line('M -9 -1.5 H 9')
+      const lean = rng.float(-4, 4)
+      const trunk = `<g transform="rotate(${round(lean)})">`
+      pen.mark(trunk)
+      pen.mark('<path d="M 0 -2 V -30"/>')
+      pen.mark('<path d="M 0 -20 L -9 -30 M 0 -24 L 8 -33 M 0 -14 L -7 -20 M 0 -28 L -4 -36 M 0 -28 L 5 -37"/>')
+      pen.mark('</g>')
+      for (let i = -1; i <= 1; i += 2) pen.line(`M ${i * 6} -9 V -1`)
+      pen.line('M -6 -7 H 6')
+      break
+    }
+    case 'steam-vent': {
+      // The stack in the middle of the road with the plume coming out of it.
+      // Banded rather than orange: an orange this size, this saturated, is the
+      // brightest thing on the page and it does not mean anything.
+      pen.rect(-9, -22, 18, 22, CHALK)
+      for (let i = 0; i < 3; i++) pen.line(`M -9 ${round(-18 + i * 6)} H 9`)
+      pen.line('M -11 -22 H 11')
+      const drift = rng.float(-5, 5)
+      pen.mark(
+        `<path class="rs-steam" d="M -6 -24 q -6 -11 2 -19 q 7 -7 1 -16 M 5 -24 q 6 -9 -1 -17" transform="translate(${round(drift)} 0)" opacity="0.34"/>`,
+      )
+      break
+    }
+    case 'subway-entrance': {
+      // Steps going down, a green railing, and a lamp on the newel. The lamp is
+      // a square lantern and not a globe, because a ball on a post is the pin
+      // and the pin has to stay the only one in the city.
+      pen.rect(-15, 0, 30, 16, '#2A2723', { outline: false })
+      for (let i = 0; i < 4; i++) pen.line(`M ${round(-15 + i * 3)} ${round(2 + i * 3.4)} H 15`)
+      pen.line('M -15 0 H 15')
+      for (let i = -1; i <= 1; i += 2) {
+        pen.line(`M ${i * 15} -13 V 1`)
+        pen.line(`M ${i * 15} -13 L ${i * 9} -7`)
+      }
+      pen.line('M -15 -13 H 15')
+      pen.rect(-3, -24, 6, 8, LAMP_MARK, { cls: 'rs-lantern' })
+      pen.line('M 0 -16 V -13')
+      break
+    }
+  }
+  return [...pen.colour, '<g class="rs-plate-ink">', ...pen.ink, '</g>'].join('')
+}
+
+/** A hydrant, a stack and a lantern, in colours that mean nothing. */
+const HYDRANT = '#8A9089'
+const CHALK = '#CFC4B1'
+/** The one light on the pavement. A lamp is allowed to be the lamp colour. */
+const LAMP_MARK = 'none'
 
 /** How far above the roof an ornament can reach, so nothing gets clipped. */
 function ornamentHeadroom(design: BuildingDesign): number {
@@ -1560,6 +2300,7 @@ function emptyLot(x: number, groundY: number, width: number, zoom = 1): string {
   <path class="rs-lot-plus" d="M -13 -62 H 13 M 0 -75 V -49"/>
   <text class="rs-lot-text" x="0" y="38" text-anchor="middle">Break ground</text>
   <text class="rs-note" x="0" y="58" text-anchor="middle">Room for another</text>
+  <rect class="rs-focus" x="${round(-inner / 2 - 8)}" y="-132" width="${round(inner + 16)}" height="196" rx="6"/>
 </g>`
 }
 
@@ -1599,24 +2340,49 @@ const CITY_STYLE = `<style>
                   font-weight: 700; letter-spacing: .06em; fill: var(--ink, #1E1B16); stroke: none; }
 
   /* A counter in a hole. Off, it is the hole. */
-  .rs-w { transition: fill var(--slow, .42s) var(--ease, cubic-bezier(.22,1,.36,1)); }
-  .rs-on { fill: var(--lamp, #EFAA22); }
+  .rs-w { transition: fill var(--slow, .42s) var(--ease, cubic-bezier(.22,1,.36,1)),
+                      stroke var(--slow, .42s) var(--ease, cubic-bezier(.22,1,.36,1));
+          stroke-linejoin: round; }
+  .rs-on { fill: var(--lamp, #EFAA22); stroke: var(--lamp, #EFAA22); }
   /* Three flat marigolds, a shade either side of the lamp, so a lit facade is
      a row of separate rooms rather than one painted band. */
-  .rs-on.rs-t0 { fill: #E39A1E; }
-  .rs-on.rs-t2 { fill: #F6BE52; }
-  .rs-busy, .rs-busy.rs-t0, .rs-busy.rs-t1, .rs-busy.rs-t2 { fill: var(--lamp-lit, #F7C556); }
+  .rs-on.rs-t0 { fill: #E39A1E; stroke: #E39A1E; }
+  .rs-on.rs-t2 { fill: #F6BE52; stroke: #F6BE52; }
+  .rs-busy { fill: var(--lamp, #EFAA22); stroke: var(--lamp, #EFAA22); }
+
+  /* The third state is a *shape*, not a brighter yellow.
+
+     It used to be #F7C556 against #F6BE52 — 1.8 L* apart, while the variation
+     inside the ambient trio spanned eleven, so a window that meant nothing
+     could be brighter than one that meant somebody was working. On warm paper
+     there is no headroom above marigold and there never was going to be. So a
+     counter with somebody at it is stroked in its own colour until it fills the
+     socket edge to edge, and one that is merely lit stays inset with the hole
+     showing round it. That difference survives at six pixels. */
+  .rs-w:not(.rs-busy) { stroke: none; }
+
   /* Somebody at the window. Sibling rather than descendant: the counter is the
      element the page toggles, and its figure sits immediately after it. */
   .rs-body { fill: var(--ink, #1E1B16); opacity: 0; transition: opacity var(--base, .26s) ease; }
-  .rs-w.rs-busy + .rs-body { opacity: .55; }
+  .rs-w.rs-busy + .rs-body { opacity: .58; }
 
   .rs-plot { cursor: pointer; }
-  .rs-plot:hover, .rs-plot:focus-visible { outline: none; }
+  .rs-plot:hover, .rs-plot:focus-visible, .rs-lot:focus-visible { outline: none; }
   .rs-building { transition: transform var(--base, .26s) var(--ease, cubic-bezier(.22,1,.36,1)); }
   .rs-plot:hover .rs-building, .rs-plot:focus-visible .rs-building { transform: translateY(-6px); }
   .rs-shadow { transition: opacity var(--base, .26s) ease; }
   .rs-plot:hover .rs-shadow, .rs-plot:focus-visible .rs-shadow { opacity: .7; }
+
+  /* Where the keyboard is.
+
+     Both plots and lots set \`outline: none\`, and every replacement was written
+     on the same selector list as \`:hover\` — so a mouse and a keyboard produced
+     exactly the same drawing and nothing on the page said which building was
+     selected. This is focus's own mark and hover never draws it: a ruled frame
+     round the plot, ink on paper, at a weight nothing else in the city uses. */
+  .rs-focus { fill: none; stroke: var(--ink, #1E1B16); stroke-width: 2.4;
+              stroke-dasharray: 3 5; stroke-linecap: round; opacity: 0; }
+  .rs-plot:focus-visible .rs-focus, .rs-lot:focus-visible .rs-focus { opacity: 1; }
 
   .rs-lot { cursor: pointer; }
   .rs-lot-plot { fill: none; stroke: var(--line-strong, #C0B69E); stroke-width: 1.6;
@@ -1628,45 +2394,38 @@ const CITY_STYLE = `<style>
   .rs-lot:hover .rs-lot-plus, .rs-lot:focus-visible .rs-lot-plus { stroke: var(--ink, #1E1B16); }
   .rs-lot:hover .rs-lot-text, .rs-lot:focus-visible .rs-lot-text,
   .rs-lot:hover .rs-note, .rs-lot:focus-visible .rs-note { fill: var(--ink, #1E1B16); }
-  .rs-lot:focus-visible { outline: none; }
 
   /* The pin. Vermilion, and the only vermilion in the drawing. */
   .rs-pin-base { fill: var(--flag-deep, #9C2F1B); }
   .rs-pin-post { fill: var(--flag, #D2452A); }
   .rs-pin-ball { fill: var(--flag, #D2452A); }
   .rs-pin-shine { fill: none; stroke: var(--ground, #F1EBDD); stroke-width: 2.4; stroke-linecap: round; opacity: .8; }
+
+  /* The only loop left in the city.
+
+     There were ten, four of them glows, and the eye goes to motion before it
+     goes to anything else — so the first marigold anybody noticed in a street
+     of thirty buildings was a decorative one blinking on a mast, while the mark
+     that meant work was in hand sat perfectly still. Marigold is off animation
+     and animation is off decoration. What is left is this: the pin rocks,
+     because it was just pushed in. */
   .rs-waiting { transform-box: fill-box; transform-origin: 50% 100%;
                 animation: rs-rock 3s var(--ease, cubic-bezier(.22,1,.36,1)) infinite; }
   @keyframes rs-rock { 0%, 100% { transform: rotate(-1.5deg) } 50% { transform: rotate(1.5deg) } }
 
-  .rs-beacon { fill: var(--lamp, #EFAA22); animation: rs-blink 3.4s steps(1, end) infinite; }
-  .rs-bulb { fill: var(--lamp, #EFAA22); animation: rs-glow 3.6s ease-in-out infinite; }
-  @keyframes rs-blink { 0%, 55% { opacity: 1 } 56%, 100% { opacity: .15 } }
-  @keyframes rs-glow { 0%, 100% { opacity: 1 } 50% { opacity: .4 } }
+  /* Lights that are lights: a warning band on a mast, a bulb on a flex, the
+     lantern over a subway stair. Printed, not pulsing. */
+  .rs-beacon, .rs-bulb, .rs-lantern { fill: var(--lamp, #EFAA22); }
+  .rs-busy-dot { fill: var(--lamp, #EFAA22); }
 
-  .rs-busy-dot { fill: var(--lamp, #EFAA22); animation: rs-pulse 2.2s ease-in-out infinite; }
-  @keyframes rs-pulse { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+  .rs-smoke, .rs-steam { fill: none; }
 
-  .rs-smoke { animation: rs-rise 9s ease-out infinite; transform-box: fill-box; transform-origin: bottom; }
-  @keyframes rs-rise { 0% { opacity: .5; transform: translateY(0) scale(.6) } 100% { opacity: 0; transform: translateY(-26px) scale(1.3) } }
-
-  .rs-pennant, .rs-banner { transform-box: fill-box; transform-origin: left center;
-                            animation: rs-wave 4.5s ease-in-out infinite; }
-  @keyframes rs-wave { 0%, 100% { transform: skewY(0deg) } 50% { transform: skewY(-3.5deg) } }
-
-  .rs-neon { animation: rs-buzz 6s steps(1, end) infinite; }
-  @keyframes rs-buzz { 0%, 91% { opacity: 1 } 92%, 94% { opacity: .3 } 95%, 100% { opacity: 1 } }
-
-  .rs-drone { animation: rs-hover 5s ease-in-out infinite; }
-  @keyframes rs-hover { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-7px) } }
-
-  .rs-pigeon { transform-box: fill-box; transform-origin: center;
-               animation: rs-peck 6s ease-in-out infinite; }
-  @keyframes rs-peck { 0%, 88%, 100% { transform: rotate(0deg) } 92% { transform: rotate(-13deg) } }
+  .rs-fixture .rs-plate-ink { stroke-width: 1.5; }
+  /* A glazing bar, at half the weight of a wall. */
+  .rs-bar { stroke-width: 1; }
 
   @media (prefers-reduced-motion: reduce) {
-    .rs-beacon, .rs-bulb, .rs-busy-dot, .rs-waiting, .rs-smoke, .rs-pennant, .rs-banner,
-    .rs-neon, .rs-drone, .rs-pigeon { animation: none; }
+    .rs-waiting { animation: none; }
     .rs-plot:hover .rs-building { transform: none; }
     .rs-plate-colour, .rs-building, .rs-w, .rs-body { transition: none; }
   }
