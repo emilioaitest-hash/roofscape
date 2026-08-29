@@ -131,9 +131,24 @@ export class BuildingStore {
     this.db.prepare('update floors set posting = ? where id = ?').run(toJson(posting), id)
   }
 
-  /** Their memory is archived, never deleted, and their floor stays on record. */
-  vacate(id: FloorId): void {
+  /**
+   * Somebody leaves. Their memory is archived, never deleted, and their floor
+   * stays on record — the building simply gets shorter.
+   *
+   * Their unsettled work comes back to the desk in the same breath. A task left
+   * assigned to a floor nobody occupies is worse than one that failed: it goes
+   * on lighting the window of an empty floor, and the next goal would hand it
+   * to somebody who does not work here.
+   */
+  vacate(id: FloorId): { handedBack: number } {
+    const open = this.db
+      .prepare(
+        `update tasks set state = 'escalated', settled_at = ?
+         where assigned_to = ? and state in ('queued', 'working', 'awaiting-review', 'awaiting-approval')`,
+      )
+      .run(now(), id)
     this.db.prepare('update floors set vacated_at = ? where id = ?').run(now(), id)
+    return { handedBack: Number(open.changes ?? 0) }
   }
 
   // ---- work --------------------------------------------------------------
@@ -199,6 +214,18 @@ export class BuildingStore {
       ),
       limit,
     ).map((r) => hydrateTask(r, this.buildingId))
+  }
+
+  /**
+   * Whether this building has ever been given anything to do.
+   *
+   * A count rather than a list: the answer is wanted on the home screen, for
+   * every building, to tell "nobody has put a goal to it yet" apart from
+   * "it did some work and there is none in hand", and reading four thousand
+   * rows to find that out would be absurd.
+   */
+  taskCount(): number {
+    return getAs<{ n: number }>(this.db.prepare('select count(*) as n from tasks'))!.n
   }
 
   /** How many floors have work in hand — which is what lights their windows. */

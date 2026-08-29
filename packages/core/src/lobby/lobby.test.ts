@@ -55,7 +55,9 @@ test('the concierge can see every building, which nobody inside one can', () => 
       assert.equal(buildings.length, 2)
       const college = buildings.find((b) => b.name === 'College App')!
       assert.equal(college.staff, 2)
-      assert.equal(college.form, 'single-storey')
+      // Two on staff is the second rung, which is a bodega now that the ladder
+      // is made of real New York buildings rather than generic ones.
+      assert.equal(college.form, 'bodega')
     })
   } finally { s.cleanup() }
 })

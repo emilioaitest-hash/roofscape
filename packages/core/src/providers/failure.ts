@@ -26,6 +26,18 @@ export function classifyFailure(error: unknown): Failure {
   const status = statusOf(error)
   const lower = message.toLowerCase()
 
+  // A posting that could not even be turned into something callable — usually
+  // no key at all. It already carries the one sentence that fixes it, and that
+  // sentence was being thrown away here and replaced with "unknown", which is
+  // how a missing credential came to be reported as a goal that finished.
+  //
+  // Recognised by shape rather than by `instanceof`, because importing the
+  // resolver into the classifier would put a cycle through the provider layer.
+  const stated = remedyOf(error)
+  if (stated) {
+    return { kind: 'credential', worthFallingBackTo: true, message, remedy: stated }
+  }
+
   if (status === 429 || /rate.?limit|too many requests|quota|usage limit|overloaded/.test(lower)) {
     return {
       kind: 'limit',
@@ -67,6 +79,15 @@ export function classifyFailure(error: unknown): Failure {
   }
 
   return { kind: 'unknown', worthFallingBackTo: true, message, remedy: null }
+}
+
+/** The remedy a ProviderError carries, when that is what this is. */
+function remedyOf(error: unknown): string | null {
+  if (typeof error !== 'object' || error === null) return null
+  const candidate = error as { name?: unknown; remedy?: unknown }
+  return candidate.name === 'ProviderError' && typeof candidate.remedy === 'string' && candidate.remedy.length > 0
+    ? candidate.remedy
+    : null
 }
 
 function statusOf(error: unknown): number | null {

@@ -11,20 +11,29 @@ glance where your effort actually sits.
               ╒═══════╕
  ▄▄▄▄▄▄▄▄▄    │▁▁▁▁▁▁▁│
   ┌─────┐     │ ∩ ∩ ∩ │
-  │▫ ▫ ▫│     │ ∩ ∩ ∩ │
-  │▫ ▫ ▫│     │ ∩ ∩ ∩ │
+  │▪ ▪ ▪│     │ ∩ ∩ ∩ │
+  │▪ ▪ ▪│     │ ∩ ∩ ∩ │
   │▫ ▫ ▫│     │ ∩ ∩ ∩ │
   │▫ ▫ ▫│     │ ∩ ∩ ∩ │
   │▫ ▯ ▫│     │ ∩ ▯ ∩ │
   ╘═════╛     ╘═══════╛
 ───────────  ───────────
  Demo Site   Help Center
-4 on staff   5 on staff
+ 2 in hand    5 floors
 ```
 
-A building starts as a shack and grows: single storey, brick walk-up, cast-iron
-block, skyscraper, landmark. Nobody chooses the form — it follows the headcount,
-because a home screen should tell you something true from across the room.
+A filled window is a lit one: somebody on that floor has work in hand. In a
+terminal and in the app that is marigold; markdown has no colour, so here the
+window is simply filled in.
+
+The city is New York, and the ladder is made of real buildings. One pair of
+hands is a **newsstand**; then a **bodega**, a **brownstone** with a stoop, a
+**cast-iron loft** with the fire escape down its front the way SoHo has them, a
+**setback tower**, a **landmark** with a spire, and at the top a **supertall**
+with the crane still on it.
+
+Nobody chooses the form — it follows the headcount, because a home screen should
+tell you something true from across the room.
 
 ## What it does
 
@@ -35,17 +44,52 @@ because a home screen should tell you something true from across the room.
 - **Everything is remembered**, in archives below ground, and recalled on demand
   rather than pasted into every prompt.
 - **You approve** anything that reaches the outside world: publishing, sending,
-  deploying, spending, merging to main.
+  deploying, spending, merging to main. The building waits for your answer.
+
+## What it looks like
+
+The home screen is a drawing, not a dashboard, and the drawing is the product.
+
+It is printed the way a cheap and lovely two-colour book is printed: warm paper,
+one plate of warm-black line, one plate of flat colour, and the colour landing a
+millimetre off the ink. The offset is seeded per building, so no two are wrong by
+the same amount — and hovering a building snaps its colour plate into register.
+
+Two colours mean things, and they are the only saturated colours in the product.
+**Marigold is light**: a window with somebody behind it, work in hand. Brighter,
+with a small dark figure at the counter, means that floor is running right now.
+**Vermilion is you**: a pin pushed into the roof of a building that is waiting on
+your say-so. Nothing else is either colour. There is no brand colour, and the
+primary button is ink.
+
+`docs/DESIGN.md` is the whole system, and it is enforced by a test rather than by
+good intentions — a colour nobody named, or marigold on a button, fails the
+build. Decisions 0015 to 0017 record what the language cost.
 
 ## Getting started
 
 Download it from **[roofscape.vercel.app](https://roofscape.vercel.app)**. The app
-carries the service inside it, so there is nothing to install first — no Node, no
-build step. macOS will ask whether the developer can be verified the first time,
-because the app is signed with its own certificate rather than one Apple has
-certified: right-click it, choose Open, and choose Open again.
+carries the service inside it, so there is no Node to install and no build step.
+macOS will ask whether the developer can be verified the first time, because the
+app is signed with its own certificate rather than one Apple has certified: open
+**System Settings → Privacy & Security** and click **Open Anyway**. Once per
+version.
 
-To run it from source instead, or to get the `roofscape` command in a terminal:
+Roofscape supplies no model, so the first screen's job is to get you one, and it
+can finish that itself:
+
+- If **Claude Code** is installed and logged in, that is already enough —
+  Anthropic floors run on your subscription and need no API key.
+- Otherwise paste a key for any provider into the app and it is connected. There
+  is nothing to install in a terminal first.
+
+Then break ground, take somebody on, and put a goal to the building. The screen
+always names the one next thing to do; a building with nobody in it does nothing,
+and says so rather than showing you a zero.
+
+### From source, and the terminal
+
+To run it from a checkout, or to get the `roofscape` command:
 
 ```sh
 npm install
@@ -59,9 +103,8 @@ npm run desktop   # the app, from this checkout
 (Without `npm link`, every command below works as
 `./node_modules/.bin/roofscape …`.)
 
-`doctor` tells you what it can reach. If you have **Claude Code** installed and
-logged in, that is enough — Anthropic floors run on your subscription and need no
-API key. Otherwise connect a provider:
+`doctor` tells you what it can reach. To connect a provider from here instead of
+from the app:
 
 ```sh
 roofscape provider add anthropic --env ANTHROPIC_API_KEY
@@ -99,8 +142,8 @@ will bind elsewhere if you set `ROOFSCAPE_HOST`, and says so loudly when you do.
 `GET /api/skyline`, `GET /api/buildings/:id`, `POST /api/buildings/:id/goal`,
 `GET /api/approvals`, and `GET /api/events` — a live stream of progress, so a
 dashboard can watch a goal being worked rather than poll for it. This is what the
-dashboard and the desktop app will talk to, and what runs on a VPS when you want
-work finishing overnight.
+dashboard and the desktop app talk to, and what runs on a VPS when you want work
+finishing overnight.
 
 ## Work that recurs
 
@@ -163,6 +206,10 @@ every provider will refuse it.
 Work the reviewer sends back goes back to whoever did it, once, with the verdict
 in front of them. After that it is left for you: two who disagree do not converge
 by being asked again.
+
+A goal that came back having done nothing says so, and says why. It is the moment
+the product is most tempted to congratulate itself, and the one where a green
+tick would be a lie.
 
 ## Status
 
